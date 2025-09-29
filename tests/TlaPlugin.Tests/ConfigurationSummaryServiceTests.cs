@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Microsoft.Extensions.Options;
 using TlaPlugin.Configuration;
 using TlaPlugin.Models;
@@ -17,8 +18,8 @@ public class ConfigurationSummaryServiceTests
             DailyBudgetUsd = 55m,
             RequestsPerMinute = 80,
             MaxConcurrentTranslations = 3,
-            SupportedLanguages = { "ja-JP", "en-US" },
-            DefaultTargetLanguages = { "ja-JP" },
+            SupportedLanguages = new List<string> { "ja-JP", "en-US" },
+            DefaultTargetLanguages = new List<string> { "ja-JP" },
             Providers =
             {
                 new ModelProviderOptions

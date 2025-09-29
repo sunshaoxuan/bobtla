@@ -1,5 +1,6 @@
 using System.Threading;
 using System.Threading.Tasks;
+using TlaPlugin.Configuration;
 using TlaPlugin.Models;
 using TlaPlugin.Services;
 

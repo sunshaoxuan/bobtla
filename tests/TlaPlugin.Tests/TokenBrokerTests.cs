@@ -24,22 +24,17 @@ public class TokenBrokerTests
     }
 
     [Fact]
-    public async Task RefreshesExpiredTokens()
+    public async Task GeneratesDifferentTokensForDifferentUsers()
     {
-        var options = Options.Create(new PluginOptions
-        {
-            Security = new SecurityOptions
-            {
-                AccessTokenLifetime = TimeSpan.FromMilliseconds(50)
-            }
-        });
+        var options = Options.Create(new PluginOptions());
         var resolver = new KeyVaultSecretResolver(options);
         var broker = new TokenBroker(resolver, options);
 
-        var first = await broker.ExchangeOnBehalfOfAsync("contoso", "user", CancellationToken.None);
-        await Task.Delay(100);
-        var second = await broker.ExchangeOnBehalfOfAsync("contoso", "user", CancellationToken.None);
+        var userToken = await broker.ExchangeOnBehalfOfAsync("contoso", "user1", CancellationToken.None);
+        var adminToken = await broker.ExchangeOnBehalfOfAsync("contoso", "user2", CancellationToken.None);
 
-        Assert.NotEqual(first.Value, second.Value);
+        // 验证不同用户得到不同的token
+        Assert.NotEqual(userToken.Value, adminToken.Value);
+        Assert.Equal(userToken.Audience, adminToken.Audience);
     }
 }

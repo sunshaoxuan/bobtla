@@ -1,3 +1,5 @@
+using TlaPlugin.Configuration;
+
 namespace TlaPlugin.Models;
 
 /// <summary>

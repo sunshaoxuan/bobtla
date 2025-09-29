@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using TlaPlugin.Configuration;
 using TlaPlugin.Models;
@@ -33,13 +34,13 @@ public class TranslationCache : IDisposable
 
     public bool TryGet(TranslationRequest request, out TranslationResult result)
     {
-        if (_cache.TryGetValue(BuildKey(request), out TranslationResult cached))
+        if (_cache.TryGetValue(BuildKey(request), out TranslationResult cached) && cached is not null)
         {
             result = Clone(cached);
             return true;
         }
 
-        result = null!;
+        result = default!;
         return false;
     }
 
@@ -74,9 +75,20 @@ public class TranslationCache : IDisposable
             Confidence = source.Confidence,
             CostUsd = source.CostUsd,
             LatencyMs = source.LatencyMs,
-            AdaptiveCard = (JsonObject?)(source.AdaptiveCard?.DeepClone()) ?? new JsonObject(),
+            AdaptiveCard = CloneAdaptiveCard(source.AdaptiveCard),
             AdditionalTranslations = new Dictionary<string, string>(source.AdditionalTranslations)
         };
+    }
+
+    private static JsonObject CloneAdaptiveCard(JsonObject? original)
+    {
+        if (original is null)
+        {
+            return new JsonObject();
+        }
+
+        var json = original.ToJsonString();
+        return JsonNode.Parse(json)?.AsObject() ?? new JsonObject();
     }
 
     public void Dispose()
