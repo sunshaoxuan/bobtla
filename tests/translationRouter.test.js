@@ -6,6 +6,7 @@ import { LanguageDetector } from "../src/services/languageDetector.js";
 import { GlossaryManager } from "../src/services/glossaryManager.js";
 import { BudgetGuard } from "../src/services/budgetGuard.js";
 import { AuditLogger } from "../src/services/auditLogger.js";
+import { ComplianceGateway } from "../src/services/complianceGateway.js";
 
 test("router applies glossary and falls back on failure", async () => {
   const failingProvider = new MockModelProvider({
@@ -45,6 +46,93 @@ test("router applies glossary and falls back on failure", async () => {
   assert.equal(result.text.includes("中央处理器"), true);
   assert.equal(result.modelId, "backup");
   assert.equal(audit.records.length, 1);
+});
+
+test("router skips providers that violate compliance policy", async () => {
+  const blockedProvider = new MockModelProvider({
+    id: "blocked",
+    costPerCharUsd: 0.0001,
+    latencyTargetMs: 100,
+    regions: ["us"],
+    certifications: [],
+    behavior: { translationPrefix: "[us]" }
+  });
+  const euProvider = new MockModelProvider({
+    id: "eu",
+    costPerCharUsd: 0.00012,
+    latencyTargetMs: 120,
+    regions: ["eu"],
+    certifications: ["SOC2"],
+    behavior: { translationPrefix: "[eu]" }
+  });
+  const compliance = new ComplianceGateway({
+    policy: {
+      version: "test",
+      requiredRegionTags: ["eu"],
+      allowedRegionFallbacks: [],
+      requiredCertifications: ["SOC2"],
+      bannedPhrases: [],
+      piiPatterns: {}
+    }
+  });
+  const router = new TranslationRouter({
+    providers: [blockedProvider, euProvider],
+    glossaryManager: new GlossaryManager(),
+    detector: new LanguageDetector([euProvider]),
+    budgetGuard: new BudgetGuard({ dailyBudgetUsd: 1 }),
+    auditLogger: new AuditLogger({}),
+    complianceGateway: compliance
+  });
+
+  const result = await router.translate({
+    text: "content",
+    targetLanguage: "fr",
+    tenantId: "tenantA",
+    userId: "userA"
+  });
+
+  assert.equal(result.modelId, "eu");
+  assert.equal(result.compliance.allowed, true);
+});
+
+test("router surfaces compliance error when all providers blocked", async () => {
+  const provider = new MockModelProvider({
+    id: "blocked",
+    costPerCharUsd: 0.0001,
+    latencyTargetMs: 100,
+    regions: ["us"],
+    certifications: [],
+    behavior: { translationPrefix: "[us]" }
+  });
+  const compliance = new ComplianceGateway({
+    policy: {
+      version: "test",
+      requiredRegionTags: ["eu"],
+      allowedRegionFallbacks: [],
+      requiredCertifications: [],
+      bannedPhrases: [],
+      piiPatterns: {}
+    }
+  });
+  const router = new TranslationRouter({
+    providers: [provider],
+    glossaryManager: new GlossaryManager(),
+    detector: new LanguageDetector([provider]),
+    budgetGuard: new BudgetGuard({ dailyBudgetUsd: 1 }),
+    auditLogger: new AuditLogger({}),
+    complianceGateway: compliance
+  });
+
+  await assert.rejects(
+    () =>
+      router.translate({
+        text: "hello",
+        targetLanguage: "de",
+        tenantId: "tenantA",
+        userId: "userA"
+      }),
+    /All providers blocked by compliance policy/
+  );
 });
 
 test("router enforces budget", async () => {

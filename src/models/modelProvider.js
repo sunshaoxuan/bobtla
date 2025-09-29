@@ -1,9 +1,11 @@
 export class ModelProvider {
-  constructor({ id, costPerCharUsd, latencyTargetMs, reliability = 0.999 }) {
+  constructor({ id, costPerCharUsd, latencyTargetMs, reliability = 0.999, regions = ["global"], certifications = [] }) {
     this.id = id;
     this.costPerCharUsd = costPerCharUsd;
     this.latencyTargetMs = latencyTargetMs;
     this.reliability = reliability;
+    this.regions = regions;
+    this.certifications = certifications;
   }
 
   async translate(_request) {

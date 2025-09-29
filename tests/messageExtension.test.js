@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { MessageExtensionHandler } from "../src/teams/messageExtension.js";
 import { TranslationPipeline } from "../src/services/translationPipeline.js";
-import { TranslationError, BudgetExceededError } from "../src/utils/errors.js";
+import { TranslationError, BudgetExceededError, ComplianceError } from "../src/utils/errors.js";
 
 test("message extension handles translation success", async () => {
   const pipeline = new TranslationPipeline({
@@ -56,4 +56,22 @@ test("message extension renders translation error", async () => {
   const handler = new MessageExtensionHandler({ pipeline });
   const card = await handler.handleTranslateCommand({ text: "hi", targetLanguage: "es" });
   assert.equal(card.body[0].text, "翻译失败");
+});
+
+test("message extension renders compliance violation", async () => {
+  const pipeline = new TranslationPipeline({
+    router: {
+      translate: async () => {
+        throw new ComplianceError("blocked", { policy: { violations: ["PII detected"] } });
+      }
+    },
+    offlineDraftStore: { saveDraft: () => ({}) }
+  });
+  pipeline.translateAndReply = async () => {
+    throw new ComplianceError("blocked", { policy: { violations: ["PII detected"] } });
+  };
+  const handler = new MessageExtensionHandler({ pipeline });
+  const card = await handler.handleTranslateCommand({ text: "hi", targetLanguage: "es" });
+  assert.equal(card.body[0].text, "触发合规策略");
+  assert.equal(card.body[1].text.includes("PII"), true);
 });

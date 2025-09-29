@@ -1,5 +1,5 @@
 import { TranslationPipeline } from "../services/translationPipeline.js";
-import { TranslationError, BudgetExceededError } from "../utils/errors.js";
+import { TranslationError, BudgetExceededError, ComplianceError } from "../utils/errors.js";
 
 export class MessageExtensionHandler {
   constructor({ pipeline }) {
@@ -56,6 +56,17 @@ export class MessageExtensionHandler {
         body: [
           { type: "TextBlock", text: "翻译失败", weight: "Bolder", wrap: true },
           { type: "TextBlock", text: error.message, wrap: true }
+        ]
+      };
+    }
+    if (error instanceof ComplianceError) {
+      const policyDetails = error.policy?.violations?.join("；") ?? "请检查输入文本";
+      return {
+        type: "AdaptiveCard",
+        version: "1.5",
+        body: [
+          { type: "TextBlock", text: "触发合规策略", weight: "Bolder", wrap: true },
+          { type: "TextBlock", text: policyDetails, wrap: true }
         ]
       };
     }

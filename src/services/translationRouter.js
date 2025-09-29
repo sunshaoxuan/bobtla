@@ -1,5 +1,5 @@
 import { routingPolicy } from "../config.js";
-import { TranslationError } from "../utils/errors.js";
+import { TranslationError, ComplianceError } from "../utils/errors.js";
 
 function computeScore(result, provider) {
   const quality = result.confidence ?? 0.5;
@@ -13,12 +13,13 @@ function computeScore(result, provider) {
 }
 
 export class TranslationRouter {
-  constructor({ providers, budgetGuard, glossaryManager, detector, auditLogger, retry = 0 } = {}) {
+  constructor({ providers, budgetGuard, glossaryManager, detector, auditLogger, complianceGateway, retry = 0 } = {}) {
     this.providers = providers ?? [];
     this.budgetGuard = budgetGuard;
     this.glossaryManager = glossaryManager;
     this.detector = detector;
     this.auditLogger = auditLogger;
+    this.complianceGateway = complianceGateway;
     this.retry = retry;
   }
 
@@ -41,6 +42,20 @@ export class TranslationRouter {
 
     const errors = [];
     for (const provider of this.providers) {
+      let complianceResult;
+      try {
+        complianceResult = this.complianceGateway?.assertCanRoute({
+          text: trimmed,
+          provider,
+          targetLanguage,
+          sourceLanguage: detection?.language,
+          tenantId,
+          userId
+        });
+      } catch (error) {
+        errors.push({ provider: provider.id, error });
+        continue;
+      }
       try {
         const result = await this.invokeProvider(provider, request);
         const glossaryApplied = this.applyGlossary(result.text, { channel: channelId });
@@ -52,17 +67,26 @@ export class TranslationRouter {
           translatedText: enriched.text,
           modelId: provider.id,
           latencyMs: result.latencyMs,
-          metadata: { ...metadata, detectedLanguage: result.detectedLanguage }
+          metadata: { ...metadata, detectedLanguage: result.detectedLanguage, compliance: complianceResult }
         });
         return {
           ...enriched,
           detectedLanguage: result.detectedLanguage ?? detection?.language,
           requestLatencyMs: result.latencyMs,
-          requestCostUsd: provider.costPerCharUsd * trimmed.length
+          requestCostUsd: provider.costPerCharUsd * trimmed.length,
+          compliance: complianceResult
         };
       } catch (error) {
         errors.push({ provider: provider.id, error });
       }
+    }
+    if (errors.length > 0 && errors.every((entry) => entry.error instanceof ComplianceError)) {
+      const violations = errors
+        .flatMap((entry) => entry.error.policy?.violations ?? [])
+        .filter(Boolean);
+      throw new ComplianceError("All providers blocked by compliance policy", {
+        policy: { violations, providers: errors.map((e) => e.provider) }
+      });
     }
     const detail = errors.map((e) => `${e.provider}:${e.error.code ?? e.error.message}`).join(", ");
     throw new TranslationError(`All models failed: ${detail}`, { code: "ROUTER_NO_SUCCESS", details: errors });

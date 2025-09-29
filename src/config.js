@@ -1,8 +1,26 @@
 export const DEFAULT_REGION_POLICY = "eu-priority";
 export const DEFAULT_MODEL_ALLOW_LIST = [
-  { id: "azureOpenAI:gpt-4o", costPerCharUsd: 0.00002, latencyTargetMs: 1800 },
-  { id: "anthropic:claude-3", costPerCharUsd: 0.000018, latencyTargetMs: 2200 },
-  { id: "ollama:llama3", costPerCharUsd: 0.000005, latencyTargetMs: 2500 }
+  {
+    id: "azureOpenAI:gpt-4o",
+    costPerCharUsd: 0.00002,
+    latencyTargetMs: 1800,
+    regions: ["eu", "global"],
+    certifications: ["ISO27001", "SOC2", "ISMAP"]
+  },
+  {
+    id: "anthropic:claude-3",
+    costPerCharUsd: 0.000018,
+    latencyTargetMs: 2200,
+    regions: ["us", "global"],
+    certifications: ["SOC2"]
+  },
+  {
+    id: "ollama:llama3",
+    costPerCharUsd: 0.000005,
+    latencyTargetMs: 2500,
+    regions: ["onprem"],
+    certifications: ["ISO27001"]
+  }
 ];
 export const DEFAULT_DAILY_BUDGET_USD = 10;
 export const DEFAULT_COMPLIANCE_REFS = ["ISMAP", "SOC2", "ISO27001"];
@@ -52,6 +70,19 @@ export const glossaryHierarchy = ["tenant", "channel", "user"];
 
 export const maxCharactersPerRequest = 50000;
 
+export const compliancePolicy = {
+  version: "2024-05-01",
+  requiredRegionTags: ["eu"],
+  allowedRegionFallbacks: ["global"],
+  requiredCertifications: ["SOC2"],
+  bannedPhrases: ["Internal Use Only", "仅限内部", "机密", "Do Not Translate"],
+  piiPatterns: {
+    email: /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i,
+    phone: /\b(?:\+?\d[\d\s-]{7,}\d)\b/,
+    creditCard: /\b(?:\d[ -]*?){13,16}\b/
+  }
+};
+
 export default {
   DEFAULT_REGION_POLICY,
   DEFAULT_MODEL_ALLOW_LIST,
@@ -64,5 +95,6 @@ export default {
   routingPolicy,
   auditPolicy,
   glossaryHierarchy,
-  maxCharactersPerRequest
+  maxCharactersPerRequest,
+  compliancePolicy
 };
