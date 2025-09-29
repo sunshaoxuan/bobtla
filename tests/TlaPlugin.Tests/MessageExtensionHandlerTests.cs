@@ -45,6 +45,39 @@ public class MessageExtensionHandlerTests
     }
 
     [Fact]
+    public async Task RendersAdditionalTranslationsInAdaptiveCard()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            Providers = new List<ModelProviderOptions>
+            {
+                new() { Id = "primary", Regions = new List<string>{"japan"}, Certifications = new List<string>{"iso"} }
+            },
+            Compliance = new CompliancePolicyOptions
+            {
+                RequiredRegionTags = new List<string> { "japan" },
+                RequiredCertifications = new List<string> { "iso" }
+            }
+        });
+
+        var handler = BuildHandler(options);
+        var response = await handler.HandleTranslateAsync(new TranslationRequest
+        {
+            Text = "hello",
+            TenantId = "contoso",
+            UserId = "user",
+            TargetLanguage = "ja",
+            SourceLanguage = "en",
+            AdditionalTargetLanguages = new List<string> { "fr" }
+        });
+
+        var card = response["attachments"]!.AsArray().First()["content"]!.AsObject();
+        var texts = card["body"]!.AsArray().Select(node => node!.AsObject()["text"]?.GetValue<string>()).ToList();
+        Assert.Contains("追加翻訳", texts);
+        Assert.Contains(texts, text => text?.StartsWith("fr:") == true);
+    }
+
+    [Fact]
     public async Task ReturnsErrorCardWhenBudgetExceeded()
     {
         var options = Options.Create(new PluginOptions

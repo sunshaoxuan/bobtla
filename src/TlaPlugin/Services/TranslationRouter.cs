@@ -68,7 +68,8 @@ public class TranslationRouter
                 continue;
             }
 
-            var estimatedCost = request.Text.Length * provider.Options.CostPerCharUsd;
+            var translationCount = 1 + request.AdditionalTargetLanguages.Count;
+            var estimatedCost = request.Text.Length * provider.Options.CostPerCharUsd * translationCount;
             if (!_budget.TryReserve(request.TenantId, estimatedCost))
             {
                 throw new BudgetExceededException("本日の翻訳予算を超過しました。");
@@ -78,14 +79,16 @@ public class TranslationRouter
             {
                 var result = await provider.TranslateAsync(request.Text, sourceLanguage!, request.TargetLanguage, promptPrefix, cancellationToken);
                 var rewritten = await provider.RewriteAsync(result.Text, request.Tone, cancellationToken);
-                _audit.Record(request.TenantId, request.UserId, result.ModelId, request.Text, rewritten, estimatedCost, result.LatencyMs, token.Audience);
 
                 var additional = new Dictionary<string, string>();
                 foreach (var extraLanguage in request.AdditionalTargetLanguages)
                 {
                     var extraResult = await provider.TranslateAsync(request.Text, sourceLanguage!, extraLanguage, promptPrefix, cancellationToken);
-                    additional[extraLanguage] = extraResult.Text;
+                    var extraRewritten = await provider.RewriteAsync(extraResult.Text, request.Tone, cancellationToken);
+                    additional[extraLanguage] = extraRewritten;
                 }
+
+                _audit.Record(request.TenantId, request.UserId, result.ModelId, request.Text, rewritten, estimatedCost, result.LatencyMs, token.Audience, additional);
 
                 return new TranslationResult
                 {
@@ -97,7 +100,7 @@ public class TranslationRouter
                     LatencyMs = result.LatencyMs,
                     CostUsd = estimatedCost,
                     AdditionalTranslations = additional,
-                    AdaptiveCard = BuildAdaptiveCard(rewritten, sourceLanguage!, request.TargetLanguage, result.ModelId, estimatedCost, result.LatencyMs)
+                    AdaptiveCard = BuildAdaptiveCard(rewritten, sourceLanguage!, request.TargetLanguage, result.ModelId, estimatedCost, result.LatencyMs, additional)
                 };
             }
             catch (Exception ex) when (ex is InvalidOperationException or TaskCanceledException)
@@ -109,44 +112,68 @@ public class TranslationRouter
         throw new TranslationException("利用可能なモデルが見つかりませんでした。");
     }
 
-    private static JsonObject BuildAdaptiveCard(string translatedText, string sourceLanguage, string targetLanguage, string modelId, decimal cost, int latency)
+    private static JsonObject BuildAdaptiveCard(string translatedText, string sourceLanguage, string targetLanguage, string modelId, decimal cost, int latency, IReadOnlyDictionary<string, string> additionalTranslations)
     {
+        var body = new JsonArray
+        {
+            new JsonObject
+            {
+                ["type"] = "TextBlock",
+                ["text"] = "翻訳結果",
+                ["wrap"] = true,
+                ["weight"] = "Bolder",
+                ["size"] = "Medium"
+            },
+            new JsonObject
+            {
+                ["type"] = "TextBlock",
+                ["text"] = translatedText,
+                ["wrap"] = true
+            },
+            new JsonObject
+            {
+                ["type"] = "TextBlock",
+                ["text"] = $"{sourceLanguage} → {targetLanguage} | モデル: {modelId}",
+                ["wrap"] = true,
+                ["isSubtle"] = true
+            },
+            new JsonObject
+            {
+                ["type"] = "TextBlock",
+                ["text"] = $"コスト: ${cost:F4} | レイテンシ: {latency}ms",
+                ["wrap"] = true,
+                ["spacing"] = "None",
+                ["isSubtle"] = true
+            }
+        };
+
+        if (additionalTranslations.Count > 0)
+        {
+            body.Add(new JsonObject
+            {
+                ["type"] = "TextBlock",
+                ["text"] = "追加翻訳",
+                ["wrap"] = true,
+                ["weight"] = "Bolder",
+                ["spacing"] = "Medium"
+            });
+
+            foreach (var kvp in additionalTranslations)
+            {
+                body.Add(new JsonObject
+                {
+                    ["type"] = "TextBlock",
+                    ["text"] = $"{kvp.Key}: {kvp.Value}",
+                    ["wrap"] = true
+                });
+            }
+        }
+
         return new JsonObject
         {
             ["type"] = "AdaptiveCard",
             ["version"] = "1.5",
-            ["body"] = new JsonArray
-            {
-                new JsonObject
-                {
-                    ["type"] = "TextBlock",
-                    ["text"] = "翻訳結果",
-                    ["wrap"] = true,
-                    ["weight"] = "Bolder",
-                    ["size"] = "Medium"
-                },
-                new JsonObject
-                {
-                    ["type"] = "TextBlock",
-                    ["text"] = translatedText,
-                    ["wrap"] = true
-                },
-                new JsonObject
-                {
-                    ["type"] = "TextBlock",
-                    ["text"] = $"{sourceLanguage} → {targetLanguage} | モデル: {modelId}",
-                    ["wrap"] = true,
-                    ["isSubtle"] = true
-                },
-                new JsonObject
-                {
-                    ["type"] = "TextBlock",
-                    ["text"] = $"コスト: ${cost:F4} | レイテンシ: {latency}ms",
-                    ["wrap"] = true,
-                    ["spacing"] = "None",
-                    ["isSubtle"] = true
-                }
-            },
+            ["body"] = body,
             ["actions"] = new JsonArray
             {
                 new JsonObject

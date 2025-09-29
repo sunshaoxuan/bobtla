@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Security.Authentication;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Linq;
 using Microsoft.Extensions.Options;
 using TlaPlugin.Configuration;
 using TlaPlugin.Models;
@@ -48,6 +49,9 @@ public class TranslationRouterTests
         Assert.Equal("backup", result.ModelId);
         Assert.Equal("ja", result.TargetLanguage);
         Assert.True(result.AdditionalTranslations.ContainsKey("fr"));
+        Assert.EndsWith("※丁寧調整済み", result.AdditionalTranslations["fr"]);
+        var expectedCost = request.Text.Length * 0.00002m * 2;
+        Assert.Equal(expectedCost, result.CostUsd);
     }
 
     [Fact]
@@ -135,6 +139,48 @@ public class TranslationRouterTests
             TargetLanguage = "ja",
             SourceLanguage = "en"
         }, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task AppendsAdditionalTranslationsToCardAndAudit()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            Providers = new List<ModelProviderOptions>
+            {
+                new() { Id = "primary", Regions = new List<string>{"japan"}, Certifications = new List<string>{"iso27001"} }
+            },
+            Compliance = new CompliancePolicyOptions
+            {
+                RequiredRegionTags = new List<string> { "japan" },
+                RequiredCertifications = new List<string> { "iso27001" }
+            }
+        });
+
+        var audit = new AuditLogger();
+        var router = new TranslationRouter(new ModelProviderFactory(options), new ComplianceGateway(options), new BudgetGuard(options.Value), audit, new ToneTemplateService(), new RecordingTokenBroker(), options);
+        var request = new TranslationRequest
+        {
+            Text = "hello world",
+            TenantId = "contoso",
+            UserId = "user",
+            TargetLanguage = "ja",
+            SourceLanguage = "en",
+            AdditionalTargetLanguages = new List<string> { "fr", "de" }
+        };
+
+        var result = await router.TranslateAsync(request, CancellationToken.None);
+
+        var body = result.AdaptiveCard["body"]!.AsArray().Select(node => node!.AsObject()).ToList();
+        Assert.Contains(body, block => block["text"]?.GetValue<string>() == "追加翻訳");
+        Assert.Contains(body, block => block["text"]?.GetValue<string>()?.StartsWith("fr:") == true);
+        Assert.Contains(body, block => block["text"]?.GetValue<string>()?.StartsWith("de:") == true);
+
+        var log = audit.Export().Single();
+        var extras = log["additionalTranslations"]!.AsObject();
+        Assert.Equal(2, extras.Count);
+        Assert.True(extras.ContainsKey("fr"));
+        Assert.True(extras.ContainsKey("de"));
     }
 
     private sealed class RecordingTokenBroker : ITokenBroker

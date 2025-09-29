@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace TlaPlugin.Services;
 
@@ -13,7 +14,7 @@ public class AuditLogger
 {
     private readonly IList<JsonObject> _logs = new List<JsonObject>();
 
-    public void Record(string tenantId, string userId, string modelId, string text, string translation, decimal cost, int latencyMs, string? audience = null)
+    public void Record(string tenantId, string userId, string modelId, string text, string translation, decimal cost, int latencyMs, string? audience = null, IReadOnlyDictionary<string, string>? additionalTranslations = null)
     {
         var hashed = HashText(text);
         var entry = new JsonObject
@@ -30,6 +31,15 @@ public class AuditLogger
         if (!string.IsNullOrEmpty(audience))
         {
             entry["audience"] = audience;
+        }
+        if (additionalTranslations is { Count: > 0 })
+        {
+            var extras = new JsonObject();
+            foreach (var kvp in additionalTranslations)
+            {
+                extras[kvp.Key] = kvp.Value;
+            }
+            entry["additionalTranslations"] = extras;
         }
         _logs.Add(entry);
     }

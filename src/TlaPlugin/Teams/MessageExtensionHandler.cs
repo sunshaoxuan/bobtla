@@ -1,4 +1,3 @@
-using System.Linq;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
@@ -24,18 +23,6 @@ public class MessageExtensionHandler
         try
         {
             var result = await _pipeline.ExecuteAsync(request, CancellationToken.None);
-            var card = result.AdaptiveCard;
-            if (result.AdditionalTranslations.Any())
-            {
-                card["body"]!.AsArray().Add(new JsonObject
-                {
-                    ["type"] = "TextBlock",
-                    ["text"] = string.Join(" / ", result.AdditionalTranslations.Select(kvp => $"{kvp.Key}:{kvp.Value}")),
-                    ["wrap"] = true,
-                    ["spacing"] = "Medium"
-                });
-            }
-
             return new JsonObject
             {
                 ["type"] = "message",
@@ -44,7 +31,7 @@ public class MessageExtensionHandler
                     new JsonObject
                     {
                         ["contentType"] = "application/vnd.microsoft.card.adaptive",
-                        ["content"] = card
+                        ["content"] = result.AdaptiveCard
                     }
                 }
             };
