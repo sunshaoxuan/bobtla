@@ -7,7 +7,7 @@ using TlaPlugin.Services;
 namespace TlaPlugin.Teams;
 
 /// <summary>
-/// Teams メッセージ拡張のビジネスロジック。
+/// Teams 消息扩展的业务处理逻辑。
 /// </summary>
 public class MessageExtensionHandler
 {
@@ -38,15 +38,15 @@ public class MessageExtensionHandler
         }
         catch (BudgetExceededException ex)
         {
-            return BuildErrorCard("予算制限", ex.Message);
+            return BuildErrorCard("预算限制", ex.Message);
         }
         catch (RateLimitExceededException ex)
         {
-            return BuildErrorCard("レート制限", ex.Message);
+            return BuildErrorCard("速率限制", ex.Message);
         }
         catch (TranslationException ex)
         {
-            return BuildErrorCard("翻訳エラー", ex.Message);
+            return BuildErrorCard("翻译失败", ex.Message);
         }
     }
 

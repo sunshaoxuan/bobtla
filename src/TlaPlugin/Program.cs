@@ -46,7 +46,6 @@ builder.Services.AddSingleton<TranslationPipeline>();
 builder.Services.AddSingleton<MessageExtensionHandler>();
 builder.Services.AddSingleton<ConfigurationSummaryService>();
 builder.Services.AddSingleton<ProjectStatusService>();
-builder.Services.AddSingleton<UsageMetricsService>();
 
 var app = builder.Build();
 

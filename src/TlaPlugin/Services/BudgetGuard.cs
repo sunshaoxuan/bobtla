@@ -5,7 +5,7 @@ using TlaPlugin.Configuration;
 namespace TlaPlugin.Services;
 
 /// <summary>
-/// コストを追跡し日次予算を守る。
+/// 负责追踪翻译成本并守护租户日预算。
 /// </summary>
 public class BudgetGuard
 {
