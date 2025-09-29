@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using TlaPlugin.Models;
@@ -37,6 +38,20 @@ public class ProjectStatusService
     public ProjectStatusSnapshot GetSnapshot()
     {
         var current = Stages.Last(s => s.Completed);
-        return new ProjectStatusSnapshot(current.Id, Stages, NextSteps);
+        var overallPercent = CalculateOverallPercent();
+        var frontend = new FrontendProgress(
+            CompletionPercent: 0,
+            DataPlaneReady: true,
+            UiImplemented: false,
+            IntegrationReady: false);
+
+        return new ProjectStatusSnapshot(current.Id, Stages, NextSteps, overallPercent, frontend);
+    }
+
+    private static int CalculateOverallPercent()
+    {
+        var completed = Stages.Count(stage => stage.Completed);
+        var percent = (double)completed / Stages.Count * 100;
+        return (int)Math.Round(percent, MidpointRounding.AwayFromZero);
     }
 }

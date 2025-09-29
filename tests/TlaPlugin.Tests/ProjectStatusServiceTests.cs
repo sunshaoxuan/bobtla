@@ -16,5 +16,10 @@ public class ProjectStatusServiceTests
         Assert.Contains(snapshot.Stages, stage => stage.Id == "stage9" && !stage.Completed);
         Assert.Equal(4, snapshot.NextSteps.Count);
         Assert.Contains(snapshot.NextSteps, step => step.Contains("前端"));
+        Assert.Equal(80, snapshot.OverallCompletionPercent);
+        Assert.True(snapshot.Frontend.DataPlaneReady);
+        Assert.False(snapshot.Frontend.UiImplemented);
+        Assert.False(snapshot.Frontend.IntegrationReady);
+        Assert.Equal(0, snapshot.Frontend.CompletionPercent);
     }
 }
