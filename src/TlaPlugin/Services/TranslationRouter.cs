@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Security.Authentication;
 using System.Text.Json.Nodes;
@@ -13,7 +14,7 @@ using TlaPlugin.Providers;
 namespace TlaPlugin.Services;
 
 /// <summary>
-/// 负责评估多个模型并执行回退的路由器。
+/// 複数モデルを評価しフェールオーバーを担うルーター。
 /// </summary>
 public class TranslationRouter
 {
@@ -24,8 +25,18 @@ public class TranslationRouter
     private readonly UsageMetricsService _metrics;
     private readonly ToneTemplateService _tones;
     private readonly ITokenBroker _tokenBroker;
+    private readonly LocalizationCatalogService _localization;
 
-    public TranslationRouter(ModelProviderFactory providerFactory, ComplianceGateway compliance, BudgetGuard budget, AuditLogger audit, ToneTemplateService tones, ITokenBroker tokenBroker, UsageMetricsService metrics, IOptions<PluginOptions>? options = null)
+    public TranslationRouter(
+        ModelProviderFactory providerFactory,
+        ComplianceGateway compliance,
+        BudgetGuard budget,
+        AuditLogger audit,
+        ToneTemplateService tones,
+        ITokenBroker tokenBroker,
+        UsageMetricsService metrics,
+        LocalizationCatalogService localization,
+        IOptions<PluginOptions>? options = null)
     {
         _providers = providerFactory.CreateProviders();
         _compliance = compliance;
@@ -34,6 +45,7 @@ public class TranslationRouter
         _tones = tones;
         _tokenBroker = tokenBroker;
         _metrics = metrics;
+        _localization = localization;
         Options = options?.Value ?? new PluginOptions();
     }
 
@@ -52,7 +64,7 @@ public class TranslationRouter
         if (string.IsNullOrEmpty(request.UserId))
         {
             _metrics.RecordFailure(request.TenantId, UsageMetricsService.FailureReasons.Authentication);
-            throw new AuthenticationException("用户 ID 为空，无法获取令牌。");
+            throw new AuthenticationException("ユーザー ID が空のため、トークンを取得できません。");
         }
 
         AccessToken token;
@@ -69,7 +81,7 @@ public class TranslationRouter
         if (token.ExpiresOn <= DateTimeOffset.UtcNow)
         {
             _metrics.RecordFailure(request.TenantId, UsageMetricsService.FailureReasons.Authentication);
-            throw new AuthenticationException("获取的令牌已失效。");
+            throw new AuthenticationException("取得したトークンの有効期限が切れています。");
         }
 
         var promptPrefix = _tones.GetPromptPrefix(request.Tone);
@@ -89,7 +101,7 @@ public class TranslationRouter
             if (!_budget.TryReserve(request.TenantId, estimatedCost))
             {
                 _metrics.RecordFailure(request.TenantId, UsageMetricsService.FailureReasons.Budget);
-                throw new BudgetExceededException("已超出今日翻译预算。");
+                throw new BudgetExceededException("本日の翻訳予算を使い切りました。");
             }
 
             try
@@ -108,6 +120,8 @@ public class TranslationRouter
                 _audit.Record(request.TenantId, request.UserId, result.ModelId, request.Text, rewritten, estimatedCost, result.LatencyMs, token.Audience, additional);
                 _metrics.RecordSuccess(request.TenantId, result.ModelId, estimatedCost, result.LatencyMs, translationCount);
 
+                var catalog = _localization.GetCatalog(Options.DefaultUiLocale);
+
                 return new TranslationResult
                 {
                     TranslatedText = rewritten,
@@ -118,12 +132,12 @@ public class TranslationRouter
                     LatencyMs = result.LatencyMs,
                     CostUsd = estimatedCost,
                     AdditionalTranslations = additional,
-                    AdaptiveCard = BuildAdaptiveCard(rewritten, sourceLanguage!, request.TargetLanguage, result.ModelId, estimatedCost, result.LatencyMs, additional)
+                    AdaptiveCard = BuildAdaptiveCard(catalog, rewritten, sourceLanguage!, request.TargetLanguage, result.ModelId, estimatedCost, result.LatencyMs, additional)
                 };
             }
             catch (Exception ex) when (ex is InvalidOperationException or TaskCanceledException)
             {
-                // 继续尝试其他模型。
+                // 他のモデルを継続的に試行する。
             }
         }
 
@@ -136,17 +150,28 @@ public class TranslationRouter
             _metrics.RecordFailure(request.TenantId, UsageMetricsService.FailureReasons.Provider);
         }
 
-        throw new TranslationException("未找到可用的模型。");
+        throw new TranslationException("利用可能なモデルが見つかりません。");
     }
 
-    private static JsonObject BuildAdaptiveCard(string translatedText, string sourceLanguage, string targetLanguage, string modelId, decimal cost, int latency, IReadOnlyDictionary<string, string> additionalTranslations)
+    private JsonObject BuildAdaptiveCard(
+        LocalizationCatalog catalog,
+        string translatedText,
+        string sourceLanguage,
+        string targetLanguage,
+        string modelId,
+        decimal cost,
+        int latency,
+        IReadOnlyDictionary<string, string> additionalTranslations)
     {
+        static string Resolve(LocalizationCatalog catalog, string key) =>
+            catalog.Strings.TryGetValue(key, out var value) ? value : key;
+
         var body = new JsonArray
         {
             new JsonObject
             {
                 ["type"] = "TextBlock",
-                ["text"] = "翻译结果",
+                ["text"] = Resolve(catalog, "tla.ui.card.title"),
                 ["wrap"] = true,
                 ["weight"] = "Bolder",
                 ["size"] = "Medium"
@@ -160,14 +185,14 @@ public class TranslationRouter
             new JsonObject
             {
                 ["type"] = "TextBlock",
-                ["text"] = $"{sourceLanguage} → {targetLanguage} | 模型: {modelId}",
+                ["text"] = string.Format(CultureInfo.InvariantCulture, Resolve(catalog, "tla.ui.card.modelLine"), sourceLanguage, targetLanguage, modelId),
                 ["wrap"] = true,
                 ["isSubtle"] = true
             },
             new JsonObject
             {
                 ["type"] = "TextBlock",
-                ["text"] = $"成本: ${cost:F4} | 延迟: {latency}ms",
+                ["text"] = string.Format(CultureInfo.InvariantCulture, Resolve(catalog, "tla.ui.card.metrics"), cost, latency),
                 ["wrap"] = true,
                 ["spacing"] = "None",
                 ["isSubtle"] = true
@@ -179,7 +204,7 @@ public class TranslationRouter
             body.Add(new JsonObject
             {
                 ["type"] = "TextBlock",
-                ["text"] = "额外翻译",
+                ["text"] = Resolve(catalog, "tla.ui.card.additional"),
                 ["wrap"] = true,
                 ["weight"] = "Bolder",
                 ["spacing"] = "Medium"
@@ -190,7 +215,7 @@ public class TranslationRouter
                 body.Add(new JsonObject
                 {
                     ["type"] = "TextBlock",
-                    ["text"] = $"{kvp.Key}: {kvp.Value}",
+                    ["text"] = string.Format(CultureInfo.InvariantCulture, "{0}: {1}", kvp.Key, kvp.Value),
                     ["wrap"] = true
                 });
             }
@@ -198,25 +223,26 @@ public class TranslationRouter
 
         var actions = new JsonArray
         {
-            CreateInsertAction("插入到聊天", translatedText, targetLanguage)
+            CreateInsertAction(Resolve(catalog, "tla.ui.action.insert"), translatedText, targetLanguage)
         };
 
         foreach (var kvp in additionalTranslations)
         {
-            actions.Add(CreateInsertAction($"插入 {kvp.Key}", kvp.Value, kvp.Key));
+            var label = string.Format(CultureInfo.InvariantCulture, Resolve(catalog, "tla.ui.action.insertLocale"), kvp.Key);
+            actions.Add(CreateInsertAction(label, kvp.Value, kvp.Key));
         }
 
         actions.Add(new JsonObject
         {
             ["type"] = "Action.Submit",
-            ["title"] = "查看原文",
+            ["title"] = Resolve(catalog, "tla.ui.action.showOriginal"),
             ["data"] = new JsonObject { ["action"] = "showOriginal" }
         });
 
         actions.Add(new JsonObject
         {
             ["type"] = "Action.Submit",
-            ["title"] = "选择其他语言",
+            ["title"] = Resolve(catalog, "tla.ui.action.changeLanguage"),
             ["data"] = new JsonObject { ["action"] = "changeLanguage" }
         });
 

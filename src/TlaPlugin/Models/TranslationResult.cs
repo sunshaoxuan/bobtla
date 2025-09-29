@@ -3,7 +3,7 @@ using System.Text.Json.Nodes;
 namespace TlaPlugin.Models;
 
 /// <summary>
-/// 翻訳の結果を格納するモデル。
+/// 存放翻译结果的模型。
 /// </summary>
 public class TranslationResult
 {

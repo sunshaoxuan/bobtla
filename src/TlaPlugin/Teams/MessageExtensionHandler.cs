@@ -1,25 +1,31 @@
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Options;
 using TlaPlugin.Models;
 using TlaPlugin.Services;
 
 namespace TlaPlugin.Teams;
 
 /// <summary>
-/// Teams メッセージ拡張のビジネスロジック。
+/// Teams メッセージ拡張の業務ロジック。
 /// </summary>
 public class MessageExtensionHandler
 {
     private readonly TranslationPipeline _pipeline;
+    private readonly LocalizationCatalogService _localization;
+    private readonly PluginOptions _options;
 
-    public MessageExtensionHandler(TranslationPipeline pipeline)
+    public MessageExtensionHandler(TranslationPipeline pipeline, LocalizationCatalogService localization, IOptions<PluginOptions>? options = null)
     {
         _pipeline = pipeline;
+        _localization = localization;
+        _options = options?.Value ?? new PluginOptions();
     }
 
     public async Task<JsonObject> HandleTranslateAsync(TranslationRequest request)
     {
+        var catalog = _localization.GetCatalog(_options.DefaultUiLocale);
         try
         {
             var result = await _pipeline.ExecuteAsync(request, CancellationToken.None);
@@ -38,15 +44,15 @@ public class MessageExtensionHandler
         }
         catch (BudgetExceededException ex)
         {
-            return BuildErrorCard("予算制限", ex.Message);
+            return BuildErrorCard(catalog, "tla.error.budget.title", ex.Message);
         }
         catch (RateLimitExceededException ex)
         {
-            return BuildErrorCard("レート制限", ex.Message);
+            return BuildErrorCard(catalog, "tla.error.rate.title", ex.Message);
         }
         catch (TranslationException ex)
         {
-            return BuildErrorCard("翻訳エラー", ex.Message);
+            return BuildErrorCard(catalog, "tla.error.translation.title", ex.Message);
         }
     }
 
@@ -62,8 +68,11 @@ public class MessageExtensionHandler
         });
     }
 
-    private static JsonObject BuildErrorCard(string title, string message)
+    private static JsonObject BuildErrorCard(LocalizationCatalog catalog, string titleKey, string message)
     {
+        static string Resolve(LocalizationCatalog catalog, string key) =>
+            catalog.Strings.TryGetValue(key, out var value) ? value : key;
+
         return new JsonObject
         {
             ["type"] = "message",
@@ -81,7 +90,7 @@ public class MessageExtensionHandler
                             new JsonObject
                             {
                                 ["type"] = "TextBlock",
-                                ["text"] = title,
+                                ["text"] = Resolve(catalog, titleKey),
                                 ["wrap"] = true,
                                 ["weight"] = "Bolder"
                             },

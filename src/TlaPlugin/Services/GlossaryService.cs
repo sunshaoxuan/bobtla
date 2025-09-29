@@ -5,11 +5,7 @@ using TlaPlugin.Models;
 namespace TlaPlugin.Services;
 
 /// <summary>
-<<<<<<< HEAD
 /// 负责整合三层术语表与禁用词列表的服务。
-=======
-/// 三層の用語集と禁訳語リストを統合するサービス。
->>>>>>> origin/main
 /// </summary>
 public class GlossaryService
 {
@@ -24,11 +20,7 @@ public class GlossaryService
     }
 
     /// <summary>
-<<<<<<< HEAD
     /// 按优先级顺序应用术语表。
-=======
-    /// 優先順位に沿って用語を適用する。
->>>>>>> origin/main
     /// </summary>
     public string Apply(string text, string tenantId, string? channelId, string userId)
     {
@@ -48,11 +40,7 @@ public class GlossaryService
     }
 
     /// <summary>
-<<<<<<< HEAD
     /// 返回当前登记的术语条目。
-=======
-    /// 現在登録されている用語一覧を返却する。
->>>>>>> origin/main
     /// </summary>
     public IReadOnlyList<GlossaryEntry> GetEntries()
     {

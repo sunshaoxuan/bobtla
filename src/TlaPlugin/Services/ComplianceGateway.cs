@@ -8,7 +8,7 @@ using TlaPlugin.Configuration;
 namespace TlaPlugin.Services;
 
 /// <summary>
-/// 地域、認証、PII 検知を評価するゲートウェイ。
+/// 评估区域、认证、PII 与禁译词的合规网关。
 /// </summary>
 public class ComplianceGateway
 {
@@ -27,23 +27,23 @@ public class ComplianceGateway
 
         if (!IsRegionAllowed(provider))
         {
-            violations.Add($"提供リージョン {string.Join(',', provider.Regions)} は許可されていません。");
+            violations.Add($"提供区域 {string.Join(',', provider.Regions)} 未被允许。");
         }
 
         if (!HasRequiredCertifications(provider))
         {
-            violations.Add("必要な認証を満たしていません。");
+            violations.Add("缺少要求的合规认证。");
         }
 
         var pii = DetectPii(text).ToList();
         if (pii.Any())
         {
-            violations.Add($"PII 検出: {string.Join(',', pii.Select(p => p.Type))}");
+            violations.Add($"检测到敏感信息: {string.Join(',', pii.Select(p => p.Type))}");
         }
 
         if (_policy.BannedPhrases.Any(b => text.Contains(b, StringComparison.OrdinalIgnoreCase)))
         {
-            violations.Add("禁則語が含まれています。");
+            violations.Add("包含禁用词条。");
         }
 
         return new ComplianceReport(violations.Count == 0, violations);
