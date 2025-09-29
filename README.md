@@ -9,6 +9,7 @@ TLA 参考实现基于 .NET 7 Minimal API 与 SQLite，支撑 Microsoft Teams �
 | Web 宿主 | `src/TlaPlugin/Program.cs` | Minimal API 启动翻译与离线草稿接口，注入配置、术语库与模型工厂。 |
 | 配置与模型 | `src/TlaPlugin/Configuration/PluginOptions.cs`、`src/TlaPlugin/Providers/*` | 以 `PluginOptions` 映射区域策略与模型参数；`MockModelProvider` 模拟多提供方与回退。 |
 | 服务层 | `src/TlaPlugin/Services/*` | 覆盖语言检测、术语合并、预算守卫、合规网关、审计日志、SQLite 草稿仓库及翻译路由。 |
+| 使用统计 | `src/TlaPlugin/Services/UsageMetricsService.cs` | 聚合租户维度的调用成本、延迟与模型占比，为前端仪表盘提供实时数据。 |
 | 缓存与限流 | `src/TlaPlugin/Services/TranslationCache.cs`、`src/TlaPlugin/Services/TranslationThrottle.cs` | `TranslationCache` 依据租户与参数缓存译文，`TranslationThrottle` 控制并发与分钟速率。 |
 | 密钥与令牌 | `src/TlaPlugin/Services/KeyVaultSecretResolver.cs`、`src/TlaPlugin/Services/TokenBroker.cs` | `KeyVaultSecretResolver` 模拟 Key Vault 缓存密钥，`TokenBroker` 生成 OBO 访问令牌供模型调用使用。 |
 | Teams 适配 | `src/TlaPlugin/Teams/MessageExtensionHandler.cs` | 输出 Adaptive Card、处理预算/合规异常、保存离线草稿。 |

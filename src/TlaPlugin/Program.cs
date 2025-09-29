@@ -45,6 +45,7 @@ builder.Services.AddSingleton<TranslationPipeline>();
 builder.Services.AddSingleton<MessageExtensionHandler>();
 builder.Services.AddSingleton<ConfigurationSummaryService>();
 builder.Services.AddSingleton<ProjectStatusService>();
+builder.Services.AddSingleton<UsageMetricsService>();
 
 var app = builder.Build();
 
@@ -80,6 +81,12 @@ app.MapGet("/api/status", (ProjectStatusService statusService) =>
 {
     var snapshot = statusService.GetSnapshot();
     return Results.Json(snapshot, options: new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+});
+
+app.MapGet("/api/usage", (UsageMetricsService metricsService) =>
+{
+    var report = metricsService.GetReport();
+    return Results.Json(report, options: new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
 });
 
 app.Run();
