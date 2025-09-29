@@ -38,4 +38,12 @@ public class ToneTemplateService
 
         return Templates[DefaultTone];
     }
+
+    /// <summary>
+    /// 利用可能なトーンテンプレート一覧を返す。
+    /// </summary>
+    public IReadOnlyDictionary<string, string> GetAvailableTones()
+    {
+        return new Dictionary<string, string>(Templates);
+    }
 }

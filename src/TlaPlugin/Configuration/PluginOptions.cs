@@ -15,6 +15,20 @@ public class PluginOptions
     public int MaxConcurrentTranslations { get; set; } = 4;
     public int RequestsPerMinute { get; set; } = 120;
     public string OfflineDraftConnectionString { get; set; } = "Data Source=tla-offline.db";
+    public IList<string> SupportedLanguages { get; set; } = new List<string>
+    {
+        "ja-JP",
+        "en-US",
+        "zh-CN",
+        "zh-TW",
+        "ko-KR",
+        "fr-FR"
+    };
+    public IList<string> DefaultTargetLanguages { get; set; } = new List<string>
+    {
+        "ja-JP",
+        "en-US"
+    };
     public IList<ModelProviderOptions> Providers { get; set; } = new List<ModelProviderOptions>();
     public CompliancePolicyOptions Compliance { get; set; } = new();
     public SecurityOptions Security { get; set; } = new();

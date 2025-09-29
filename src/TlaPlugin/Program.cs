@@ -43,6 +43,8 @@ builder.Services.AddSingleton<ModelProviderFactory>();
 builder.Services.AddSingleton<TranslationRouter>();
 builder.Services.AddSingleton<TranslationPipeline>();
 builder.Services.AddSingleton<MessageExtensionHandler>();
+builder.Services.AddSingleton<ConfigurationSummaryService>();
+builder.Services.AddSingleton<ProjectStatusService>();
 
 var app = builder.Build();
 
@@ -56,6 +58,28 @@ app.MapPost("/api/offline-draft", async (OfflineDraftRequest request, MessageExt
 {
     var result = await handler.HandleOfflineDraftAsync(request);
     return Results.Json(result, options: new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+});
+
+app.MapGet("/api/configuration", (ConfigurationSummaryService service) =>
+{
+    var summary = service.CreateSummary();
+    return Results.Json(summary, options: new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+});
+
+app.MapGet("/api/glossary", (GlossaryService glossary) =>
+{
+    return Results.Json(glossary.GetEntries(), options: new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+});
+
+app.MapGet("/api/audit", (AuditLogger auditLogger) =>
+{
+    return Results.Json(auditLogger.Export(), options: new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+});
+
+app.MapGet("/api/status", (ProjectStatusService statusService) =>
+{
+    var snapshot = statusService.GetSnapshot();
+    return Results.Json(snapshot, options: new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
 });
 
 app.Run();

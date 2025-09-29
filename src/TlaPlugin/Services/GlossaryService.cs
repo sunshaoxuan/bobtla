@@ -39,6 +39,14 @@ public class GlossaryService
         return result;
     }
 
+    /// <summary>
+    /// 現在登録されている用語一覧を返却する。
+    /// </summary>
+    public IReadOnlyList<GlossaryEntry> GetEntries()
+    {
+        return _entries.ToList();
+    }
+
     private static int Priority(string scope, string tenantId, string? channelId, string userId)
     {
         if (scope == $"user:{userId}")
