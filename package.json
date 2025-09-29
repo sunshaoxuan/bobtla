@@ -1,0 +1,20 @@
+{
+  "name": "bobtla",
+  "version": "1.0.0",
+  "description": "Microsoft Teams Translation Assistant plugin reference implementation",
+  "main": "src/server.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "keywords": [
+    "teams",
+    "translation",
+    "bot"
+  ],
+  "author": "",
+  "license": "MIT",
+  "type": "module"
+}
