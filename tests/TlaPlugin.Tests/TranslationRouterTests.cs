@@ -175,6 +175,9 @@ public class TranslationRouterTests
         Assert.Contains(body, block => block["text"]?.GetValue<string>() == "追加翻訳");
         Assert.Contains(body, block => block["text"]?.GetValue<string>()?.StartsWith("fr:") == true);
         Assert.Contains(body, block => block["text"]?.GetValue<string>()?.StartsWith("de:") == true);
+        var actions = result.AdaptiveCard["actions"]!.AsArray();
+        Assert.Contains(actions.Select(a => a!.AsObject()["data"]!.AsObject()["language"]!.GetValue<string>()), language => language == "fr");
+        Assert.Contains(actions.Select(a => a!.AsObject()["data"]!.AsObject()["language"]!.GetValue<string>()), language => language == "de");
 
         var log = audit.Export().Single();
         var extras = log["additionalTranslations"]!.AsObject();

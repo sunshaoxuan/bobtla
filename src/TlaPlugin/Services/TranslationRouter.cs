@@ -169,25 +169,57 @@ public class TranslationRouter
             }
         }
 
+        var actions = new JsonArray
+        {
+            CreateInsertAction("チャットに挿入", translatedText, targetLanguage)
+        };
+
+        foreach (var kvp in additionalTranslations)
+        {
+            actions.Add(CreateInsertAction($"{kvp.Key} を挿入", kvp.Value, kvp.Key));
+        }
+
+        actions.Add(new JsonObject
+        {
+            ["type"] = "Action.Submit",
+            ["title"] = "原文を表示",
+            ["data"] = new JsonObject { ["action"] = "showOriginal" }
+        });
+
+        actions.Add(new JsonObject
+        {
+            ["type"] = "Action.Submit",
+            ["title"] = "他言語を選択",
+            ["data"] = new JsonObject { ["action"] = "changeLanguage" }
+        });
+
         return new JsonObject
         {
             ["type"] = "AdaptiveCard",
             ["version"] = "1.5",
             ["body"] = body,
-            ["actions"] = new JsonArray
+            ["actions"] = actions
+        };
+    }
+
+    private static JsonObject CreateInsertAction(string title, string text, string language)
+    {
+        return new JsonObject
+        {
+            ["type"] = "Action.Submit",
+            ["title"] = title,
+            ["data"] = new JsonObject
             {
-                new JsonObject
-                {
-                    ["type"] = "Action.Submit",
-                    ["title"] = "原文を表示",
-                    ["data"] = new JsonObject { ["action"] = "showOriginal" }
-                },
-                new JsonObject
-                {
-                    ["type"] = "Action.Submit",
-                    ["title"] = "他言語を選択",
-                    ["data"] = new JsonObject { ["action"] = "changeLanguage" }
-                }
+                ["action"] = "insertTranslation",
+                ["text"] = text,
+                ["language"] = language
+            },
+            ["msteams"] = new JsonObject
+            {
+                ["type"] = "messageBack",
+                ["text"] = text,
+                ["displayText"] = text,
+                ["language"] = language
             }
         };
     }

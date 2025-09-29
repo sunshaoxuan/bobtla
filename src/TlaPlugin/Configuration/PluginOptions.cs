@@ -26,6 +26,7 @@ public class PluginOptions
 public class ModelProviderOptions
 {
     public string Id { get; set; } = "mock";
+    public ModelProviderKind Kind { get; set; } = ModelProviderKind.Mock;
     public decimal CostPerCharUsd { get; set; } = 0.00002m;
     public int LatencyTargetMs { get; set; } = 300;
     public double Reliability { get; set; } = 0.99;
@@ -34,6 +35,25 @@ public class ModelProviderOptions
     public int SimulatedFailures { get; set; }
         = 0;
     public string TranslationPrefix { get; set; } = string.Empty;
+    public string Endpoint { get; set; } = string.Empty;
+    public string Model { get; set; } = string.Empty;
+    public string ApiKeySecretName { get; set; } = string.Empty;
+    public string Organization { get; set; } = string.Empty;
+    public IDictionary<string, string> DefaultHeaders { get; set; } = new Dictionary<string, string>();
+}
+
+/// <summary>
+/// モデル提供者の種類を示す列挙体。
+/// </summary>
+public enum ModelProviderKind
+{
+    Mock,
+    OpenAi,
+    Anthropic,
+    Groq,
+    OpenWebUi,
+    Ollama,
+    Custom
 }
 
 /// <summary>

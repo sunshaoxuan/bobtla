@@ -15,6 +15,7 @@ builder.Configuration.AddJsonFile("appsettings.json", optional: true);
 builder.Services.Configure<PluginOptions>(builder.Configuration.GetSection("Plugin"));
 
 builder.Services.AddMemoryCache();
+builder.Services.AddHttpClient();
 builder.Services.AddSingleton(provider =>
 {
     var glossary = new GlossaryService();

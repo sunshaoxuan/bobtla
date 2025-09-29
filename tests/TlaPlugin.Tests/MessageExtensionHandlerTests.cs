@@ -42,6 +42,15 @@ public class MessageExtensionHandlerTests
         Assert.Equal("message", response["type"]?.GetValue<string>());
         var attachment = response["attachments"]!.AsArray().First().AsObject();
         Assert.Equal("application/vnd.microsoft.card.adaptive", attachment["contentType"]?.GetValue<string>());
+        var card = attachment["content"]!.AsObject();
+        var body = card["body"]!.AsArray();
+        var translated = body[1]!.AsObject()["text"]!.GetValue<string>();
+        var actions = card["actions"]!.AsArray();
+        var insertAction = actions.First()!.AsObject();
+        Assert.Equal("Action.Submit", insertAction["type"]!.GetValue<string>());
+        var teams = insertAction["msteams"]!.AsObject();
+        Assert.Equal("messageBack", teams["type"]!.GetValue<string>());
+        Assert.Equal(translated, teams["text"]!.GetValue<string>());
     }
 
     [Fact]
@@ -75,6 +84,8 @@ public class MessageExtensionHandlerTests
         var texts = card["body"]!.AsArray().Select(node => node!.AsObject()["text"]?.GetValue<string>()).ToList();
         Assert.Contains("追加翻訳", texts);
         Assert.Contains(texts, text => text?.StartsWith("fr:") == true);
+        var actions = card["actions"]!.AsArray();
+        Assert.Contains(actions.Select(a => a!.AsObject()["data"]!.AsObject()["language"]!.GetValue<string>()), value => value == "fr");
     }
 
     [Fact]
