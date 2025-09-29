@@ -1,12 +1,13 @@
 using System.Threading;
 using System.Threading.Tasks;
+using TlaPlugin.Configuration;
 using TlaPlugin.Models;
 using TlaPlugin.Services;
 
 namespace TlaPlugin.Providers;
 
 /// <summary>
-/// 翻译模型提供方的通用接口。
+/// 翻訳モデル提供者の共通インターフェース。
 /// </summary>
 public interface IModelProvider
 {
@@ -17,6 +18,6 @@ public interface IModelProvider
 }
 
 /// <summary>
-/// 用于在内部保存模型调用结果。
+/// モデル呼び出しの結果を内部的に保持する。
 /// </summary>
 public record ModelTranslationResult(string Text, string ModelId, double Confidence, int LatencyMs);

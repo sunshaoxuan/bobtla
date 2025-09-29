@@ -1,7 +1,7 @@
 namespace TlaPlugin.Models;
 
 /// <summary>
-/// 表达翻译输入的请求 DTO。
+/// 翻訳入力を表現するリクエスト DTO。
 /// </summary>
 public class TranslationRequest
 {

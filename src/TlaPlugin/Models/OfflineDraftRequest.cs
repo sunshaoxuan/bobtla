@@ -1,7 +1,7 @@
 namespace TlaPlugin.Models;
 
 /// <summary>
-/// 离线草稿的保存请求。
+/// オフライン草稿の保存要求。
 /// </summary>
 public class OfflineDraftRequest
 {

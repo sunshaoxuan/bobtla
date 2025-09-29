@@ -8,7 +8,11 @@ using TlaPlugin.Configuration;
 namespace TlaPlugin.Services;
 
 /// <summary>
+<<<<<<< HEAD
 /// 从 Key Vault 拉取机密的轻量级解析器。
+=======
+/// Key Vault からシークレットを取得する簡易リゾルバー。
+>>>>>>> origin/main
 /// </summary>
 public class KeyVaultSecretResolver
 {
@@ -34,7 +38,11 @@ public class KeyVaultSecretResolver
 
         if (!_options.Security.SeedSecrets.TryGetValue(secretName, out var value))
         {
+<<<<<<< HEAD
             throw new InvalidOperationException($"KeyVault 中不存在名为 {secretName} 的机密。");
+=======
+            throw new InvalidOperationException($"KeyVault にシークレット {secretName} が存在しません。");
+>>>>>>> origin/main
         }
 
         var ttl = _options.Security.SecretCacheTtl <= TimeSpan.Zero

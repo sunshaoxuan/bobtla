@@ -9,7 +9,7 @@ using TlaPlugin.Services;
 namespace TlaPlugin.Providers;
 
 /// <summary>
-/// 面向单元测试的模拟模型。
+/// 単体試験向けのモックモデル。
 /// </summary>
 public class MockModelProvider : IModelProvider
 {
@@ -25,7 +25,7 @@ public class MockModelProvider : IModelProvider
 
     public Task<DetectionResult> DetectAsync(string text, CancellationToken cancellationToken)
     {
-        // 使用非常轻量的启发式检测。
+        // 非常に簡素なヒューリスティック検知。
         var detector = new LanguageDetector();
         return Task.FromResult(detector.Detect(text));
     }
@@ -35,7 +35,7 @@ public class MockModelProvider : IModelProvider
         if (_remainingFailures > 0)
         {
             _remainingFailures--;
-            throw new InvalidOperationException($"模型 {Options.Id} 的模拟调用失败");
+            throw new InvalidOperationException($"モデル {Options.Id} のシミュレーション失敗");
         }
 
         var sw = Stopwatch.StartNew();
@@ -49,13 +49,13 @@ public class MockModelProvider : IModelProvider
 
     public Task<string> RewriteAsync(string translatedText, string tone, CancellationToken cancellationToken)
     {
-        // 在此仅对重写逻辑做简单模拟。
+        // ここではリライト処理をシンプルに模倣する。
         var suffix = tone switch
         {
-            ToneTemplateService.Business => "※已调整为商务语气",
-            ToneTemplateService.Technical => "※已调整为技术语气",
-            ToneTemplateService.Casual => "※已调整为亲切语气",
-            _ => "※已调整为敬语"
+            ToneTemplateService.Business => "※ビジネス調整済み",
+            ToneTemplateService.Technical => "※技術調整済み",
+            ToneTemplateService.Casual => "※カジュアル調整済み",
+            _ => "※丁寧調整済み"
         };
         return Task.FromResult($"{translatedText} {suffix}");
     }

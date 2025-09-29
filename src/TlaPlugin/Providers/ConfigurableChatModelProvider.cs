@@ -16,8 +16,8 @@ using TlaPlugin.Services;
 namespace TlaPlugin.Providers;
 
 /// <summary>
-/// 为 OpenAI、Anthropic、Groq、OpenWebUI、Ollama 等聊天补全 API 提供统一封装的模型提供方。
-/// 当未配置实际 API 时会回退到 <see cref="MockModelProvider"/>。
+/// OpenAI / Anthropic / Groq / OpenWebUI / Ollama といったチャット補完 API を統一的に扱うモデルプロバイダー。
+/// 実際の API が構成されていない場合は <see cref="MockModelProvider"/> にフォールバックする。
 /// </summary>
 public class ConfigurableChatModelProvider : IModelProvider
 {
@@ -48,7 +48,7 @@ public class ConfigurableChatModelProvider : IModelProvider
             return await _fallback.TranslateAsync(text, sourceLanguage, targetLanguage, promptPrefix, cancellationToken);
         }
 
-        var instructions = $"{promptPrefix} 源语言: {sourceLanguage} / 目标语言: {targetLanguage}";
+        var instructions = $"{promptPrefix} 元言語: {sourceLanguage} / 目標言語: {targetLanguage}";
         var messages = new List<(string role, string content)>
         {
             ("user", text)
@@ -63,7 +63,7 @@ public class ConfigurableChatModelProvider : IModelProvider
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
         {
-            throw new InvalidOperationException($"模型 {Options.Id} 调用失败。", ex);
+            throw new InvalidOperationException($"モデル {Options.Id} の呼び出しに失敗しました。", ex);
         }
     }
 
@@ -76,10 +76,10 @@ public class ConfigurableChatModelProvider : IModelProvider
 
         var instructions = tone switch
         {
-            ToneTemplateService.Business => "请将译文润色为正式商务语气。",
-            ToneTemplateService.Technical => "请将译文润色为技术文档所需的严谨表达。",
-            ToneTemplateService.Casual => "请将译文调整为亲切随和的语气。",
-            _ => "请将译文润色为礼貌的敬语。"
+            ToneTemplateService.Business => "翻訳済み文章をビジネス敬体に整えてください。",
+            ToneTemplateService.Technical => "翻訳済み文章を技術文書向けに明確化してください。",
+            ToneTemplateService.Casual => "翻訳済み文章をカジュアルな文体に調整してください。",
+            _ => "翻訳済み文章を丁寧な敬体に整えてください。"
         };
 
         var messages = new List<(string role, string content)>
@@ -94,7 +94,7 @@ public class ConfigurableChatModelProvider : IModelProvider
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
         {
-            throw new InvalidOperationException($"模型 {Options.Id} 重写处理失败。", ex);
+            throw new InvalidOperationException($"モデル {Options.Id} のリライト処理に失敗しました。", ex);
         }
     }
 
@@ -156,7 +156,7 @@ public class ConfigurableChatModelProvider : IModelProvider
                 headers.TryAddWithoutValidation("x-api-key", secret);
                 break;
             case ModelProviderKind.Ollama:
-                // Ollama 默认无需鉴权，但若配置了 API Key 则以自定义头发送。
+                // Ollama はデフォルトで認証不要だが、API キーが設定されていれば独自ヘッダーとして送付する。
                 headers.TryAddWithoutValidation("Authorization", secret);
                 break;
             default:
@@ -249,17 +249,17 @@ public class ConfigurableChatModelProvider : IModelProvider
     {
         if (node is null)
         {
-            throw new InvalidOperationException("解析模型响应失败。");
+            throw new InvalidOperationException("モデル応答の解析に失敗しました。");
         }
 
         return Options.Kind switch
         {
             ModelProviderKind.Anthropic => node["content"]?.AsArray().FirstOrDefault()?.AsObject()["text"]?.GetValue<string>()
-                ?? throw new InvalidOperationException("Anthropic 响应未包含文本。"),
+                ?? throw new InvalidOperationException("Anthropic 応答にテキストが含まれていません。"),
             ModelProviderKind.Ollama => node["response"]?.GetValue<string>()
-                ?? throw new InvalidOperationException("Ollama 响应未包含文本。"),
+                ?? throw new InvalidOperationException("Ollama 応答にテキストが含まれていません。"),
             _ => node["choices"]?.AsArray().FirstOrDefault()?.AsObject()["message"]?.AsObject()["content"]?.GetValue<string>()
-                ?? throw new InvalidOperationException("OpenAI 兼容响应未包含文本。")
+                ?? throw new InvalidOperationException("OpenAI 互換応答にテキストが含まれていません。")
         };
     }
 
@@ -267,10 +267,10 @@ public class ConfigurableChatModelProvider : IModelProvider
     {
         var suffix = tone switch
         {
-            ToneTemplateService.Business => "※已调整为商务语气",
-            ToneTemplateService.Technical => "※已调整为技术语气",
-            ToneTemplateService.Casual => "※已调整为亲切语气",
-            _ => "※已调整为敬语"
+            ToneTemplateService.Business => "※ビジネス調整済み",
+            ToneTemplateService.Technical => "※技術調整済み",
+            ToneTemplateService.Casual => "※カジュアル調整済み",
+            _ => "※丁寧調整済み"
         };
 
         return text.EndsWith(suffix, StringComparison.Ordinal) ? text : $"{text} {suffix}";

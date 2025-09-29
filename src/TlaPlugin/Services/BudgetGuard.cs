@@ -5,7 +5,7 @@ using TlaPlugin.Configuration;
 namespace TlaPlugin.Services;
 
 /// <summary>
-/// 追踪成本并确保每日预算不被超额。
+/// コストを追跡し日次予算を守る。
 /// </summary>
 public class BudgetGuard
 {

@@ -8,7 +8,7 @@ using System.Text.Json.Nodes;
 namespace TlaPlugin.Services;
 
 /// <summary>
-/// 持久化审计日志以提供合规追溯。
+/// 監査ログを保持し合規証跡を提供する。
 /// </summary>
 public class AuditLogger
 {

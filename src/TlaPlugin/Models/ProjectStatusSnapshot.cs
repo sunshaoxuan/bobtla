@@ -1,7 +1,7 @@
 namespace TlaPlugin.Models;
 
 /// <summary>
-/// 展示项目整体进度的快照。
+/// プロジェクト全体の進捗スナップショット。
 /// </summary>
 public record ProjectStatusSnapshot(
     string CurrentStageId,
@@ -11,7 +11,7 @@ public record ProjectStatusSnapshot(
     FrontendProgress Frontend);
 
 /// <summary>
-/// 各开发阶段的状态。
+/// 各開発ステージの状態。
 /// </summary>
 public record StageStatus(
     string Id,
@@ -20,7 +20,7 @@ public record StageStatus(
     bool Completed);
 
 /// <summary>
-/// 前端准备度的详细指标。
+/// 前端準備度の詳細指標。
 /// </summary>
 public record FrontendProgress(
     int CompletionPercent,

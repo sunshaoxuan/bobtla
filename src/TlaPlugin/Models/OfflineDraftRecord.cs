@@ -1,7 +1,7 @@
 namespace TlaPlugin.Models;
 
 /// <summary>
-/// 存储在 SQLite 中的草稿记录。
+/// SQLite に保存される草稿行。
 /// </summary>
 public class OfflineDraftRecord
 {

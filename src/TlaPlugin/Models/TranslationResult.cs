@@ -3,7 +3,7 @@ using System.Text.Json.Nodes;
 namespace TlaPlugin.Models;
 
 /// <summary>
-/// 保存翻译结果的模型。
+/// 翻訳の結果を格納するモデル。
 /// </summary>
 public class TranslationResult
 {
@@ -17,6 +17,8 @@ public class TranslationResult
         = 0m;
     public int LatencyMs { get; set; }
         = 0;
-    public JsonObject AdaptiveCard { get; set; } = new();
-    public IDictionary<string, string> AdditionalTranslations { get; set; } = new Dictionary<string, string>();
+    public JsonObject? AdaptiveCard { get; set; }
+        = new JsonObject();
+    public IDictionary<string, string> AdditionalTranslations { get; set; }
+        = new Dictionary<string, string>();
 }

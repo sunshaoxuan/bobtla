@@ -6,7 +6,7 @@ using TlaPlugin.Models;
 namespace TlaPlugin.Services;
 
 /// <summary>
-/// 生成提供给前端的配置概要信息。
+/// フロントエンド向けの構成情報を生成するサービス。
 /// </summary>
 public class ConfigurationSummaryService
 {
@@ -25,7 +25,7 @@ public class ConfigurationSummaryService
     }
 
     /// <summary>
-    /// 构建可供 UI 使用的配置信息摘要。
+    /// UI が利用できるサマリー情報を作成する。
     /// </summary>
     public ConfigurationSummary CreateSummary()
     {

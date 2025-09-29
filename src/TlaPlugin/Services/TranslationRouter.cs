@@ -75,7 +75,6 @@ public class TranslationRouter
         var promptPrefix = _tones.GetPromptPrefix(request.Tone);
 
         var allowedProviders = 0;
-
         foreach (var provider in _providers)
         {
             var report = _compliance.Evaluate(request.Text, provider.Options);
@@ -85,7 +84,6 @@ public class TranslationRouter
             }
 
             allowedProviders++;
-
             var translationCount = 1 + request.AdditionalTargetLanguages.Count;
             var estimatedCost = request.Text.Length * provider.Options.CostPerCharUsd * translationCount;
             if (!_budget.TryReserve(request.TenantId, estimatedCost))

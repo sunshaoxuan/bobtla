@@ -20,7 +20,6 @@ public class UsageMetricsService
         public const string Provider = "模型错误";
         public const string Authentication = "认证失败";
     }
-
     public void RecordSuccess(string tenantId, string modelId, decimal costUsd, int latencyMs, int translationCount)
     {
         if (string.IsNullOrWhiteSpace(tenantId))
@@ -81,7 +80,6 @@ public class UsageMetricsService
             accumulator.Failures[reason] = count + 1;
         }
     }
-
     public UsageMetricsReport GetReport()
     {
         var snapshots = new List<UsageMetricsSnapshot>();

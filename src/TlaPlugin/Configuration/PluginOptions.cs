@@ -4,7 +4,7 @@ using System.Collections.Generic;
 namespace TlaPlugin.Configuration;
 
 /// <summary>
-/// 描述插件核心配置的选项。
+/// プラグインの主要構成を保持するオプション。
 /// </summary>
 public class PluginOptions
 {
@@ -35,7 +35,7 @@ public class PluginOptions
 }
 
 /// <summary>
-/// 用于说明模型提供方配置的结构。
+/// モデル提供者の構成値。
 /// </summary>
 public class ModelProviderOptions
 {
@@ -57,7 +57,7 @@ public class ModelProviderOptions
 }
 
 /// <summary>
-/// 标识模型提供方类型的枚举。
+/// モデル提供者の種類を示す列挙体。
 /// </summary>
 public enum ModelProviderKind
 {
@@ -71,7 +71,7 @@ public enum ModelProviderKind
 }
 
 /// <summary>
-/// 合规策略的配置值。
+/// 合規ポリシーの設定値。
 /// </summary>
 public class CompliancePolicyOptions
 {
@@ -88,7 +88,7 @@ public class CompliancePolicyOptions
 }
 
 /// <summary>
-/// 管理密钥与 OBO 认证的配置。
+/// キー管理と OBO 認証の設定値。
 /// </summary>
 public class SecurityOptions
 {
