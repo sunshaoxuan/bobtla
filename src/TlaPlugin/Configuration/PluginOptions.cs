@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+
 namespace TlaPlugin.Configuration;
 
 /// <summary>
@@ -14,6 +17,7 @@ public class PluginOptions
     public string OfflineDraftConnectionString { get; set; } = "Data Source=tla-offline.db";
     public IList<ModelProviderOptions> Providers { get; set; } = new List<ModelProviderOptions>();
     public CompliancePolicyOptions Compliance { get; set; } = new();
+    public SecurityOptions Security { get; set; } = new();
 }
 
 /// <summary>
@@ -46,5 +50,22 @@ public class CompliancePolicyOptions
         ["email"] = @"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}",
         ["phone"] = @"\\+?[0-9]{8,15}",
         ["creditCard"] = @"[0-9]{13,16}"
+    };
+}
+
+/// <summary>
+/// キー管理と OBO 認証の設定値。
+/// </summary>
+public class SecurityOptions
+{
+    public string KeyVaultUri { get; set; } = "https://localhost.vault.azure.net/";
+    public string ClientId { get; set; } = "00000000-0000-0000-0000-000000000000";
+    public string ClientSecretName { get; set; } = "tla-client-secret";
+    public string UserAssertionAudience { get; set; } = "api://tla-plugin";
+    public TimeSpan AccessTokenLifetime { get; set; } = TimeSpan.FromMinutes(30);
+    public TimeSpan SecretCacheTtl { get; set; } = TimeSpan.FromMinutes(10);
+    public IDictionary<string, string> SeedSecrets { get; set; } = new Dictionary<string, string>
+    {
+        ["tla-client-secret"] = "local-dev-secret"
     };
 }

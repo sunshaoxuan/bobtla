@@ -125,7 +125,8 @@ public class MessageExtensionHandlerTests
         var glossary = new GlossaryService();
         glossary.LoadEntries(new[] { new GlossaryEntry("hello", "こんにちは", "tenant:contoso") });
         var compliance = new ComplianceGateway(options);
-        var router = new TranslationRouter(new ModelProviderFactory(options), compliance, new BudgetGuard(options.Value), new AuditLogger(), new ToneTemplateService(), options);
+        var resolver = new KeyVaultSecretResolver(options);
+        var router = new TranslationRouter(new ModelProviderFactory(options), compliance, new BudgetGuard(options.Value), new AuditLogger(), new ToneTemplateService(), new TokenBroker(resolver, options), options);
         var cache = new TranslationCache(options);
         var throttle = new TranslationThrottle(options);
         var pipeline = new TranslationPipeline(router, glossary, new OfflineDraftStore(options), new LanguageDetector(), cache, throttle, options);

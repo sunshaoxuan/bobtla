@@ -36,6 +36,8 @@ builder.Services.AddSingleton<AuditLogger>();
 builder.Services.AddSingleton(provider => new OfflineDraftStore(provider.GetService<IOptions<PluginOptions>>()));
 builder.Services.AddSingleton<TranslationCache>();
 builder.Services.AddSingleton<TranslationThrottle>();
+builder.Services.AddSingleton<KeyVaultSecretResolver>();
+builder.Services.AddSingleton<ITokenBroker, TokenBroker>();
 builder.Services.AddSingleton<ModelProviderFactory>();
 builder.Services.AddSingleton<TranslationRouter>();
 builder.Services.AddSingleton<TranslationPipeline>();

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Authentication;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
@@ -21,14 +22,16 @@ public class TranslationRouter
     private readonly BudgetGuard _budget;
     private readonly AuditLogger _audit;
     private readonly ToneTemplateService _tones;
+    private readonly ITokenBroker _tokenBroker;
 
-    public TranslationRouter(ModelProviderFactory providerFactory, ComplianceGateway compliance, BudgetGuard budget, AuditLogger audit, ToneTemplateService tones, IOptions<PluginOptions>? options = null)
+    public TranslationRouter(ModelProviderFactory providerFactory, ComplianceGateway compliance, BudgetGuard budget, AuditLogger audit, ToneTemplateService tones, ITokenBroker tokenBroker, IOptions<PluginOptions>? options = null)
     {
         _providers = providerFactory.CreateProviders();
         _compliance = compliance;
         _budget = budget;
         _audit = audit;
         _tones = tones;
+        _tokenBroker = tokenBroker;
         Options = options?.Value ?? new PluginOptions();
     }
 
@@ -42,6 +45,17 @@ public class TranslationRouter
         {
             detection = await _providers.First().DetectAsync(request.Text, cancellationToken);
             sourceLanguage = detection.Language;
+        }
+
+        if (string.IsNullOrEmpty(request.UserId))
+        {
+            throw new AuthenticationException("ユーザー ID が空のためトークンを取得できません。");
+        }
+
+        var token = await _tokenBroker.ExchangeOnBehalfOfAsync(request.TenantId, request.UserId, cancellationToken);
+        if (token.ExpiresOn <= DateTimeOffset.UtcNow)
+        {
+            throw new AuthenticationException("取得したトークンが既に失効しています。");
         }
 
         var promptPrefix = _tones.GetPromptPrefix(request.Tone);
@@ -64,7 +78,7 @@ public class TranslationRouter
             {
                 var result = await provider.TranslateAsync(request.Text, sourceLanguage!, request.TargetLanguage, promptPrefix, cancellationToken);
                 var rewritten = await provider.RewriteAsync(result.Text, request.Tone, cancellationToken);
-                _audit.Record(request.TenantId, request.UserId, result.ModelId, request.Text, rewritten, estimatedCost, result.LatencyMs);
+                _audit.Record(request.TenantId, request.UserId, result.ModelId, request.Text, rewritten, estimatedCost, result.LatencyMs, token.Audience);
 
                 var additional = new Dictionary<string, string>();
                 foreach (var extraLanguage in request.AdditionalTargetLanguages)
