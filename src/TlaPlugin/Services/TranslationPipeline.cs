@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Options;
@@ -15,14 +16,18 @@ public class TranslationPipeline
     private readonly GlossaryService _glossary;
     private readonly OfflineDraftStore _drafts;
     private readonly LanguageDetector _detector;
+    private readonly TranslationCache _cache;
+    private readonly TranslationThrottle _throttle;
     private readonly PluginOptions _options;
 
-    public TranslationPipeline(TranslationRouter router, GlossaryService glossary, OfflineDraftStore drafts, LanguageDetector detector, IOptions<PluginOptions>? options = null)
+    public TranslationPipeline(TranslationRouter router, GlossaryService glossary, OfflineDraftStore drafts, LanguageDetector detector, TranslationCache cache, TranslationThrottle throttle, IOptions<PluginOptions>? options = null)
     {
         _router = router;
         _glossary = glossary;
         _drafts = drafts;
         _detector = detector;
+        _cache = cache;
+        _throttle = throttle;
         _options = options?.Value ?? new PluginOptions();
     }
 
@@ -47,7 +52,7 @@ public class TranslationPipeline
             UserId = request.UserId,
             ChannelId = request.ChannelId,
             Tone = request.Tone,
-            AdditionalTargetLanguages = request.AdditionalTargetLanguages,
+            AdditionalTargetLanguages = new List<string>(request.AdditionalTargetLanguages),
             UseGlossary = request.UseGlossary
         };
 
@@ -61,7 +66,15 @@ public class TranslationPipeline
             resolvedRequest.SourceLanguage = detection.Language;
         }
 
-        return await _router.TranslateAsync(resolvedRequest, cancellationToken);
+        if (_cache.TryGet(resolvedRequest, out var cached))
+        {
+            return cached;
+        }
+
+        using var lease = await _throttle.AcquireAsync(resolvedRequest.TenantId, cancellationToken);
+        var result = await _router.TranslateAsync(resolvedRequest, cancellationToken);
+        _cache.Set(resolvedRequest, result);
+        return result;
     }
 
     public OfflineDraftRecord SaveDraft(OfflineDraftRequest request)

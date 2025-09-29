@@ -8,6 +8,9 @@ public class PluginOptions
     public int MaxCharactersPerRequest { get; set; } = 50000;
     public decimal DailyBudgetUsd { get; set; } = 25m;
     public TimeSpan DraftRetention { get; set; } = TimeSpan.FromDays(7);
+    public TimeSpan CacheTtl { get; set; } = TimeSpan.FromHours(24);
+    public int MaxConcurrentTranslations { get; set; } = 4;
+    public int RequestsPerMinute { get; set; } = 120;
     public string OfflineDraftConnectionString { get; set; } = "Data Source=tla-offline.db";
     public IList<ModelProviderOptions> Providers { get; set; } = new List<ModelProviderOptions>();
     public CompliancePolicyOptions Compliance { get; set; } = new();

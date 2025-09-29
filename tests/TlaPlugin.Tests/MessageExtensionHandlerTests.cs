@@ -77,13 +77,58 @@ public class MessageExtensionHandlerTests
         Assert.Contains("予算", title["text"]!.GetValue<string>());
     }
 
+    [Fact]
+    public async Task ReturnsErrorCardWhenRateLimited()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            RequestsPerMinute = 1,
+            MaxConcurrentTranslations = 1,
+            Providers = new List<ModelProviderOptions>
+            {
+                new() { Id = "primary", Regions = new List<string>{"japan"}, Certifications = new List<string>{"iso"} }
+            },
+            Compliance = new CompliancePolicyOptions
+            {
+                RequiredRegionTags = new List<string> { "japan" },
+                RequiredCertifications = new List<string> { "iso" }
+            }
+        });
+
+        var handler = BuildHandler(options);
+
+        await handler.HandleTranslateAsync(new TranslationRequest
+        {
+            Text = "first",
+            TenantId = "contoso",
+            UserId = "user",
+            TargetLanguage = "ja",
+            SourceLanguage = "en"
+        });
+
+        var response = await handler.HandleTranslateAsync(new TranslationRequest
+        {
+            Text = "second",
+            TenantId = "contoso",
+            UserId = "user",
+            TargetLanguage = "ja",
+            SourceLanguage = "en"
+        });
+
+        var body = response["attachments"]!.AsArray().First()["content"]!.AsObject();
+        var title = body["body"]!.AsArray().First().AsObject();
+        Assert.Contains("レート", title["text"]!.GetValue<string>());
+    }
+
     private static MessageExtensionHandler BuildHandler(IOptions<PluginOptions> options)
     {
         var glossary = new GlossaryService();
         glossary.LoadEntries(new[] { new GlossaryEntry("hello", "こんにちは", "tenant:contoso") });
         var compliance = new ComplianceGateway(options);
         var router = new TranslationRouter(new ModelProviderFactory(options), compliance, new BudgetGuard(options.Value), new AuditLogger(), new ToneTemplateService(), options);
-        var pipeline = new TranslationPipeline(router, glossary, new OfflineDraftStore(options), new LanguageDetector(), options);
+        var cache = new TranslationCache(options);
+        var throttle = new TranslationThrottle(options);
+        var pipeline = new TranslationPipeline(router, glossary, new OfflineDraftStore(options), new LanguageDetector(), cache, throttle, options);
         return new MessageExtensionHandler(pipeline);
     }
 }

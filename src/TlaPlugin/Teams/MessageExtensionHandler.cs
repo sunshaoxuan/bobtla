@@ -53,6 +53,10 @@ public class MessageExtensionHandler
         {
             return BuildErrorCard("予算制限", ex.Message);
         }
+        catch (RateLimitExceededException ex)
+        {
+            return BuildErrorCard("レート制限", ex.Message);
+        }
         catch (TranslationException ex)
         {
             return BuildErrorCard("翻訳エラー", ex.Message);
