@@ -1,0 +1,71 @@
+using System;
+using System.Collections.Generic;
+
+namespace TlaPlugin.Configuration;
+
+/// <summary>
+/// プラグインの主要構成を保持するオプション。
+/// </summary>
+public class PluginOptions
+{
+    public int MaxCharactersPerRequest { get; set; } = 50000;
+    public decimal DailyBudgetUsd { get; set; } = 25m;
+    public TimeSpan DraftRetention { get; set; } = TimeSpan.FromDays(7);
+    public TimeSpan CacheTtl { get; set; } = TimeSpan.FromHours(24);
+    public int MaxConcurrentTranslations { get; set; } = 4;
+    public int RequestsPerMinute { get; set; } = 120;
+    public string OfflineDraftConnectionString { get; set; } = "Data Source=tla-offline.db";
+    public IList<ModelProviderOptions> Providers { get; set; } = new List<ModelProviderOptions>();
+    public CompliancePolicyOptions Compliance { get; set; } = new();
+    public SecurityOptions Security { get; set; } = new();
+}
+
+/// <summary>
+/// モデル提供者の構成値。
+/// </summary>
+public class ModelProviderOptions
+{
+    public string Id { get; set; } = "mock";
+    public decimal CostPerCharUsd { get; set; } = 0.00002m;
+    public int LatencyTargetMs { get; set; } = 300;
+    public double Reliability { get; set; } = 0.99;
+    public IList<string> Regions { get; set; } = new List<string> { "global" };
+    public IList<string> Certifications { get; set; } = new List<string>();
+    public int SimulatedFailures { get; set; }
+        = 0;
+    public string TranslationPrefix { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// 合規ポリシーの設定値。
+/// </summary>
+public class CompliancePolicyOptions
+{
+    public IList<string> RequiredRegionTags { get; set; } = new List<string>();
+    public IList<string> AllowedRegionFallbacks { get; set; } = new List<string>();
+    public IList<string> RequiredCertifications { get; set; } = new List<string>();
+    public IList<string> BannedPhrases { get; set; } = new List<string>();
+    public IDictionary<string, string> PiiPatterns { get; set; } = new Dictionary<string, string>
+    {
+        ["email"] = @"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}",
+        ["phone"] = @"\\+?[0-9]{8,15}",
+        ["creditCard"] = @"[0-9]{13,16}"
+    };
+}
+
+/// <summary>
+/// キー管理と OBO 認証の設定値。
+/// </summary>
+public class SecurityOptions
+{
+    public string KeyVaultUri { get; set; } = "https://localhost.vault.azure.net/";
+    public string ClientId { get; set; } = "00000000-0000-0000-0000-000000000000";
+    public string ClientSecretName { get; set; } = "tla-client-secret";
+    public string UserAssertionAudience { get; set; } = "api://tla-plugin";
+    public TimeSpan AccessTokenLifetime { get; set; } = TimeSpan.FromMinutes(30);
+    public TimeSpan SecretCacheTtl { get; set; } = TimeSpan.FromMinutes(10);
+    public IDictionary<string, string> SeedSecrets { get; set; } = new Dictionary<string, string>
+    {
+        ["tla-client-secret"] = "local-dev-secret"
+    };
+}
