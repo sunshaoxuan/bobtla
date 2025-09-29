@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("TlaPlugin")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+fedd36fe13a9a919d9ce31ee0a14c5f256dbd8b2")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+428938c5be91db7bdcbad864ad9efee61aecede0")]
 [assembly: System.Reflection.AssemblyProductAttribute("TlaPlugin")]
 [assembly: System.Reflection.AssemblyTitleAttribute("TlaPlugin")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
