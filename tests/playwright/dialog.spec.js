@@ -7,15 +7,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "../..");
 const srcRoot = path.join(repoRoot, "src");
 
-function readFileFromSrc(relativePath) {
-  const absolute = path.join(srcRoot, relativePath);
-  const normalized = path.normalize(absolute);
-  if (!normalized.startsWith(srcRoot)) {
-    throw new Error(`Attempted to read outside src: ${relativePath}`);
-  }
-  return readFileSync(normalized, "utf8");
-}
-
 test.beforeEach(async ({ page }) => {
   await page.route("http://local.test/**", async (route) => {
     const url = new URL(route.request().url());
@@ -24,7 +15,13 @@ test.beforeEach(async ({ page }) => {
     const normalized = path.normalize(target);
     if (normalized.startsWith(srcRoot)) {
       const body = readFileSync(normalized);
-      const contentType = normalized.endsWith(".css") ? "text/css" : "text/javascript";
+      const ext = path.extname(normalized);
+      const contentType =
+        ext === ".css"
+          ? "text/css"
+          : ext === ".html"
+            ? "text/html"
+            : "text/javascript";
       await route.fulfill({
         status: 200,
         headers: { "content-type": contentType },
@@ -116,18 +113,8 @@ test.beforeEach(async ({ page }) => {
       }
     };
   });
-
-  const html = readFileFromSrc("webapp/dialog.html");
-  const sanitized = html.replace('<script type="module" src="./dialog.js"></script>', "");
-  const injection = `
-    <script type="module">
-      import { initMessageExtensionDialog } from "http://local.test/teamsClient/messageExtensionDialog.js";
-      window.__initDialog = initMessageExtensionDialog;
-    </script>
-  `;
-  const patched = sanitized.replace("</body>", `${injection}</body>`);
-  await page.setContent(patched, { waitUntil: "load" });
-  await page.evaluate(() => window.__initDialog());
+  await page.goto("http://local.test/webapp/dialog.html", { waitUntil: "load" });
+  await page.waitForSelector("[data-source-text]");
 });
 
 test("switching language updates translate payload", async ({ page }) => {
@@ -136,11 +123,15 @@ test("switching language updates translate payload", async ({ page }) => {
   const translationInput = page.locator("[data-translation-text]");
   const targetSelect = page.locator("[data-target-select]");
 
+  const detectRequest = page.waitForRequest("**/api/detect");
   await sourceInput.fill("hello world");
+  await detectRequest;
   await previewButton.click();
   await expect(translationInput).toHaveValue("hola");
   await targetSelect.selectOption("ja");
+  const secondDetect = page.waitForRequest("**/api/detect");
   await sourceInput.fill("good night");
+  await secondDetect;
   await previewButton.click();
   await expect(translationInput).toHaveValue("こんにちは");
   const detected = await page.locator("[data-detected-language]").innerText();
@@ -153,10 +144,18 @@ test("edited translation is rewritten before reply", async ({ page }) => {
   const translationInput = page.locator("[data-translation-text]");
   const submitButton = page.locator("[data-submit-translation]");
 
+  const detectRequest = page.waitForRequest("**/api/detect");
   await sourceInput.fill("hello there");
+  await detectRequest;
+  const translateRequest = page.waitForRequest("**/api/translate");
   await previewButton.click();
+  await translateRequest;
   await translationInput.fill("hola team");
+  const rewriteRequest = page.waitForRequest("**/api/rewrite");
+  const replyRequest = page.waitForRequest("**/api/reply");
   await submitButton.click();
+  await rewriteRequest;
+  await replyRequest;
   await expect(translationInput).toHaveValue("【润色】hola team");
   const lastSubmit = await page.evaluate(() => window.microsoftTeams.dialog.lastSubmit);
   expect(lastSubmit.translation).toBe("【润色】hola team");
