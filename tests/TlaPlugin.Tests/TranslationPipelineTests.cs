@@ -381,6 +381,33 @@ public class TranslationPipelineTests
     }
 
     [Fact]
+    public async Task DetectAsync_DiacriticFreeForeignSentenceRemainsUncertain()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            Providers = new List<ModelProviderOptions>
+            {
+                new() { Id = "primary", Regions = new List<string>{"japan"}, Certifications = new List<string>{"iso"} }
+            },
+            Compliance = new CompliancePolicyOptions
+            {
+                RequiredRegionTags = new List<string> { "japan" },
+                RequiredCertifications = new List<string> { "iso" }
+            }
+        });
+
+        var pipeline = BuildPipeline(options);
+
+        var detection = await pipeline.DetectAsync(new LanguageDetectionRequest
+        {
+            Text = "Besok pagi kami akan berangkat ke pasar untuk membeli sayur segar dan buah segar.",
+            TenantId = "contoso"
+        }, CancellationToken.None);
+
+        Assert.True(detection.Confidence < 0.75);
+    }
+
+    [Fact]
     public async Task ReturnsJapaneseCandidateForKanjiOnlyDetection()
     {
         var options = Options.Create(new PluginOptions
