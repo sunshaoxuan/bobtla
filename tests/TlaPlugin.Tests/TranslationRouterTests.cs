@@ -7,6 +7,7 @@ using System.Linq;
 using Microsoft.Extensions.Options;
 using TlaPlugin.Configuration;
 using TlaPlugin.Models;
+using TlaPlugin.Providers;
 using TlaPlugin.Services;
 using Xunit;
 
@@ -400,6 +401,61 @@ public class TranslationRouterTests
         Assert.Contains("概要", summary.Summary);
     }
 
+    [Fact]
+    public async Task TranslateAsyncRequestsLanguageSelectionWhenConfidenceLow()
+    {
+        var providerOptions = new ModelProviderOptions
+        {
+            Id = "stub",
+            Regions = new List<string> { "japan" },
+            Certifications = new List<string> { "iso27001" }
+        };
+
+        var options = Options.Create(new PluginOptions
+        {
+            Providers = new List<ModelProviderOptions> { providerOptions },
+            Compliance = new CompliancePolicyOptions
+            {
+                RequiredRegionTags = new List<string> { "japan" },
+                RequiredCertifications = new List<string> { "iso27001" }
+            }
+        });
+
+        var detection = new DetectionResult(
+            "xx",
+            0.42,
+            new List<DetectionCandidate>
+            {
+                new("xx", 0.42),
+                new("yy", 0.38)
+            });
+
+        var provider = new StubModelProvider(providerOptions, detection);
+        var router = new TranslationRouter(
+            new ModelProviderFactory(options),
+            new ComplianceGateway(options),
+            new BudgetGuard(options.Value),
+            new AuditLogger(),
+            new ToneTemplateService(),
+            new RecordingTokenBroker(),
+            new UsageMetricsService(),
+            new LocalizationCatalogService(),
+            options,
+            new[] { provider });
+
+        var ex = await Assert.ThrowsAsync<LowConfidenceDetectionException>(() => router.TranslateAsync(new TranslationRequest
+        {
+            Text = "12345",
+            TenantId = "contoso",
+            UserId = "user",
+            TargetLanguage = "ja"
+        }, CancellationToken.None));
+
+        Assert.Equal(detection.Language, ex.Detection.Language);
+        Assert.True(ex.Detection.Confidence < 0.75);
+        Assert.Contains(ex.Detection.Candidates, candidate => candidate.Language == "xx");
+    }
+
     private sealed class RecordingTokenBroker : ITokenBroker
     {
         public bool ShouldThrow { get; set; }
@@ -415,5 +471,30 @@ public class TranslationRouterTests
 
             return Task.FromResult(new AccessToken("token", DateTimeOffset.UtcNow.AddMinutes(5), "api://audience"));
         }
+    }
+
+    private sealed class StubModelProvider : IModelProvider
+    {
+        private readonly DetectionResult _detection;
+
+        public StubModelProvider(ModelProviderOptions options, DetectionResult detection)
+        {
+            Options = options;
+            _detection = detection;
+        }
+
+        public ModelProviderOptions Options { get; }
+
+        public Task<DetectionResult> DetectAsync(string text, CancellationToken cancellationToken)
+            => Task.FromResult(_detection);
+
+        public Task<ModelTranslationResult> TranslateAsync(string text, string sourceLanguage, string targetLanguage, string promptPrefix, CancellationToken cancellationToken)
+            => throw new InvalidOperationException("Translation should not be invoked when detection confidence is low.");
+
+        public Task<string> RewriteAsync(string translatedText, string tone, CancellationToken cancellationToken)
+            => Task.FromResult(translatedText);
+
+        public Task<string> SummarizeAsync(string text, CancellationToken cancellationToken)
+            => Task.FromResult(string.Empty);
     }
 }
