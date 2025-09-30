@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildDialogState, calculateCostHint, buildTranslatePayload, updateStateWithResponse } from "../src/webapp/dialogState.js";
+import { buildDialogState, calculateCostHint, buildTranslatePayload, updateStateWithResponse } from "../src/teamsClient/state.js";
 
 test("buildDialogState chooses default language from context locale", () => {
   const models = [

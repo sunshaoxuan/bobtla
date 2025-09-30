@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { initComposePlugin } from "../src/webapp/composePlugin.js";
+import { initComposePlugin } from "../src/teamsClient/composePlugin.js";
 
 function createStubElement(initial = {}) {
   return {
@@ -43,7 +43,7 @@ test("compose plugin translates and posts reply payload", async () => {
           };
         }
         if (url === "/api/translate") {
-          return { text: "hola", metadata: { modelId: "model-a" } };
+          return { text: "hola", detectedLanguage: "en", metadata: { modelId: "model-a", tone: "formal" } };
         }
         if (url === "/api/reply") {
           return { status: "ok" };
@@ -92,6 +92,7 @@ test("compose plugin translates and posts reply payload", async () => {
   assert.equal(preview.value || preview.textContent, "hola");
   assert.equal(fetchCalls[1].url, "/api/reply");
   assert.equal(fetchCalls[1].options.translation, "hola");
+  assert.equal(fetchCalls[1].options.sourceLanguage, "en");
   assert.equal(fetchCalls[1].options.metadata.tone, "formal");
   assert.equal(state.tone, "formal");
 });

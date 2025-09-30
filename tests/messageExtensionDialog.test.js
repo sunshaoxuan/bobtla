@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { initMessageExtensionDialog } from "../src/webapp/dialog.js";
+import { initMessageExtensionDialog } from "../src/teamsClient/messageExtensionDialog.js";
 
 function createStubElement(initial = {}) {
   return {
@@ -236,6 +236,7 @@ test("initMessageExtensionDialog corrects target when locale missing from metada
 
   assert.equal(state.targetLanguage, "ja");
   assert.equal(ui.targetSelect.value, "ja");
-  assert.equal(fetchCalls.length, 1);
-  assert.equal(fetchCalls[0].body.targetLanguage, "ja");
+  assert.equal(fetchCalls[0].url, "/api/detect");
+  assert.equal(fetchCalls.at(-1).url, "/api/translate");
+  assert.equal(fetchCalls.at(-1).body.targetLanguage, "ja");
 });

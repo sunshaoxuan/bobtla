@@ -1,5 +1,9 @@
 import { FALLBACK_METADATA } from "./apiClient.js";
 
+export { buildDetectPayload, buildRewritePayload, buildReplyPayload, updateStateWithResponse } from "../teamsClient/state.js";
+
+export { default } from "../teamsClient/state.js";
+
 function isSelectableLanguage(language) {
   return Boolean(language?.id) && language.id !== "auto";
 }
@@ -81,28 +85,3 @@ export function buildTranslatePayload(state, context) {
   };
 }
 
-export function updateStateWithResponse(state, response) {
-  if (!state || !response) {
-    return state;
-  }
-  const next = { ...state };
-  if (typeof response.text === "string") {
-    next.translation = response.text;
-  }
-  if (response.metadata?.modelId) {
-    next.modelId = response.metadata.modelId;
-  }
-  return next;
-}
-
-export default {
-  buildDialogState,
-  calculateCostHint,
-  buildTranslatePayload,
-  buildDetectPayload,
-  buildRewritePayload,
-  buildReplyPayload,
-  updateStateWithResponse
-} from "../teamsClient/state.js";
-
-export { default } from "../teamsClient/state.js";

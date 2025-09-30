@@ -102,6 +102,13 @@ export async function initComposePlugin({ ui = resolveComposeUi(), teams, fetche
     const payload = buildTranslatePayload({ ...state }, context);
     try {
       const response = await translateText(payload, fetcher);
+      if (response?.metadata?.tone) {
+        state.tone = response.metadata.tone;
+        if (ui.toneToggle) {
+          ui.toneToggle.checked = state.tone === "formal";
+        }
+      }
+      state.detectedLanguage = response?.detectedLanguage ?? state.detectedLanguage;
       state.translation = response.text ?? "";
       setPreview(ui.preview, state.translation);
     } catch (error) {
