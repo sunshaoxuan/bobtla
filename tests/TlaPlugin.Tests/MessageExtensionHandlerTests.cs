@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
@@ -204,6 +205,68 @@ public class MessageExtensionHandlerTests
         Assert.Equal("UsePreferred", decoded["kind"]!.GetValue<string>());
         var actions = card["actions"]!.AsArray();
         Assert.Contains(actions.Select(action => action!.AsObject()["data"]!.AsObject()["action"]?.GetValue<string>()), value => value == "resolveGlossary");
+    }
+
+    [Fact]
+    public async Task AppliesGlossarySelectionsFromExtensionData()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            Providers = new List<ModelProviderOptions>
+            {
+                new() { Id = "primary", Regions = new List<string>{"japan"}, Certifications = new List<string>{"iso"} }
+            },
+            Compliance = new CompliancePolicyOptions
+            {
+                RequiredRegionTags = new List<string> { "japan" },
+                RequiredCertifications = new List<string> { "iso" }
+            }
+        });
+
+        var glossary = new GlossaryService();
+        glossary.LoadEntries(new[]
+        {
+            new GlossaryEntry("GPU", "图形处理器", "tenant:contoso"),
+            new GlossaryEntry("GPU", "显卡", "channel:finance")
+        });
+
+        var handler = BuildHandler(options, glossary);
+
+        var selectionPayload = JsonSerializer.Serialize(new
+        {
+            source = "GPU",
+            kind = "UseAlternative",
+            target = "显卡",
+            scope = "channel:finance"
+        });
+
+        using var extensionDocument = JsonDocument.Parse(JsonSerializer.Serialize(selectionPayload));
+        var request = new TranslationRequest
+        {
+            Text = "GPU",
+            TenantId = "contoso",
+            UserId = "user",
+            TargetLanguage = "ja",
+            SourceLanguage = "en",
+            ChannelId = "finance",
+            ExtensionData = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["glossary::GPU"] = extensionDocument.RootElement.Clone()
+            }
+        };
+
+        var response = await handler.HandleTranslateAsync(request);
+
+        Assert.True(request.GlossaryDecisions.TryGetValue("GPU", out var decision));
+        Assert.Equal(GlossaryDecisionKind.UseAlternative, decision.Kind);
+        Assert.Equal("显卡", decision.Target);
+        Assert.Equal("channel:finance", decision.Scope);
+        Assert.DoesNotContain(request.ExtensionData.Keys, key => key.StartsWith("glossary::", StringComparison.Ordinal));
+
+        Assert.Equal("message", response["type"]?.GetValue<string>());
+        var attachment = response["attachments"]!.AsArray().First().AsObject();
+        var card = attachment["content"]!.AsObject();
+        Assert.DoesNotContain(card["body"]!.AsArray(), node => node!.AsObject()["type"]!.GetValue<string>() == "Input.ChoiceSet");
     }
 
     [Fact]
