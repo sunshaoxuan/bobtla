@@ -134,13 +134,17 @@ public class LanguageDetector
 
         var coverage = (double)primary.Value / totalLetters;
         var baseScore = CalculateBaseScore(coverage, definitions.Count);
+        var uniqueLetters = CountUniqueLetters(trimmed, primary.Key);
+        var usesBasicLatinOnly = primary.Key == WritingSystem.Latin && UsesOnlyBasicLatinLetters(trimmed);
 
         var scored = new List<(LanguageDefinition Definition, double Score)>();
+        var hasSignatureMatch = false;
         foreach (var definition in definitions)
         {
             var score = baseScore + definition.Bias;
             if (definition.Signature != null && definition.Signature.IsMatch(trimmed))
             {
+                hasSignatureMatch = true;
                 score += definition.SignatureWeight;
             }
 
@@ -171,9 +175,23 @@ public class LanguageDetector
             {
                 score -= 0.4;
             }
-
-            score = Math.Clamp(score, 0, 0.99);
             scored.Add((definition, score));
+        }
+
+        var featurePenalty = CalculateFeaturePenalty(primary.Key, hasSignatureMatch, uniqueLetters, primary.Value, usesBasicLatinOnly);
+        if (featurePenalty > 0)
+        {
+            for (var i = 0; i < scored.Count; i++)
+            {
+                var entry = scored[i];
+                scored[i] = (entry.Definition, entry.Score - featurePenalty);
+            }
+        }
+
+        for (var i = 0; i < scored.Count; i++)
+        {
+            var entry = scored[i];
+            scored[i] = (entry.Definition, Math.Clamp(entry.Score, 0, 0.99));
         }
 
         scored.Sort((left, right) => right.Score.CompareTo(left.Score));
@@ -227,6 +245,84 @@ public class LanguageDetector
         }
 
         return score;
+    }
+
+    private static double CalculateFeaturePenalty(
+        WritingSystem script,
+        bool hasSignatureMatch,
+        int uniqueLetters,
+        int scriptLetterCount,
+        bool usesBasicLatinOnly)
+    {
+        double penalty = 0;
+
+        if (script == WritingSystem.Latin)
+        {
+            if (!hasSignatureMatch && usesBasicLatinOnly)
+            {
+                penalty = scriptLetterCount >= 12 ? 0.22 : 0.18;
+            }
+
+            if (scriptLetterCount >= 6 && uniqueLetters <= 4)
+            {
+                penalty = Math.Max(penalty, 0.16);
+            }
+            else if (scriptLetterCount >= 10 && uniqueLetters <= 6)
+            {
+                penalty = Math.Max(penalty, 0.12);
+            }
+        }
+        else if (scriptLetterCount >= 4 && uniqueLetters <= 2)
+        {
+            penalty = Math.Max(penalty, 0.12);
+        }
+
+        return penalty;
+    }
+
+    private static int CountUniqueLetters(string text, WritingSystem script)
+    {
+        var unique = new HashSet<Rune>();
+        foreach (var rune in text.EnumerateRunes())
+        {
+            if (!Rune.IsLetter(rune))
+            {
+                continue;
+            }
+
+            if (ClassifyRune(rune) != script)
+            {
+                continue;
+            }
+
+            var upper = Rune.ToUpperInvariant(rune);
+            unique.Add(upper);
+        }
+
+        return unique.Count;
+    }
+
+    private static bool UsesOnlyBasicLatinLetters(string text)
+    {
+        foreach (var rune in text.EnumerateRunes())
+        {
+            if (!Rune.IsLetter(rune))
+            {
+                continue;
+            }
+
+            if (ClassifyRune(rune) != WritingSystem.Latin)
+            {
+                continue;
+            }
+
+            if (rune.Value > 0x007A)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static IReadOnlyDictionary<WritingSystem, int> AnalyzeScripts(string text, out int totalLetters)
