@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace TlaPlugin.Models;
 
@@ -25,4 +27,8 @@ public class TranslationRequest
         = null;
     public IDictionary<string, GlossaryDecision> GlossaryDecisions { get; set; }
         = new Dictionary<string, GlossaryDecision>(StringComparer.OrdinalIgnoreCase);
+
+    [JsonExtensionData]
+    public IDictionary<string, JsonElement> ExtensionData { get; set; }
+        = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
 }

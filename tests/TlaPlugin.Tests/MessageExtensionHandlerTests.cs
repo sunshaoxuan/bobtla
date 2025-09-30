@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
@@ -204,6 +205,39 @@ public class MessageExtensionHandlerTests
         Assert.Equal("UsePreferred", decoded["kind"]!.GetValue<string>());
         var actions = card["actions"]!.AsArray();
         Assert.Contains(actions.Select(action => action!.AsObject()["data"]!.AsObject()["action"]?.GetValue<string>()), value => value == "resolveGlossary");
+    }
+
+    [Fact]
+    public async Task ReturnsLocalizedErrorCardWhenLocaleProvided()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            DailyBudgetUsd = 0.00001m,
+            Providers = new List<ModelProviderOptions>
+            {
+                new() { Id = "primary", CostPerCharUsd = 0.1m, Regions = new List<string>{"japan"}, Certifications = new List<string>{"iso"} }
+            },
+            Compliance = new CompliancePolicyOptions
+            {
+                RequiredRegionTags = new List<string> { "japan" },
+                RequiredCertifications = new List<string> { "iso" }
+            }
+        });
+
+        var handler = BuildHandler(options);
+        var response = await handler.HandleTranslateAsync(new TranslationRequest
+        {
+            Text = new string('a', 200),
+            TenantId = "contoso",
+            UserId = "user",
+            TargetLanguage = "ja",
+            SourceLanguage = "en",
+            UiLocale = "zh-CN"
+        });
+
+        var body = response["attachments"]!.AsArray().First()["content"]!.AsObject();
+        var title = body["body"]!.AsArray().First().AsObject();
+        Assert.Contains("预算", title["text"]!.GetValue<string>());
     }
 
     [Fact]

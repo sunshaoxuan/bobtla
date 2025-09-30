@@ -31,6 +31,8 @@ public class MessageExtensionHandler
 
     public async Task<JsonObject> HandleTranslateAsync(TranslationRequest request)
     {
+        ApplyGlossarySelections(request);
+
         var locale = request.UiLocale ?? _options.DefaultUiLocale;
         var catalog = _localization.GetCatalog(locale);
         try
@@ -360,5 +362,101 @@ public class MessageExtensionHandler
         {
             Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
         });
+    }
+
+    private static void ApplyGlossarySelections(TranslationRequest request)
+    {
+        if (request.ExtensionData is null || request.ExtensionData.Count == 0)
+        {
+            return;
+        }
+
+        var processedKeys = new List<string>();
+        foreach (var pair in request.ExtensionData)
+        {
+            if (!pair.Key.StartsWith("glossary::", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            processedKeys.Add(pair.Key);
+
+            var source = pair.Key.Substring("glossary::".Length);
+            if (string.IsNullOrWhiteSpace(source))
+            {
+                continue;
+            }
+
+            var decision = DecodeGlossaryDecision(pair.Value);
+            if (decision is null)
+            {
+                continue;
+            }
+
+            request.GlossaryDecisions[source] = decision;
+        }
+
+        foreach (var key in processedKeys)
+        {
+            request.ExtensionData.Remove(key);
+        }
+    }
+
+    private static GlossaryDecision? DecodeGlossaryDecision(JsonElement element)
+    {
+        return element.ValueKind switch
+        {
+            JsonValueKind.String => DecodeGlossaryDecisionFromString(element.GetString()),
+            JsonValueKind.Object => DecodeGlossaryDecisionFromElement(element),
+            _ => null
+        };
+    }
+
+    private static GlossaryDecision? DecodeGlossaryDecisionFromString(string? payload)
+    {
+        if (string.IsNullOrWhiteSpace(payload))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(payload);
+            return DecodeGlossaryDecisionFromElement(document.RootElement);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static GlossaryDecision? DecodeGlossaryDecisionFromElement(JsonElement payload)
+    {
+        if (!payload.TryGetProperty("kind", out var kindProperty) || kindProperty.ValueKind != JsonValueKind.String)
+        {
+            return null;
+        }
+
+        if (!Enum.TryParse(kindProperty.GetString(), true, out GlossaryDecisionKind kind))
+        {
+            return null;
+        }
+
+        var decision = new GlossaryDecision
+        {
+            Kind = kind
+        };
+
+        if (payload.TryGetProperty("target", out var targetProperty) && targetProperty.ValueKind == JsonValueKind.String)
+        {
+            decision.Target = targetProperty.GetString();
+        }
+
+        if (payload.TryGetProperty("scope", out var scopeProperty) && scopeProperty.ValueKind == JsonValueKind.String)
+        {
+            decision.Scope = scopeProperty.GetString();
+        }
+
+        return decision;
     }
 }
