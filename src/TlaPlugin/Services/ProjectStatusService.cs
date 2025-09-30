@@ -6,7 +6,7 @@ using TlaPlugin.Models;
 namespace TlaPlugin.Services;
 
 /// <summary>
-/// 提供开发进度快照以支撑前端规划的服务。
+/// 開発進捗スナップショットを提供するサービス。
 /// </summary>
 public class ProjectStatusService
 {
@@ -37,7 +37,7 @@ public class ProjectStatusService
     /// </summary>
     public ProjectStatusSnapshot GetSnapshot()
     {
-        var current = Stages.Last(s => s.Completed);
+        var current = Stages.FirstOrDefault(s => !s.Completed) ?? Stages.Last();
         var overallPercent = CalculateOverallPercent();
         var frontend = new FrontendProgress(
             CompletionPercent: 0,

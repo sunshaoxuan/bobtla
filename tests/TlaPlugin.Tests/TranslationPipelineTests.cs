@@ -91,7 +91,8 @@ public class TranslationPipelineTests
     private static TranslationPipeline BuildPipeline(IOptions<PluginOptions> options)
     {
         var glossary = new GlossaryService();
-        var router = new TranslationRouter(new ModelProviderFactory(options), new ComplianceGateway(options), new BudgetGuard(options.Value), new AuditLogger(), new ToneTemplateService(), new TokenBroker(new KeyVaultSecretResolver(options), options), options);
+        var localization = new LocalizationCatalogService();
+        var router = new TranslationRouter(new ModelProviderFactory(options), new ComplianceGateway(options), new BudgetGuard(options.Value), new AuditLogger(), new ToneTemplateService(), new TokenBroker(new KeyVaultSecretResolver(options), options), new UsageMetricsService(), localization, options);
         var cache = new TranslationCache(options);
         var throttle = new TranslationThrottle(options);
         return new TranslationPipeline(router, glossary, new OfflineDraftStore(options), new LanguageDetector(), cache, throttle, options);

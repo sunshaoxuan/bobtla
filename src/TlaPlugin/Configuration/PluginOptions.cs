@@ -4,7 +4,7 @@ using System.Collections.Generic;
 namespace TlaPlugin.Configuration;
 
 /// <summary>
-/// 保存插件主要配置的选项实体。
+/// プラグイン全体の構成値を保持するオプション定義。
 /// </summary>
 public class PluginOptions
 {
@@ -29,13 +29,14 @@ public class PluginOptions
         "ja-JP",
         "en-US"
     };
+    public string DefaultUiLocale { get; set; } = "ja-JP";
     public IList<ModelProviderOptions> Providers { get; set; } = new List<ModelProviderOptions>();
     public CompliancePolicyOptions Compliance { get; set; } = new();
     public SecurityOptions Security { get; set; } = new();
 }
 
 /// <summary>
-/// 模型提供方的配置项。
+/// モデルプロバイダーを設定するためのオプション。
 /// </summary>
 public class ModelProviderOptions
 {

@@ -267,10 +267,10 @@ public class ConfigurableChatModelProvider : IModelProvider
     {
         var suffix = tone switch
         {
-            ToneTemplateService.Business => "※已调整为商务语气",
-            ToneTemplateService.Technical => "※已调整为技术语气",
-            ToneTemplateService.Casual => "※已调整为轻松语气",
-            _ => "※已调整为敬语"
+            ToneTemplateService.Business => "※ビジネス文体に調整済み",
+            ToneTemplateService.Technical => "※技術文体に調整済み",
+            ToneTemplateService.Casual => "※カジュアル文体に調整済み",
+            _ => "※敬体に調整済み"
         };
 
         return text.EndsWith(suffix, StringComparison.Ordinal) ? text : $"{text} {suffix}";

@@ -8,7 +8,7 @@ using TlaPlugin.Configuration;
 namespace TlaPlugin.Services;
 
 /// <summary>
-/// 统一管理并发与速率限制的节流器。
+/// 並列数とレート制限を統合管理するスロットル。
 /// </summary>
 public class TranslationThrottle
 {
@@ -31,7 +31,7 @@ public class TranslationThrottle
         if (!TryIncrement(tenantId))
         {
             _semaphore.Release();
-            throw new RateLimitExceededException("已超出每分钟请求上限。");
+            throw new RateLimitExceededException("1 分あたりのリクエスト上限を超えました。");
         }
 
         return new Lease(this);

@@ -8,7 +8,7 @@ using TlaPlugin.Models;
 namespace TlaPlugin.Services;
 
 /// <summary>
-/// 负责编排翻译流程并生成 Teams 响应的管线。
+/// 翻訳フローを編成し Teams 応答を生成するパイプライン。
 /// </summary>
 public class TranslationPipeline
 {
@@ -35,12 +35,12 @@ public class TranslationPipeline
     {
         if (string.IsNullOrWhiteSpace(request.Text))
         {
-            throw new TranslationException("翻译文本不能为空。");
+            throw new TranslationException("翻訳する本文は必須です。");
         }
 
         if (request.Text.Length > _options.MaxCharactersPerRequest)
         {
-            throw new TranslationException("字符数超过允许上限。");
+            throw new TranslationException("許容される文字数を超えています。");
         }
 
         var resolvedRequest = new TranslationRequest
@@ -61,7 +61,7 @@ public class TranslationPipeline
             var detection = _detector.Detect(resolvedRequest.Text);
             if (detection.Confidence < 0.7)
             {
-                throw new TranslationException("无法自动识别语言，请手动指定。");
+                throw new TranslationException("言語を自動判定できません。手動で選択してください。");
             }
             resolvedRequest.SourceLanguage = detection.Language;
         }
