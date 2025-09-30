@@ -58,7 +58,8 @@ public class ReplyService
                 Tone = request.LanguagePolicy.Tone,
                 TenantId = request.TenantId,
                 UserId = request.UserId,
-                ChannelId = request.ChannelId
+                ChannelId = request.ChannelId,
+                UiLocale = request.UiLocale
             }, cancellationToken);
             finalText = rewrite.RewrittenText;
             toneApplied = request.LanguagePolicy.Tone;
