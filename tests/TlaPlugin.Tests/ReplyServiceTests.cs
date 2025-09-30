@@ -24,7 +24,9 @@ public class ReplyServiceTests
         });
 
         var router = new TranslationRouter(new ModelProviderFactory(options), new ComplianceGateway(options), new BudgetGuard(options.Value), new AuditLogger(), new ToneTemplateService(), new RecordingTokenBroker(), new UsageMetricsService(), new LocalizationCatalogService(), options);
-        var service = new ReplyService(router, options);
+        var throttle = new TranslationThrottle(options);
+        var rewrite = new RewriteService(router, throttle);
+        var service = new ReplyService(rewrite, options);
 
         await Assert.ThrowsAsync<ReplyAuthorizationException>(() => service.SendReplyAsync(new ReplyRequest
         {
@@ -49,21 +51,26 @@ public class ReplyServiceTests
         });
 
         var router = new TranslationRouter(new ModelProviderFactory(options), new ComplianceGateway(options), new BudgetGuard(options.Value), new AuditLogger(), new ToneTemplateService(), new RecordingTokenBroker(), new UsageMetricsService(), new LocalizationCatalogService(), options);
-        var service = new ReplyService(router, options);
+        var throttle = new TranslationThrottle(options);
+        var rewrite = new RewriteService(router, throttle);
+        var service = new ReplyService(rewrite, options);
 
         var result = await service.SendReplyAsync(new ReplyRequest
         {
             ThreadId = "thread",
             ReplyText = "こんにちは",
+            EditedText = "手动调整",
             TenantId = "contoso",
             UserId = "user",
             ChannelId = "general",
-            LanguagePolicy = new ReplyLanguagePolicy { Tone = ToneTemplateService.Business }
+            LanguagePolicy = new ReplyLanguagePolicy { Tone = ToneTemplateService.Business, TargetLang = "ja" }
         }, CancellationToken.None);
 
         Assert.Equal("sent", result.Status);
+        Assert.Contains("手动调整", result.FinalText);
         Assert.Contains("商务语气", result.FinalText);
         Assert.Equal(ToneTemplateService.Business, result.ToneApplied);
+        Assert.Equal("ja", result.Language);
     }
 
     private sealed class RecordingTokenBroker : ITokenBroker

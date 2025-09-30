@@ -23,7 +23,7 @@ function createStubElement(initial = {}) {
   };
 }
 
-test("initMessageExtensionDialog posts payload and updates translation", async () => {
+test("dialog runs detect → translate → rewrite and submits rewritten text", async () => {
   const fetchCalls = [];
   const fakeFetch = async (url, options = {}) => {
     if (options.body) {
@@ -39,11 +39,20 @@ test("initMessageExtensionDialog posts payload and updates translation", async (
               { id: "auto", name: "Auto", isDefault: true },
               { id: "es", name: "Español" }
             ],
-            features: { terminologyToggle: true },
+            features: { terminologyToggle: true, toneToggle: true },
             pricing: { currency: "USD" }
           };
         }
-        return { text: "hola", metadata: { modelId: "model-a" } };
+        if (url === "/api/detect") {
+          return { language: "en", confidence: 0.9 };
+        }
+        if (url === "/api/translate") {
+          return { text: "hola", detectedLanguage: "en", metadata: { modelId: "model-a", tone: "neutral" } };
+        }
+        if (url === "/api/rewrite") {
+          return { text: "【正式】hola", metadata: { tone: "formal" } };
+        }
+        throw new Error(`unexpected url ${url}`);
       }
     };
   };
@@ -53,6 +62,8 @@ test("initMessageExtensionDialog posts payload and updates translation", async (
     sourceSelect: createStubElement(),
     targetSelect: createStubElement(),
     terminologyToggle: createStubElement({ checked: true }),
+    toneToggle: createStubElement({ checked: false }),
+    detectedLabel: createStubElement(),
     costHint: createStubElement(),
     input: createStubElement({ value: "hello" }),
     translation: createStubElement(),
@@ -76,16 +87,21 @@ test("initMessageExtensionDialog posts payload and updates translation", async (
   };
 
   await initMessageExtensionDialog({ ui, teams, fetcher: fakeFetch });
+  ui.toneToggle.checked = true;
+  await ui.toneToggle.trigger("change");
   await ui.input.trigger("input");
   await ui.previewButton.trigger("click");
-  assert.equal(fetchCalls.length, 1);
-  assert.equal(fetchCalls[0].url, "/api/translate");
-  assert.equal(fetchCalls[0].body.text, "hello");
+  assert.equal(fetchCalls[0].url, "/api/detect");
+  assert.equal(fetchCalls[1].url, "/api/translate");
+  assert.equal(fetchCalls[1].body.text, "hello");
   await ui.submitButton.trigger("click");
-  assert.equal(teams.dialog.lastSubmit.translation, "hola");
+  assert.equal(fetchCalls[2].url, "/api/rewrite");
+  assert.equal(teams.dialog.lastSubmit.translation, "【正式】hola");
+  assert.equal(teams.dialog.lastSubmit.tone, "formal");
+  assert.equal(ui.translation.value, "【正式】hola");
 });
 
-test("initMessageExtensionDialog falls back to first non-auto target", async () => {
+test("dialog defaults to first non-auto target and preserves detection label", async () => {
   const fetchCalls = [];
   const fakeFetch = async (url, options = {}) => {
     if (options.body) {
@@ -102,11 +118,20 @@ test("initMessageExtensionDialog falls back to first non-auto target", async () 
               { id: "fr", name: "Français" },
               { id: "de", name: "Deutsch" }
             ],
-            features: { terminologyToggle: true },
+            features: { terminologyToggle: true, toneToggle: true },
             pricing: { currency: "USD" }
           };
         }
-        return { text: "bonjour", metadata: { modelId: "model-a" } };
+        if (url === "/api/detect") {
+          return { language: "fr", confidence: 0.6 };
+        }
+        if (url === "/api/translate") {
+          return { text: "bonjour", detectedLanguage: "fr", metadata: { modelId: "model-a" } };
+        }
+        if (url === "/api/rewrite") {
+          return { text: "bonjour", metadata: { tone: "neutral" } };
+        }
+        throw new Error(`unexpected url ${url}`);
       }
     };
   };
@@ -116,6 +141,8 @@ test("initMessageExtensionDialog falls back to first non-auto target", async () 
     sourceSelect: createStubElement(),
     targetSelect: createStubElement(),
     terminologyToggle: createStubElement({ checked: true }),
+    toneToggle: createStubElement({ checked: true }),
+    detectedLabel: createStubElement(),
     costHint: createStubElement(),
     input: createStubElement({ value: "hello" }),
     translation: createStubElement(),
@@ -128,7 +155,7 @@ test("initMessageExtensionDialog falls back to first non-auto target", async () 
     app: {
       async initialize() {},
       async getContext() {
-        return { tenant: { id: "tenant" }, user: { id: "user" }, channel: { id: "channel" }, app: { locale: "zh-CN" } };
+        return { tenant: { id: "tenant" }, user: { id: "user" }, channel: { id: "channel" }, app: { locale: "ja-JP" } };
       }
     },
     dialog: {
@@ -144,8 +171,10 @@ test("initMessageExtensionDialog falls back to first non-auto target", async () 
 
   assert.equal(state.targetLanguage, "fr");
   assert.equal(ui.targetSelect.value, "fr");
-  assert.equal(fetchCalls.length, 1);
-  assert.equal(fetchCalls[0].body.targetLanguage, "fr");
+  assert.equal(fetchCalls[0].url, "/api/detect");
+  assert.match(ui.detectedLabel.textContent, /Français/);
+  await ui.submitButton.trigger("click");
+  assert.equal(fetchCalls.at(-1).url, "/api/rewrite");
 });
 
 test("initMessageExtensionDialog corrects target when locale missing from metadata", async () => {

@@ -27,12 +27,14 @@ test("buildTenantConfig serialises state", () => {
     {
       targetLanguage: "ja",
       allowedModels: new Set(["model-a", "model-b"]),
-      useTerminology: true
+      useTerminology: true,
+      tone: "formal"
     },
     { tenant: { id: "tenant-1" } }
   );
   assert.deepEqual(config.allowedModels, ["model-a", "model-b"]);
   assert.equal(config.features.terminology, true);
+  assert.equal(config.features.tone, "formal");
   assert.equal(config.tenantId, "tenant-1");
 });
 
@@ -72,11 +74,12 @@ test("initSettingsTab registers save handler", async () => {
   const modelContainer = createStubElement();
   const defaultLanguageSelect = createStubElement();
   const terminologyToggle = createStubElement({ checked: true });
+  const toneSelect = createStubElement({ value: "formal" });
   const statusLabel = createStubElement();
   const saveButton = createStubElement();
 
   await initSettingsTab({
-    ui: { modelContainer, defaultLanguageSelect, terminologyToggle, statusLabel, saveButton },
+    ui: { modelContainer, defaultLanguageSelect, terminologyToggle, toneSelect, statusLabel, saveButton },
     teams: sdk,
     fetcher: async () => ({
       ok: true,
@@ -90,7 +93,7 @@ test("initSettingsTab registers save handler", async () => {
             { id: "auto", name: "Auto", isDefault: true },
             { id: "ja", name: "日本語" }
           ],
-          features: { terminologyToggle: true },
+          features: { terminologyToggle: true, toneToggle: true },
           pricing: { currency: "USD" }
         };
       }
@@ -99,8 +102,12 @@ test("initSettingsTab registers save handler", async () => {
 
   assert.equal(validitySet, true);
   await sdk.pages.config.setConfig({});
+  toneSelect.value = "formal";
+  await toneSelect.trigger("change");
   await saveButton.trigger("click");
   assert.equal(typeof savedConfig.state, "string");
+  const parsed = JSON.parse(savedConfig.state);
+  assert.equal(parsed.features.tone, "formal");
   assert.equal(statusLabel.textContent, "已保存");
   assert.equal(successNotified, true);
 });

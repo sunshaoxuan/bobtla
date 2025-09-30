@@ -12,12 +12,12 @@ namespace TlaPlugin.Services;
 /// </summary>
 public class ReplyService
 {
-    private readonly TranslationRouter _router;
+    private readonly RewriteService _rewriteService;
     private readonly PluginOptions _options;
 
-    public ReplyService(TranslationRouter router, IOptions<PluginOptions>? options = null)
+    public ReplyService(RewriteService rewriteService, IOptions<PluginOptions>? options = null)
     {
-        _router = router;
+        _rewriteService = rewriteService;
         _options = options?.Value ?? new PluginOptions();
     }
 
@@ -28,7 +28,8 @@ public class ReplyService
             throw new ArgumentException("threadId は必須です。", nameof(request));
         }
 
-        if (string.IsNullOrWhiteSpace(request.ReplyText))
+        var initialText = string.IsNullOrWhiteSpace(request.EditedText) ? request.ReplyText : request.EditedText!;
+        if (string.IsNullOrWhiteSpace(initialText))
         {
             throw new ArgumentException("replyText は必須です。", nameof(request));
         }
@@ -46,13 +47,14 @@ public class ReplyService
             }
         }
 
-        string finalText = request.ReplyText;
+        string finalText = initialText;
         string? toneApplied = null;
         if (!string.IsNullOrWhiteSpace(request.LanguagePolicy?.Tone) && request.LanguagePolicy!.Tone != TranslationRequest.DefaultTone)
         {
-            var rewrite = await _router.RewriteAsync(new RewriteRequest
+            var rewrite = await _rewriteService.RewriteAsync(new RewriteRequest
             {
                 Text = request.ReplyText,
+                EditedText = request.EditedText,
                 Tone = request.LanguagePolicy.Tone,
                 TenantId = request.TenantId,
                 UserId = request.UserId,
@@ -62,6 +64,9 @@ public class ReplyService
             toneApplied = request.LanguagePolicy.Tone;
         }
 
-        return new ReplyResult(Guid.NewGuid().ToString(), "sent", finalText, toneApplied);
+        return new ReplyResult(Guid.NewGuid().ToString(), "sent", finalText, toneApplied)
+        {
+            Language = request.LanguagePolicy?.TargetLang ?? string.Empty
+        };
     }
 }

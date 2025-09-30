@@ -16,6 +16,8 @@ public class ReplyRequest
 {
     public string ThreadId { get; set; } = string.Empty;
     public string ReplyText { get; set; } = string.Empty;
+    public string? EditedText { get; set; }
+        = null;
     public string TenantId { get; set; } = string.Empty;
     public string UserId { get; set; } = string.Empty;
     public string? ChannelId { get; set; }
@@ -27,4 +29,27 @@ public class ReplyRequest
 /// <summary>
 /// 回复请求的响应。
 /// </summary>
-public record ReplyResult(string MessageId, string Status, string? FinalText = null, string? ToneApplied = null);
+public class ReplyResult
+{
+    public ReplyResult(string messageId, string status, string? finalText = null, string? toneApplied = null)
+    {
+        MessageId = messageId;
+        Status = status;
+        FinalText = finalText;
+        ToneApplied = toneApplied;
+        PostedAt = DateTimeOffset.UtcNow;
+    }
+
+    public string MessageId { get; }
+
+    public string Status { get; }
+
+    public string? FinalText { get; }
+
+    public string? ToneApplied { get; }
+
+    public string Language { get; init; } = string.Empty;
+
+    public DateTimeOffset PostedAt { get; init; }
+        = DateTimeOffset.UtcNow;
+}

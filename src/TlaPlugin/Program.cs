@@ -51,6 +51,7 @@ builder.Services.AddSingleton<ConfigurationSummaryService>();
 builder.Services.AddSingleton<ProjectStatusService>();
 builder.Services.AddSingleton<DevelopmentRoadmapService>();
 builder.Services.AddSingleton<ReplyService>();
+builder.Services.AddSingleton<RewriteService>();
 builder.Services.AddSingleton<CostEstimatorService>();
 
 var app = builder.Build();
@@ -69,7 +70,7 @@ app.MapPost("/api/offline-draft", async (OfflineDraftRequest request, MessageExt
     return Results.Json(result, options: jsonOptions);
 });
 
-app.MapPost("/api/detect", async (LanguageDetectionRequest request, TranslationRouter router, IOptions<PluginOptions> options, CancellationToken cancellationToken) =>
+app.MapPost("/api/detect", (LanguageDetectionRequest request, LanguageDetector detector, IOptions<PluginOptions> options) =>
 {
     if (request is null || string.IsNullOrWhiteSpace(request.Text))
     {
@@ -81,22 +82,15 @@ app.MapPost("/api/detect", async (LanguageDetectionRequest request, TranslationR
         return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
     }
 
-    try
-    {
-        var detection = await router.DetectAsync(request, cancellationToken);
-        return Results.Json(detection, options: jsonOptions);
-    }
-    catch (TranslationException ex)
-    {
-        return Results.Problem(ex.Message, statusCode: StatusCodes.Status503ServiceUnavailable);
-    }
+    var detection = detector.Detect(request.Text);
+    return Results.Json(detection, options: jsonOptions);
 });
 
-app.MapPost("/api/rewrite", async (RewriteRequest request, TranslationRouter router, CancellationToken cancellationToken) =>
+app.MapPost("/api/rewrite", async (RewriteRequest request, RewriteService service, CancellationToken cancellationToken) =>
 {
     try
     {
-        var result = await router.RewriteAsync(request, cancellationToken);
+        var result = await service.RewriteAsync(request, cancellationToken);
         return Results.Json(new
         {
             rewrittenText = result.RewrittenText,
@@ -185,18 +179,6 @@ app.MapGet("/api/cost-latency", (int payloadSize, string modelId, CostEstimatorS
     {
         return Results.NotFound(new { error = ex.Message });
     }
-});
-
-app.MapPost("/api/rewrite", async (RewriteRequest request, MessageExtensionHandler handler) =>
-{
-    var result = await handler.HandleRewriteAsync(request);
-    return Results.Json(result, options: new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
-});
-
-app.MapPost("/api/reply", async (ReplyRequest request, MessageExtensionHandler handler) =>
-{
-    var result = await handler.HandleReplyAsync(request);
-    return Results.Json(result, options: new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
 });
 
 app.MapGet("/api/configuration", (ConfigurationSummaryService service) =>

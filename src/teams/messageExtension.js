@@ -9,6 +9,27 @@ export class MessageExtensionHandler {
     this.pipeline = pipeline;
   }
 
+  async detectLanguage(payload) {
+    return this.pipeline.detectLanguage(payload);
+  }
+
+  async translate(payload) {
+    return this.pipeline.translateText(payload);
+  }
+
+  async rewrite(payload) {
+    return this.pipeline.rewriteTranslation(payload);
+  }
+
+  async reply(payload) {
+    return this.pipeline.replyWithTranslation({
+      translation: payload.translation,
+      sourceLanguage: payload.sourceLanguage,
+      targetLanguage: payload.targetLanguage,
+      metadata: payload.metadata
+    });
+  }
+
   async handleTranslateCommand({ text, sourceLanguage, targetLanguage, tenantId, userId, channelId }) {
     try {
       return await this.pipeline.translateAndReply({

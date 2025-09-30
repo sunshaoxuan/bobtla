@@ -6,6 +6,8 @@ namespace TlaPlugin.Models;
 public class RewriteRequest
 {
     public string Text { get; set; } = string.Empty;
+    public string? EditedText { get; set; }
+        = null;
     public string Tone { get; set; } = TranslationRequest.DefaultTone;
     public string TenantId { get; set; } = string.Empty;
     public string UserId { get; set; } = string.Empty;

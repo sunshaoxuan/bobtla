@@ -47,9 +47,58 @@ public class TranslationPipelineTests
         var first = await pipeline.ExecuteAsync(request, CancellationToken.None);
         var second = await pipeline.ExecuteAsync(request, CancellationToken.None);
 
-        Assert.Equal(first.TranslatedText, second.TranslatedText);
-        Assert.Equal("ja-JP", first.UiLocale);
-        Assert.Equal("ja-JP", second.UiLocale);
+        Assert.False(first.RequiresLanguageSelection);
+        Assert.False(second.RequiresLanguageSelection);
+
+        var firstTranslation = Assert.NotNull(first.Translation);
+        var secondTranslation = Assert.NotNull(second.Translation);
+
+        Assert.Equal(firstTranslation.TranslatedText, secondTranslation.TranslatedText);
+        Assert.Equal("ja-JP", firstTranslation.UiLocale);
+        Assert.Equal("ja-JP", secondTranslation.UiLocale);
+    }
+
+    [Fact]
+    public async Task UsesProvidedSourceLanguageWhenDetectionIsUncertain()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            DailyBudgetUsd = 0.2m,
+            CacheTtl = TimeSpan.FromHours(1),
+            RequestsPerMinute = 10,
+            MaxConcurrentTranslations = 2,
+            Providers = new List<ModelProviderOptions>
+            {
+                new() { Id = "primary", CostPerCharUsd = 0.1m, Regions = new List<string>{"japan"}, Certifications = new List<string>{"iso"} }
+            },
+            Compliance = new CompliancePolicyOptions
+            {
+                RequiredRegionTags = new List<string> { "japan" },
+                RequiredCertifications = new List<string> { "iso" }
+            }
+        });
+
+        var pipeline = BuildPipeline(options);
+
+        var detection = await pipeline.DetectAsync(new LanguageDetectionRequest
+        {
+            Text = "12345",
+            TenantId = "contoso"
+        }, CancellationToken.None);
+
+        Assert.True(detection.Confidence < 0.75);
+
+        var result = await pipeline.TranslateAsync(new TranslationRequest
+        {
+            Text = "12345",
+            TenantId = "contoso",
+            UserId = "user",
+            TargetLanguage = "ja",
+            SourceLanguage = "en"
+        }, CancellationToken.None);
+
+        Assert.Equal("ja", result.TargetLanguage);
+        Assert.Contains("12345", result.TranslatedText);
     }
 
     [Fact]
@@ -72,7 +121,7 @@ public class TranslationPipelineTests
 
         var pipeline = BuildPipeline(options);
 
-        await pipeline.ExecuteAsync(new TranslationRequest
+        var first = await pipeline.ExecuteAsync(new TranslationRequest
         {
             Text = "first",
             TenantId = "contoso",
@@ -80,6 +129,8 @@ public class TranslationPipelineTests
             TargetLanguage = "ja",
             SourceLanguage = "en"
         }, CancellationToken.None);
+
+        Assert.NotNull(first.Translation);
 
         await Assert.ThrowsAsync<RateLimitExceededException>(() => pipeline.ExecuteAsync(new TranslationRequest
         {
@@ -133,13 +184,47 @@ public class TranslationPipelineTests
             UiLocale = "zh-CN"
         }, CancellationToken.None);
 
-        Assert.Equal("ja-JP", japanese.UiLocale);
-        Assert.Equal("zh-CN", chinese.UiLocale);
+        var japaneseResult = Assert.NotNull(japanese.Translation);
+        var chineseResult = Assert.NotNull(chinese.Translation);
 
-        var jaTitle = japanese.AdaptiveCard!["body"]!.AsArray()[0]!.AsObject()["text"]!.GetValue<string>();
-        var zhTitle = chinese.AdaptiveCard!["body"]!.AsArray()[0]!.AsObject()["text"]!.GetValue<string>();
+        Assert.Equal("ja-JP", japaneseResult.UiLocale);
+        Assert.Equal("zh-CN", chineseResult.UiLocale);
+
+        var jaTitle = japaneseResult.AdaptiveCard!["body"]!.AsArray()[0]!.AsObject()["text"]!.GetValue<string>();
+        var zhTitle = chineseResult.AdaptiveCard!["body"]!.AsArray()[0]!.AsObject()["text"]!.GetValue<string>();
         Assert.Equal("翻訳結果", jaTitle);
         Assert.Equal("翻译结果", zhTitle);
+    }
+
+    [Fact]
+    public async Task RewriteAsyncRespectsEditedText()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            Providers = new List<ModelProviderOptions>
+            {
+                new() { Id = "primary", Regions = new List<string>{"japan"}, Certifications = new List<string>{"iso"} }
+            },
+            Compliance = new CompliancePolicyOptions
+            {
+                RequiredRegionTags = new List<string> { "japan" },
+                RequiredCertifications = new List<string> { "iso" }
+            }
+        });
+
+        var pipeline = BuildPipeline(options);
+
+        var rewrite = await pipeline.RewriteAsync(new RewriteRequest
+        {
+            Text = "Original",
+            EditedText = "Custom content",
+            TenantId = "contoso",
+            UserId = "user",
+            Tone = ToneTemplateService.Business
+        }, CancellationToken.None);
+
+        Assert.Contains("Custom content", rewrite.RewrittenText);
+        Assert.Equal("primary", rewrite.ModelId);
     }
 
     [Fact]
@@ -224,9 +309,90 @@ public class TranslationPipelineTests
 
         var result = await pipeline.ExecuteAsync(request, CancellationToken.None);
 
-        var match = Assert.Single(result.GlossaryMatches);
+        var translation = Assert.NotNull(result.Translation);
+        var match = Assert.Single(translation.GlossaryMatches);
         Assert.Equal(GlossaryDecisionKind.UseAlternative, match.Resolution);
         Assert.Equal("显卡", match.AppliedTarget);
+    }
+
+    [Fact]
+    public async Task ReturnsDetectionCandidatesWhenConfidenceLow()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            Providers = new List<ModelProviderOptions>
+            {
+                new() { Id = "primary", Regions = new List<string>{"japan"}, Certifications = new List<string>{"iso"} }
+            },
+            Compliance = new CompliancePolicyOptions
+            {
+                RequiredRegionTags = new List<string> { "japan" },
+                RequiredCertifications = new List<string> { "iso" }
+            }
+        });
+
+        var pipeline = BuildPipeline(options);
+
+        var result = await pipeline.ExecuteAsync(new TranslationRequest
+        {
+            Text = "Hello there",
+            TenantId = "contoso",
+            UserId = "user",
+            TargetLanguage = "ja"
+        }, CancellationToken.None);
+
+        Assert.True(result.RequiresLanguageSelection);
+        Assert.Null(result.Translation);
+        var detection = Assert.NotNull(result.Detection);
+        Assert.Equal("en", detection.Language);
+        Assert.NotEmpty(detection.Candidates);
+        Assert.Contains(detection.Candidates, candidate => string.Equals(candidate.Language, "en", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task RespectsManualSourceLanguageAfterDetection()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            Providers = new List<ModelProviderOptions>
+            {
+                new() { Id = "primary", Regions = new List<string>{"japan"}, Certifications = new List<string>{"iso"} }
+            },
+            Compliance = new CompliancePolicyOptions
+            {
+                RequiredRegionTags = new List<string> { "japan" },
+                RequiredCertifications = new List<string> { "iso" }
+            }
+        });
+
+        var pipeline = BuildPipeline(options);
+        var initialRequest = new TranslationRequest
+        {
+            Text = "Hello again",
+            TenantId = "contoso",
+            UserId = "user",
+            TargetLanguage = "ja"
+        };
+
+        var detectionResult = await pipeline.ExecuteAsync(initialRequest, CancellationToken.None);
+        var detected = Assert.NotNull(detectionResult.Detection);
+        var selectedLanguage = detected.Candidates.First().Language;
+
+        var manualRequest = new TranslationRequest
+        {
+            Text = initialRequest.Text,
+            TenantId = initialRequest.TenantId,
+            UserId = initialRequest.UserId,
+            TargetLanguage = initialRequest.TargetLanguage,
+            SourceLanguage = selectedLanguage
+        };
+
+        var translationResult = await pipeline.ExecuteAsync(manualRequest, CancellationToken.None);
+
+        Assert.False(translationResult.RequiresLanguageSelection);
+        var translation = Assert.NotNull(translationResult.Translation);
+        Assert.Equal(selectedLanguage, translation.SourceLanguage);
+        Assert.Equal("ja", translation.TargetLanguage);
     }
 
     private static TranslationPipeline BuildPipeline(IOptions<PluginOptions> options, GlossaryService? glossaryOverride = null)
@@ -236,6 +402,8 @@ public class TranslationPipelineTests
         var router = new TranslationRouter(new ModelProviderFactory(options), new ComplianceGateway(options), new BudgetGuard(options.Value), new AuditLogger(), new ToneTemplateService(), new TokenBroker(new KeyVaultSecretResolver(options), options), new UsageMetricsService(), localization, options);
         var cache = new TranslationCache(options);
         var throttle = new TranslationThrottle(options);
-        return new TranslationPipeline(router, glossary, new OfflineDraftStore(options), new LanguageDetector(), cache, throttle, options);
+        var rewrite = new RewriteService(router, throttle);
+        var reply = new ReplyService(rewrite, options);
+        return new TranslationPipeline(router, glossary, new OfflineDraftStore(options), new LanguageDetector(), cache, throttle, rewrite, reply, options);
     }
 }

@@ -56,6 +56,39 @@ public class MessageExtensionHandlerTests
     }
 
     [Fact]
+    public async Task ReturnsLanguageSelectionWhenDetectionLow()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            Providers = new List<ModelProviderOptions>
+            {
+                new() { Id = "primary", Regions = new List<string>{"japan"}, Certifications = new List<string>{"iso"} }
+            },
+            Compliance = new CompliancePolicyOptions
+            {
+                RequiredRegionTags = new List<string> { "japan" },
+                RequiredCertifications = new List<string> { "iso" }
+            }
+        });
+
+        var handler = BuildHandler(options);
+        var response = await handler.HandleTranslateAsync(new TranslationRequest
+        {
+            Text = "Hello team",
+            TenantId = "contoso",
+            UserId = "user",
+            TargetLanguage = "ja"
+        });
+
+        Assert.Equal("languageSelection", response["type"]?.GetValue<string>());
+        var candidates = response["candidates"]!.AsArray();
+        Assert.NotEmpty(candidates);
+        var first = candidates[0]!.AsObject();
+        Assert.True(first.ContainsKey("language"));
+        Assert.True(first.ContainsKey("confidence"));
+    }
+
+    [Fact]
     public async Task RendersAdditionalTranslationsInAdaptiveCard()
     {
         var options = Options.Create(new PluginOptions
@@ -296,7 +329,9 @@ public class MessageExtensionHandlerTests
         var router = new TranslationRouter(new ModelProviderFactory(options), compliance, new BudgetGuard(options.Value), new AuditLogger(), new ToneTemplateService(), new TokenBroker(resolver, options), new UsageMetricsService(), localization, options);
         var cache = new TranslationCache(options);
         var throttle = new TranslationThrottle(options);
-        var pipeline = new TranslationPipeline(router, glossary, new OfflineDraftStore(options), new LanguageDetector(), cache, throttle, options);
+        var rewrite = new RewriteService(router, throttle);
+        var reply = new ReplyService(rewrite, options);
+        var pipeline = new TranslationPipeline(router, glossary, new OfflineDraftStore(options), new LanguageDetector(), cache, throttle, rewrite, reply, options);
         return new MessageExtensionHandler(pipeline, localization, options);
     }
 }
