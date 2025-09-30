@@ -34,21 +34,24 @@ export async function initComposePlugin({ ui = resolveComposeUi(), teams, fetche
   state.text = "";
   state.translation = "";
 
+  const targetLanguages = metadata.languages.filter((lang) => lang.id !== "auto");
+
   if (ui.targetSelect && typeof ui.targetSelect.replaceChildren === "function" && typeof document !== "undefined") {
-    const nodes = metadata.languages
-      .filter((lang) => lang.id !== "auto")
-      .map((lang) => {
-        const option = document.createElement("option");
-        option.value = lang.id;
-        option.textContent = lang.name;
-        return option;
-      });
+    const nodes = targetLanguages.map((lang) => {
+      const option = document.createElement("option");
+      option.value = lang.id;
+      option.textContent = lang.name;
+      return option;
+    });
     ui.targetSelect.replaceChildren(...nodes);
   } else if (ui.targetSelect) {
-    ui.targetSelect.optionsData = metadata.languages.filter((lang) => lang.id !== "auto");
+    ui.targetSelect.optionsData = targetLanguages;
   }
 
   if (ui.targetSelect) {
+    if (!targetLanguages.some((lang) => lang.id === state.targetLanguage) && targetLanguages.length) {
+      state.targetLanguage = targetLanguages[0].id;
+    }
     ui.targetSelect.value = state.targetLanguage;
     ui.targetSelect.addEventListener?.("change", (event) => {
       state.targetLanguage = event.target.value;

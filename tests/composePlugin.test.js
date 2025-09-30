@@ -82,3 +82,61 @@ test("compose plugin sends translate request with compose text", async () => {
   await applyButton.trigger("click");
   assert.equal(preview.value || preview.textContent, "hola");
 });
+
+test("compose plugin falls back to first non-auto target", async () => {
+  const fetchCalls = [];
+  const fakeFetch = async (url, options = {}) => {
+    if (options.body) {
+      fetchCalls.push({ url, options: JSON.parse(options.body) });
+    }
+    return {
+      ok: true,
+      async json() {
+        if (url === "/api/metadata") {
+          return {
+            models: [{ id: "model-a", displayName: "Model A", costPerCharUsd: 0.00002 }],
+            languages: [
+              { id: "auto", name: "Auto", isDefault: true },
+              { id: "fr", name: "Français" },
+              { id: "de", name: "Deutsch" }
+            ],
+            features: { terminologyToggle: true },
+            pricing: { currency: "USD" }
+          };
+        }
+        return { text: "bonjour" };
+      }
+    };
+  };
+
+  const suggestButton = createStubElement();
+  const input = createStubElement({ value: "hello" });
+  const preview = createStubElement();
+  const targetSelect = createStubElement();
+  targetSelect.replaceChildren = () => {};
+
+  const teams = {
+    app: {
+      async initialize() {},
+      async getContext() {
+        return { tenant: { id: "tenant" }, user: { id: "user" }, channel: { id: "channel" }, app: { locale: "ja-JP" } };
+      }
+    },
+    conversations: {
+      async sendMessageToConversation() {}
+    }
+  };
+
+  const { state } = await initComposePlugin({
+    ui: { input, targetSelect, suggestButton, preview },
+    teams,
+    fetcher: fakeFetch
+  });
+
+  await suggestButton.trigger("click");
+
+  assert.equal(state.targetLanguage, "fr");
+  assert.equal(targetSelect.value, "fr");
+  assert.equal(fetchCalls.length, 1);
+  assert.equal(fetchCalls[0].options.targetLanguage, "fr");
+});
