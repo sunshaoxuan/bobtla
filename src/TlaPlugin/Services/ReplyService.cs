@@ -28,7 +28,8 @@ public class ReplyService
             throw new ArgumentException("threadId は必須です。", nameof(request));
         }
 
-        var initialText = string.IsNullOrWhiteSpace(request.EditedText) ? request.ReplyText : request.EditedText!;
+        var replyText = string.IsNullOrWhiteSpace(request.ReplyText) ? request.Text : request.ReplyText;
+        var initialText = string.IsNullOrWhiteSpace(request.EditedText) ? replyText : request.EditedText!;
         if (string.IsNullOrWhiteSpace(initialText))
         {
             throw new ArgumentException("replyText は必須です。", nameof(request));
@@ -53,7 +54,7 @@ public class ReplyService
         {
             var rewrite = await _rewriteService.RewriteAsync(new RewriteRequest
             {
-                Text = request.ReplyText,
+                Text = replyText,
                 EditedText = request.EditedText,
                 Tone = request.LanguagePolicy.Tone,
                 TenantId = request.TenantId,

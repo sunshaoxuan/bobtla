@@ -16,11 +16,15 @@ public class ReplyRequest
 {
     public string ThreadId { get; set; } = string.Empty;
     public string ReplyText { get; set; } = string.Empty;
+    public string Text { get; set; } = string.Empty;
     public string? EditedText { get; set; }
         = null;
     public string TenantId { get; set; } = string.Empty;
     public string UserId { get; set; } = string.Empty;
     public string? ChannelId { get; set; }
+        = null;
+    public string Language { get; set; } = "auto";
+    public string? UiLocale { get; set; }
         = null;
     public ReplyLanguagePolicy? LanguagePolicy { get; set; }
         = null;
