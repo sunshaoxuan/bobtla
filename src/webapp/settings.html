@@ -29,6 +29,56 @@
           <input type="checkbox" data-terminology-toggle checked /> 启用术语库
         </label>
       </section>
+      <section class="glossary">
+        <h2>术语库管理</h2>
+        <form class="glossary__form" data-glossary-form>
+          <div class="field">
+            <label>作用域
+              <select name="scopeType" data-glossary-scope>
+                <option value="tenant">租户</option>
+                <option value="channel">频道</option>
+                <option value="user">用户</option>
+              </select>
+            </label>
+          </div>
+          <div class="field">
+            <label>标识
+              <input type="text" name="scopeId" data-glossary-scope-id placeholder="例如 contoso" />
+            </label>
+          </div>
+          <div class="field">
+            <label>术语文件
+              <input type="file" name="file" data-glossary-file accept=".csv,.tbx,.xml" required />
+            </label>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" name="overwrite" data-glossary-overwrite /> 覆盖冲突条目
+          </label>
+          <button type="submit" class="btn" data-glossary-submit>上传术语表</button>
+        </form>
+        <div class="glossary__progress" data-glossary-progress hidden>
+          <progress max="100" value="0"></progress>
+          <span data-glossary-progress-label>等待上传</span>
+        </div>
+        <div class="glossary__errors" data-glossary-errors hidden>
+          <h3>上传警告</h3>
+          <ul data-glossary-error-list></ul>
+        </div>
+        <div class="glossary__conflicts" data-glossary-conflicts hidden>
+          <h3>冲突条目</h3>
+          <ul data-glossary-conflict-list></ul>
+        </div>
+        <div class="glossary__list">
+          <h3>现有术语</h3>
+          <ul data-glossary-list></ul>
+        </div>
+        <div class="glossary__policies">
+          <h3>禁译库</h3>
+          <ul data-banned-term-list></ul>
+          <h3>风格模板</h3>
+          <ul data-style-template-list></ul>
+        </div>
+      </section>
       <p class="settings__status" data-settings-status></p>
     </main>
     <footer class="settings__footer">

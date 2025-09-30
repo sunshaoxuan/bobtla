@@ -41,6 +41,14 @@ public class ConfigurationSummaryService
                 p.Certifications.ToList()))
             .ToList();
 
+        var tenantPolicies = options.TenantPolicies ?? new TenantPolicyOptions();
+        var tenantSummary = new TenantPolicySummary(
+            tenantPolicies.TenantId,
+            tenantPolicies.GlossaryFallbackPolicy,
+            tenantPolicies.EnforceTenantGlossary,
+            tenantPolicies.BannedTerms.ToList(),
+            tenantPolicies.StyleTemplates.ToList());
+
         return new ConfigurationSummary(
             options.MaxCharactersPerRequest,
             options.DailyBudgetUsd,
@@ -50,6 +58,7 @@ public class ConfigurationSummaryService
             options.DefaultTargetLanguages.ToList(),
             _toneTemplates.GetAvailableTones(),
             providers,
-            _glossary.GetEntries().Count);
+            _glossary.GetEntries().Count,
+            tenantSummary);
     }
 }
