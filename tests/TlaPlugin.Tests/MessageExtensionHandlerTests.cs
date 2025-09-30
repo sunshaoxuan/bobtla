@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using TlaPlugin.Configuration;
 using TlaPlugin.Models;
@@ -470,7 +471,7 @@ public class MessageExtensionHandlerTests
         var throttle = new TranslationThrottle(options);
         var rewrite = new RewriteService(router, throttle);
         var reply = new ReplyService(rewrite, options);
-        var context = contextOverride ?? new ContextRetrievalService(options);
+        var context = contextOverride ?? new ContextRetrievalService(new NullTeamsMessageClient(), new MemoryCache(new MemoryCacheOptions()), options);
         var pipeline = new TranslationPipeline(router, glossary, new OfflineDraftStore(options), new LanguageDetector(), cache, throttle, context, rewrite, reply, options);
         return new MessageExtensionHandler(pipeline, localization, options);
     }

@@ -211,14 +211,27 @@ public class TranslationPipeline
             return;
         }
 
-        var retrieval = await _contextRetrieval.GetContextAsync(new ContextRetrievalRequest
+        ContextRetrievalResult retrieval;
+        try
         {
-            TenantId = request.TenantId,
-            ChannelId = request.ChannelId,
-            ThreadId = request.ChannelId,
-            MaxMessages = _options.Rag.MaxMessages,
-            ContextHints = new List<string>(request.ContextHints)
-        }, cancellationToken);
+            retrieval = await _contextRetrieval.GetContextAsync(new ContextRetrievalRequest
+            {
+                TenantId = request.TenantId,
+                ChannelId = request.ChannelId,
+                ThreadId = request.ChannelId,
+                MaxMessages = _options.Rag.MaxMessages,
+                ContextHints = new List<string>(request.ContextHints)
+            }, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            request.ContextSummary = null;
+            return;
+        }
 
         if (!retrieval.HasContext)
         {
