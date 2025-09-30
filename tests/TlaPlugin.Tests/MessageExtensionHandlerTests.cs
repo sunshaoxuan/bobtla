@@ -118,7 +118,7 @@ public class MessageExtensionHandlerTests
         Assert.Equal("message", response["type"]?.GetValue<string>());
         var body = response["attachments"]!.AsArray().First()["content"]!.AsObject();
         var title = body["body"]!.AsArray().First().AsObject();
-        Assert.Contains("予算", title["text"]!.GetValue<string>());
+        Assert.Contains("预算", title["text"]!.GetValue<string>());
     }
 
     [Fact]
@@ -194,7 +194,7 @@ public class MessageExtensionHandlerTests
 
         var body = response["attachments"]!.AsArray().First()["content"]!.AsObject();
         var title = body["body"]!.AsArray().First().AsObject();
-        Assert.Contains("レート", title["text"]!.GetValue<string>());
+        Assert.Contains("速率", title["text"]!.GetValue<string>());
     }
 
     private static MessageExtensionHandler BuildHandler(IOptions<PluginOptions> options)
