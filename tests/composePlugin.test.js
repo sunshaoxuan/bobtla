@@ -214,3 +214,60 @@ test("compose plugin corrects target when locale missing from metadata", async (
   assert.equal(fetchCalls.length, 1);
   assert.equal(fetchCalls[0].options.targetLanguage, "ja");
 });
+
+test("compose plugin uses concrete target when user locale is unavailable", async () => {
+  const fetchCalls = [];
+  const fakeFetch = async (url, options = {}) => {
+    if (options.body) {
+      fetchCalls.push({ url, options: JSON.parse(options.body) });
+    }
+    return {
+      ok: true,
+      async json() {
+        if (url === "/api/metadata") {
+          return {
+            models: [{ id: "model-a", displayName: "Model A", costPerCharUsd: 0.00002 }],
+            languages: [
+              { id: "auto", name: "Auto", isDefault: true },
+              { id: "es", name: "Español" }
+            ],
+            features: { terminologyToggle: true, toneToggle: true },
+            pricing: { currency: "USD" }
+          };
+        }
+        return { text: "hola" };
+      }
+    };
+  };
+
+  const suggestButton = createStubElement();
+  const input = createStubElement({ value: "hello" });
+  const preview = createStubElement();
+  const targetSelect = Object.assign(createStubElement(), { replaceChildren() {} });
+
+  const teams = {
+    app: {
+      async initialize() {},
+      async getContext() {
+        return { tenant: { id: "tenant" }, user: { id: "user" }, channel: { id: "channel" }, app: {} };
+      }
+    },
+    conversations: {
+      async sendMessageToConversation() {}
+    }
+  };
+
+  const { state } = await initComposePlugin({
+    ui: { input, targetSelect, suggestButton, preview },
+    teams,
+    fetcher: fakeFetch
+  });
+
+  await suggestButton.trigger("click");
+
+  const translateCall = fetchCalls.find((call) => call.url === "/api/translate");
+  assert.equal(state.targetLanguage, "es");
+  assert.equal(targetSelect.value, "es");
+  assert.ok(translateCall, "expected translate call");
+  assert.equal(translateCall.options.targetLanguage, "es");
+});

@@ -240,3 +240,72 @@ test("initMessageExtensionDialog corrects target when locale missing from metada
   assert.equal(fetchCalls.at(-1).url, "/api/translate");
   assert.equal(fetchCalls.at(-1).body.targetLanguage, "ja");
 });
+
+test("dialog uses concrete target when user locale is unavailable", async () => {
+  const fetchCalls = [];
+  const fakeFetch = async (url, options = {}) => {
+    if (options.body) {
+      fetchCalls.push({ url, body: JSON.parse(options.body) });
+    }
+    return {
+      ok: true,
+      async json() {
+        if (url === "/api/metadata") {
+          return {
+            models: [{ id: "model-a", displayName: "Model A", costPerCharUsd: 0.00002 }],
+            languages: [
+              { id: "auto", name: "Auto", isDefault: true },
+              { id: "es", name: "Español" }
+            ],
+            features: { terminologyToggle: true, toneToggle: true },
+            pricing: { currency: "USD" }
+          };
+        }
+        if (url === "/api/detect") {
+          return { language: "en", confidence: 0.8 };
+        }
+        if (url === "/api/translate") {
+          return { text: "hola", metadata: { modelId: "model-a" } };
+        }
+        throw new Error(`unexpected url ${url}`);
+      }
+    };
+  };
+
+  const ui = {
+    modelSelect: createStubElement(),
+    sourceSelect: createStubElement(),
+    targetSelect: Object.assign(createStubElement(), { replaceChildren() {} }),
+    terminologyToggle: createStubElement({ checked: true }),
+    toneToggle: createStubElement({ checked: false }),
+    detectedLabel: createStubElement(),
+    costHint: createStubElement(),
+    input: createStubElement({ value: "hello" }),
+    translation: createStubElement(),
+    previewButton: createStubElement(),
+    submitButton: createStubElement(),
+    errorBanner: createStubElement()
+  };
+
+  const teams = {
+    app: {
+      async initialize() {},
+      async getContext() {
+        return { tenant: { id: "tenant" }, user: { id: "user" }, channel: { id: "channel" }, app: {} };
+      }
+    },
+    dialog: {
+      submit() {}
+    }
+  };
+
+  const { state } = await initMessageExtensionDialog({ ui, teams, fetcher: fakeFetch });
+  await ui.input.trigger("input");
+  await ui.previewButton.trigger("click");
+
+  const translateCall = fetchCalls.find((call) => call.url === "/api/translate");
+  assert.equal(state.targetLanguage, "es");
+  assert.equal(ui.targetSelect.value, "es");
+  assert.ok(translateCall, "expected translate call");
+  assert.equal(translateCall.body.targetLanguage, "es");
+});

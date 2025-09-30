@@ -111,3 +111,57 @@ test("initSettingsTab registers save handler", async () => {
   assert.equal(statusLabel.textContent, "已保存");
   assert.equal(successNotified, true);
 });
+
+test("settings tab saves concrete target when user locale is unavailable", async () => {
+  let savedConfig;
+  const sdk = {
+    app: {
+      async initialize() {},
+      async getContext() {
+        return { tenant: { id: "tenant" }, user: { id: "user" }, app: {} };
+      }
+    },
+    pages: {
+      config: {
+        setValidityState() {},
+        registerOnSaveHandler(handler) {
+          handler({ notifySuccess() {} });
+        },
+        async setConfig(config) {
+          savedConfig = config;
+        }
+      }
+    }
+  };
+
+  const modelContainer = createStubElement();
+  const defaultLanguageSelect = Object.assign(createStubElement(), { replaceChildren() {} });
+  const terminologyToggle = createStubElement({ checked: true });
+  const toneSelect = createStubElement({ value: "neutral" });
+  const statusLabel = createStubElement();
+  const saveButton = createStubElement();
+
+  await initSettingsTab({
+    ui: { modelContainer, defaultLanguageSelect, terminologyToggle, toneSelect, statusLabel, saveButton },
+    teams: sdk,
+    fetcher: async () => ({
+      ok: true,
+      async json() {
+        return {
+          models: [{ id: "model-a", displayName: "Model A", costPerCharUsd: 0.0001 }],
+          languages: [
+            { id: "auto", name: "Auto", isDefault: true },
+            { id: "es", name: "Español" }
+          ],
+          features: { terminologyToggle: true },
+          pricing: { currency: "USD" }
+        };
+      }
+    })
+  });
+
+  await saveButton.trigger("click");
+
+  const parsed = JSON.parse(savedConfig.state);
+  assert.equal(parsed.defaultTargetLanguage, "es");
+});

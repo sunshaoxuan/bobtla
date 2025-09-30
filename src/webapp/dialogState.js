@@ -23,15 +23,15 @@ function resolveDefaultTargetLanguage(languages = [], locale = "") {
       return match.id;
     }
   }
-  const defaultLocale = languages.find((lang) => lang.isDefault && lang.id !== "auto");
+  const defaultLocale = languages.find((lang) => lang.isDefault && isSelectableLanguage(lang));
   if (defaultLocale) {
     return defaultLocale.id;
   }
-  const firstNonAuto = languages.find((lang) => lang.id !== "auto");
-  if (firstNonAuto) {
-    return firstNonAuto.id;
+  const firstSelectable = languages.find((lang) => isSelectableLanguage(lang));
+  if (firstSelectable) {
+    return firstSelectable.id;
   }
-  return languages[0].id;
+  return languages[0]?.id ?? "en";
 }
 
 export function buildDialogState({ models, languages, context } = {}) {

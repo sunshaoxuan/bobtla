@@ -76,8 +76,9 @@ export async function initMessageExtensionDialog({ ui = resolveDialogUi(), teams
   });
 
   const availableTargetIds = targetLanguages.map((lang) => lang.id);
+  const fallbackTarget = availableTargetIds[0] ?? "";
   if (!availableTargetIds.includes(state.targetLanguage)) {
-    state.targetLanguage = availableTargetIds[0] ?? "";
+    state.targetLanguage = fallbackTarget;
   }
 
   if (ui.modelSelect) {
@@ -94,9 +95,6 @@ export async function initMessageExtensionDialog({ ui = resolveDialogUi(), teams
     });
   }
   if (ui.targetSelect) {
-    if (!availableTargetIds.includes(ui.targetSelect.value)) {
-      ui.targetSelect.value = availableTargetIds[0] ?? "";
-    }
     ui.targetSelect.value = state.targetLanguage;
     ui.targetSelect.addEventListener?.("change", (event) => {
       state.targetLanguage = event.target.value;
