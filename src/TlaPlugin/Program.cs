@@ -9,9 +9,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
-using System.Xml.Linq;
+using System.Text.Json.Nodes;
 using TlaPlugin.Configuration;
 using TlaPlugin.Models;
 using TlaPlugin.Services;
@@ -60,10 +58,23 @@ builder.Services.AddSingleton<DevelopmentRoadmapService>();
 builder.Services.AddSingleton<ReplyService>();
 builder.Services.AddSingleton<RewriteService>();
 builder.Services.AddSingleton<CostEstimatorService>();
+builder.Services.AddSingleton<McpToolRegistry>();
+builder.Services.AddSingleton<McpServer>();
 
 var app = builder.Build();
 
 var jsonOptions = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+static bool TryAuthorize(HttpRequest request, out IResult? unauthorized)
+{
+    if (!request.Headers.TryGetValue("Authorization", out var header) || string.IsNullOrWhiteSpace(header))
+    {
+        unauthorized = Results.Unauthorized();
+        return false;
+    }
+
+    unauthorized = null;
+    return true;
+}
 
 app.MapPost("/api/translate", async (TranslationRequest request, MessageExtensionHandler handler) =>
 {
@@ -135,6 +146,91 @@ app.MapPost("/api/apply-glossary", (GlossaryApplicationRequest request, Glossary
     catch (GlossaryApplicationException ex)
     {
         return Results.Problem(ex.Message, statusCode: StatusCodes.Status409Conflict);
+    }
+});
+
+app.MapGet("/mcp/tools/list", (HttpRequest request, McpServer server) =>
+{
+    if (!TryAuthorize(request, out var unauthorized))
+    {
+        return unauthorized!;
+    }
+
+    var tools = server.ListTools();
+    return Results.Json(new { tools }, options: jsonOptions);
+});
+
+app.MapPost("/mcp/tools/call", async (HttpRequest request, McpServer server, CancellationToken cancellationToken) =>
+{
+    if (!TryAuthorize(request, out var unauthorized))
+    {
+        return unauthorized!;
+    }
+
+    JsonObject arguments;
+    string? toolName;
+    try
+    {
+        using var document = await JsonDocument.ParseAsync(request.Body, cancellationToken: cancellationToken);
+        var root = document.RootElement;
+        if (!root.TryGetProperty("name", out var nameProperty) || nameProperty.ValueKind != JsonValueKind.String)
+        {
+            return Results.BadRequest(new { error = "name is required." });
+        }
+
+        toolName = nameProperty.GetString();
+        if (string.IsNullOrWhiteSpace(toolName))
+        {
+            return Results.BadRequest(new { error = "name is required." });
+        }
+
+        if (root.TryGetProperty("arguments", out var argumentsProperty))
+        {
+            var parsed = JsonNode.Parse(argumentsProperty.GetRawText());
+            arguments = parsed as JsonObject ?? new JsonObject();
+        }
+        else
+        {
+            arguments = new JsonObject();
+        }
+    }
+    catch (JsonException)
+    {
+        return Results.BadRequest(new { error = "Invalid JSON payload." });
+    }
+
+    try
+    {
+        var result = await server.CallToolAsync(toolName!, arguments, cancellationToken);
+        return Results.Json(new { result }, options: jsonOptions);
+    }
+    catch (McpValidationException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+    catch (GlossaryApplicationException ex)
+    {
+        return Results.Problem(ex.Message, statusCode: StatusCodes.Status409Conflict);
+    }
+    catch (ReplyAuthorizationException ex)
+    {
+        return Results.Problem(ex.Message, statusCode: StatusCodes.Status403Forbidden);
+    }
+    catch (BudgetExceededException ex)
+    {
+        return Results.Problem(ex.Message, statusCode: StatusCodes.Status402PaymentRequired);
+    }
+    catch (AuthenticationException ex)
+    {
+        return Results.Problem(ex.Message, statusCode: StatusCodes.Status401Unauthorized);
+    }
+    catch (TranslationException ex)
+    {
+        return Results.Problem(ex.Message, statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+    catch (KeyNotFoundException)
+    {
+        return Results.NotFound(new { error = "Tool not found." });
     }
 });
 
