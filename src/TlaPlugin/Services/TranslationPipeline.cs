@@ -33,7 +33,7 @@ public class TranslationPipeline
         _options = options?.Value ?? new PluginOptions();
     }
 
-    public async Task<TranslationResult> ExecuteAsync(TranslationRequest request, CancellationToken cancellationToken)
+    public async Task<PipelineExecutionResult> ExecuteAsync(TranslationRequest request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.Text))
         {
@@ -88,7 +88,7 @@ public class TranslationPipeline
             var detection = _detector.Detect(resolvedRequest.Text);
             if (detection.Confidence < 0.75)
             {
-                throw new LanguageDetectionLowConfidenceException(detection);
+                return PipelineExecutionResult.FromDetection(detection);
             }
             resolvedRequest.SourceLanguage = detection.Language;
         }
@@ -96,14 +96,14 @@ public class TranslationPipeline
         if (_cache.TryGet(resolvedRequest, out var cached))
         {
             cached.SetGlossaryMatches(matchSnapshots.Select(match => match.Clone()));
-            return cached;
+            return PipelineExecutionResult.FromTranslation(cached);
         }
 
         using var lease = await _throttle.AcquireAsync(resolvedRequest.TenantId, cancellationToken);
         var result = await _router.TranslateAsync(resolvedRequest, cancellationToken);
         result.SetGlossaryMatches(matchSnapshots);
         _cache.Set(resolvedRequest, result);
-        return result;
+        return PipelineExecutionResult.FromTranslation(result);
     }
 
     public OfflineDraftRecord SaveDraft(OfflineDraftRequest request)
