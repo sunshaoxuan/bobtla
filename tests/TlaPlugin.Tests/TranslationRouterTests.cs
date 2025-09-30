@@ -59,6 +59,50 @@ public class TranslationRouterTests
     }
 
     [Fact]
+    public async Task IncludesContextInTranslationWhenRagEnabled()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            Providers = new List<ModelProviderOptions>
+            {
+                new() { Id = "primary", CostPerCharUsd = 0.05m, Regions = new List<string>{"japan"}, Certifications = new List<string>{"iso27001"} }
+            },
+            Compliance = new CompliancePolicyOptions
+            {
+                RequiredRegionTags = new List<string> { "japan" },
+                RequiredCertifications = new List<string> { "iso27001" }
+            },
+            Rag = new RagOptions
+            {
+                Enabled = true
+            }
+        });
+
+        var tokenBroker = new RecordingTokenBroker();
+        var metrics = new UsageMetricsService();
+        var localization = new LocalizationCatalogService();
+        var router = new TranslationRouter(new ModelProviderFactory(options), new ComplianceGateway(options), new BudgetGuard(options.Value), new AuditLogger(), new ToneTemplateService(), tokenBroker, metrics, localization, options);
+
+        var contextText = "[Context]\nrecent decision on merger\n\n[Message]\nPlease review the attached file";
+        var request = new TranslationRequest
+        {
+            Text = contextText,
+            ContextSummary = "recent decision on merger",
+            TenantId = "contoso",
+            UserId = "user",
+            TargetLanguage = "ja",
+            SourceLanguage = "en",
+            UseRag = true
+        };
+
+        var result = await router.TranslateAsync(request, CancellationToken.None);
+
+        Assert.Contains("recent decision on merger", result.RawTranslatedText);
+        var expectedCost = contextText.Length * 0.05m;
+        Assert.Equal(expectedCost, result.CostUsd);
+    }
+
+    [Fact]
     public async Task RewriteThrowsWhenNoProviderCompliant()
     {
         var options = Options.Create(new PluginOptions

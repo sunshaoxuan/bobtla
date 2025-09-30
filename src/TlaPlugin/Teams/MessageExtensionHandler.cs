@@ -34,6 +34,7 @@ public class MessageExtensionHandler
     public async Task<JsonObject> HandleTranslateAsync(TranslationRequest request)
     {
         ApplyGlossarySelections(request);
+        ApplyRagPreferences(request);
 
         var locale = request.UiLocale ?? _options.DefaultUiLocale;
         var catalog = _localization.GetCatalog(locale);
@@ -168,8 +169,11 @@ public class MessageExtensionHandler
                 ChannelId = request.ChannelId,
                 Tone = TranslationRequest.DefaultTone,
                 UiLocale = request.UiLocale,
-                UseGlossary = false
+                UseGlossary = false,
+                UseRag = _options.Rag.Enabled
             };
+
+            ApplyRagPreferences(translationRequest);
 
             var translationStep = await _pipeline.TranslateAsync(translationRequest, detection, CancellationToken.None);
             if (translationStep.RequiresLanguageSelection && translationStep.Detection is { } pendingDetection)
@@ -247,6 +251,37 @@ public class MessageExtensionHandler
         catch (ArgumentException ex)
         {
             return BuildErrorCard(catalog, "tla.error.translation.title", ex.Message);
+        }
+    }
+
+    private void ApplyRagPreferences(TranslationRequest request)
+    {
+        if (request is null)
+        {
+            return;
+        }
+
+        request.ContextHints ??= new List<string>();
+
+        if (request.ExtensionData is { Count: > 0 } && request.ExtensionData.TryGetValue("useRag", out var ragElement) && ragElement.ValueKind is JsonValueKind.True or JsonValueKind.False)
+        {
+            request.UseRag = ragElement.GetBoolean();
+        }
+
+        if (request.ContextHints.Count == 0 && request.ExtensionData is { Count: > 0 } && request.ExtensionData.TryGetValue("contextHints", out var hintsElement) && hintsElement.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var hint in hintsElement.EnumerateArray())
+            {
+                if (hint.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(hint.GetString()))
+                {
+                    request.ContextHints.Add(hint.GetString()!);
+                }
+            }
+        }
+
+        if (_options.Rag.Enabled)
+        {
+            request.UseRag = true;
         }
     }
 

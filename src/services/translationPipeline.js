@@ -7,7 +7,7 @@ export class TranslationPipeline {
     this.offlineDraftStore = offlineDraftStore;
   }
 
-  async translateText({ text, sourceLanguage, targetLanguage, tenantId, userId, channelId, metadata }) {
+  async translateText({ text, sourceLanguage, targetLanguage, tenantId, userId, channelId, metadata, useRag = false, contextHints = [] }) {
     if (!text || !text.trim()) {
       throw new TranslationError("Text is required", { code: "EMPTY_TEXT" });
     }
@@ -21,6 +21,8 @@ export class TranslationPipeline {
       tenantId,
       userId,
       channelId,
+      useRag,
+      contextHints,
       metadata
     });
     return {

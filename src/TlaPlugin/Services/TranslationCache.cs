@@ -58,9 +58,11 @@ public class TranslationCache : IDisposable
             request.TargetLanguage,
             request.Tone,
             request.UseGlossary.ToString(),
+            request.UseRag.ToString(),
             request.Text,
             extras,
-            request.UiLocale ?? string.Empty
+            request.UiLocale ?? string.Empty,
+            request.ContextSummary ?? string.Empty
         });
     }
 

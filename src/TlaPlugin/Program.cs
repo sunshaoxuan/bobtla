@@ -44,6 +44,7 @@ builder.Services.AddSingleton<ITokenBroker, TokenBroker>();
 builder.Services.AddSingleton<ModelProviderFactory>();
 builder.Services.AddSingleton<UsageMetricsService>();
 builder.Services.AddSingleton<LocalizationCatalogService>();
+builder.Services.AddSingleton<ContextRetrievalService>();
 builder.Services.AddSingleton<TranslationRouter>();
 builder.Services.AddSingleton<TranslationPipeline>();
 builder.Services.AddSingleton<MessageExtensionHandler>();

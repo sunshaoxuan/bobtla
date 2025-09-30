@@ -30,7 +30,17 @@ export class MessageExtensionHandler {
     });
   }
 
-  async handleTranslateCommand({ text, sourceLanguage, targetLanguage, tenantId, userId, channelId }) {
+  async handleTranslateCommand(payload) {
+    const {
+      text,
+      sourceLanguage,
+      targetLanguage,
+      tenantId,
+      userId,
+      channelId,
+      useRag = false,
+      contextHints = []
+    } = payload ?? {};
     try {
       return await this.pipeline.translateAndReply({
         text,
@@ -39,6 +49,8 @@ export class MessageExtensionHandler {
         tenantId,
         userId,
         channelId,
+        useRag,
+        contextHints,
         metadata: { command: "translate" }
       });
     } catch (error) {

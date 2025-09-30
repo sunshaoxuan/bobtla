@@ -92,6 +92,136 @@ public class TranslationPipelineTests
     }
 
     [Fact]
+    public async Task TranslateAsyncMergesContextWhenRagEnabled()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            DailyBudgetUsd = 1m,
+            CacheTtl = TimeSpan.FromHours(1),
+            RequestsPerMinute = 10,
+            MaxConcurrentTranslations = 2,
+            Rag = new RagOptions
+            {
+                Enabled = true,
+                MaxMessages = 5,
+                SummaryThreshold = int.MaxValue
+            },
+            Providers = new List<ModelProviderOptions>
+            {
+                new()
+                {
+                    Id = "primary",
+                    CostPerCharUsd = 0.1m,
+                    Regions = new List<string>{"japan"},
+                    Certifications = new List<string>{"iso"}
+                }
+            },
+            Compliance = new CompliancePolicyOptions
+            {
+                RequiredRegionTags = new List<string> { "japan" },
+                RequiredCertifications = new List<string> { "iso" }
+            }
+        });
+
+        var context = new ContextRetrievalService(options);
+        context.SeedMessages("contoso", "general", new[]
+        {
+            new ContextMessage { Author = "Alex", Text = "Budget approval pending", Timestamp = DateTimeOffset.UtcNow.AddMinutes(-3) },
+            new ContextMessage { Author = "Taylor", Text = "Please translate the contract draft", Timestamp = DateTimeOffset.UtcNow.AddMinutes(-1) }
+        });
+
+        var pipeline = BuildPipeline(options, contextOverride: context);
+
+        var request = new TranslationRequest
+        {
+            Text = "Here is the purchase summary",
+            TenantId = "contoso",
+            UserId = "user",
+            ChannelId = "general",
+            TargetLanguage = "ja",
+            SourceLanguage = "en",
+            UseRag = true
+        };
+
+        var first = await pipeline.TranslateAsync(request, CancellationToken.None);
+        var translation = Assert.NotNull(first.Translation);
+        Assert.Contains("[Context]", translation.RawTranslatedText);
+        Assert.Contains("Budget approval pending", translation.RawTranslatedText);
+
+        var second = await pipeline.TranslateAsync(request, CancellationToken.None);
+        var cached = Assert.NotNull(second.Translation);
+        Assert.Equal(translation.RawTranslatedText, cached.RawTranslatedText);
+    }
+
+    [Fact]
+    public async Task TranslateAsyncSummarizesContextWhenThresholdExceeded()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            DailyBudgetUsd = 1m,
+            CacheTtl = TimeSpan.FromHours(1),
+            RequestsPerMinute = 10,
+            MaxConcurrentTranslations = 2,
+            Rag = new RagOptions
+            {
+                Enabled = true,
+                MaxMessages = 5,
+                SummaryThreshold = 10,
+                SummaryTargetLength = 40
+            },
+            Providers = new List<ModelProviderOptions>
+            {
+                new()
+                {
+                    Id = "primary",
+                    CostPerCharUsd = 0.1m,
+                    Regions = new List<string>{"japan"},
+                    Certifications = new List<string>{"iso"}
+                }
+            },
+            Compliance = new CompliancePolicyOptions
+            {
+                RequiredRegionTags = new List<string> { "japan" },
+                RequiredCertifications = new List<string> { "iso" }
+            }
+        });
+
+        var context = new ContextRetrievalService(options);
+        context.SeedMessages("contoso", "general", new[]
+        {
+            new ContextMessage
+            {
+                Author = "Alex",
+                Text = "This is a very long context message describing confidential budget discussions that require summarization.",
+                Timestamp = DateTimeOffset.UtcNow.AddMinutes(-2)
+            },
+            new ContextMessage
+            {
+                Author = "Taylor",
+                Text = "Follow up with procurement regarding the merger timeline and outstanding approvals.",
+                Timestamp = DateTimeOffset.UtcNow.AddMinutes(-1)
+            }
+        });
+
+        var pipeline = BuildPipeline(options, contextOverride: context);
+
+        var request = new TranslationRequest
+        {
+            Text = "Share the latest update",
+            TenantId = "contoso",
+            UserId = "user",
+            ChannelId = "general",
+            TargetLanguage = "ja",
+            SourceLanguage = "en",
+            UseRag = true
+        };
+
+        var result = await pipeline.TranslateAsync(request, CancellationToken.None);
+        var translation = Assert.NotNull(result.Translation);
+        Assert.Contains("概要:", translation.RawTranslatedText);
+    }
+
+    [Fact]
     public async Task UsesProvidedSourceLanguageWhenDetectionIsUncertain()
     {
         var options = Options.Create(new PluginOptions
@@ -775,7 +905,9 @@ public class TranslationPipelineTests
         var rewrite = new RewriteService(router, throttle);
         var reply = new ReplyService(rewrite, options);
 
-        var pipeline = new TranslationPipeline(router, glossary, new OfflineDraftStore(options), new LanguageDetector(), cache, throttle, rewrite, reply, options);
+        var context = new ContextRetrievalService(options);
+
+        var pipeline = new TranslationPipeline(router, glossary, new OfflineDraftStore(options), new LanguageDetector(), cache, throttle, context, rewrite, reply, options);
 
         var result = await pipeline.TranslateAsync(new TranslationRequest
         {
@@ -793,7 +925,7 @@ public class TranslationPipelineTests
         Assert.Contains(detectionResult.Candidates, candidate => candidate.Language == "en");
     }
 
-    private static TranslationPipeline BuildPipeline(IOptions<PluginOptions> options, GlossaryService? glossaryOverride = null)
+    private static TranslationPipeline BuildPipeline(IOptions<PluginOptions> options, GlossaryService? glossaryOverride = null, ContextRetrievalService? contextOverride = null)
     {
         var glossary = glossaryOverride ?? new GlossaryService();
         var localization = new LocalizationCatalogService();
@@ -802,7 +934,8 @@ public class TranslationPipelineTests
         var throttle = new TranslationThrottle(options);
         var rewrite = new RewriteService(router, throttle);
         var reply = new ReplyService(rewrite, options);
-        return new TranslationPipeline(router, glossary, new OfflineDraftStore(options), new LanguageDetector(), cache, throttle, rewrite, reply, options);
+        var context = contextOverride ?? new ContextRetrievalService(options);
+        return new TranslationPipeline(router, glossary, new OfflineDraftStore(options), new LanguageDetector(), cache, throttle, context, rewrite, reply, options);
     }
 
     private sealed class LowConfidenceModelProvider : IModelProvider

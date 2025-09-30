@@ -445,7 +445,7 @@ public class MessageExtensionHandlerTests
         Assert.Equal("application/vnd.microsoft.card.adaptive", attachment["contentType"]!.GetValue<string>());
     }
 
-    private static MessageExtensionHandler BuildHandler(IOptions<PluginOptions> options, GlossaryService? glossaryOverride = null)
+    private static MessageExtensionHandler BuildHandler(IOptions<PluginOptions> options, GlossaryService? glossaryOverride = null, ContextRetrievalService? contextOverride = null)
     {
         var glossary = glossaryOverride ?? new GlossaryService();
         if (glossaryOverride is null)
@@ -460,7 +460,8 @@ public class MessageExtensionHandlerTests
         var throttle = new TranslationThrottle(options);
         var rewrite = new RewriteService(router, throttle);
         var reply = new ReplyService(rewrite, options);
-        var pipeline = new TranslationPipeline(router, glossary, new OfflineDraftStore(options), new LanguageDetector(), cache, throttle, rewrite, reply, options);
+        var context = contextOverride ?? new ContextRetrievalService(options);
+        var pipeline = new TranslationPipeline(router, glossary, new OfflineDraftStore(options), new LanguageDetector(), cache, throttle, context, rewrite, reply, options);
         return new MessageExtensionHandler(pipeline, localization, options);
     }
 }

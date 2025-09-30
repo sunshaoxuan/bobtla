@@ -191,6 +191,7 @@ public class PluginOptions
     public IList<ModelProviderOptions> Providers { get; set; } = new List<ModelProviderOptions>();
     public CompliancePolicyOptions Compliance { get; set; } = new();
     public SecurityOptions Security { get; set; } = new();
+    public RagOptions Rag { get; set; } = new();
 }
 
 /// <summary>
@@ -262,4 +263,15 @@ public class SecurityOptions
         ["tla-client-secret"] = "local-dev-secret"
     };
     public IList<string> AllowedReplyChannels { get; set; } = new List<string>();
+}
+
+/// <summary>
+/// RAG コンテキスト取得に関する構成値。
+/// </summary>
+public class RagOptions
+{
+    public bool Enabled { get; set; } = false;
+    public int MaxMessages { get; set; } = 8;
+    public int SummaryThreshold { get; set; } = 1200;
+    public int SummaryTargetLength { get; set; } = 480;
 }
