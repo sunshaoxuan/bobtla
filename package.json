@@ -7,7 +7,9 @@
     "doc": "docs"
   },
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "test:jest": "jest --config jest.config.cjs",
+    "test:playwright": "playwright test"
   },
   "keywords": [
     "teams",
@@ -16,5 +18,11 @@
   ],
   "author": "",
   "license": "MIT",
-  "type": "module"
+  "type": "module",
+  "devDependencies": {
+    "@jest/globals": "^29.7.0",
+    "@playwright/test": "^1.44.0",
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0"
+  }
 }
