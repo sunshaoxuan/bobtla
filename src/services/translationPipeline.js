@@ -89,12 +89,18 @@ export class TranslationPipeline {
     return { status: "ok", card };
   }
 
-  saveOfflineDraft({ userId, tenantId, originalText, targetLanguage }) {
+  saveOfflineDraft({ userId, tenantId, originalText, targetLanguage, sourceLanguage = "auto", channelId, metadata = {} }) {
     const draft = this.offlineDraftStore.saveDraft(userId, {
       tenantId,
       originalText,
       targetLanguage,
-      status: "PENDING"
+      sourceLanguage,
+      channelId,
+      status: "PENDING",
+      metadata: {
+        ...metadata,
+        origin: "offlineDraft"
+      }
     });
     return draft;
   }
