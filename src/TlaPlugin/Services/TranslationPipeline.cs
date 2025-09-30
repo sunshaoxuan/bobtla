@@ -66,12 +66,12 @@ public class TranslationPipeline
         return Task.FromResult(_detector.Detect(request.Text));
     }
 
-    public Task<PipelineExecutionResult> ExecuteAsync(TranslationRequest request, CancellationToken cancellationToken)
+    public Task<PipelineExecutionResult> TranslateAsync(TranslationRequest request, CancellationToken cancellationToken)
     {
-        return TranslateAsync(request, cancellationToken);
+        return TranslateAsync(request, null, cancellationToken);
     }
 
-    public async Task<PipelineExecutionResult> TranslateAsync(TranslationRequest request, CancellationToken cancellationToken)
+    public async Task<PipelineExecutionResult> TranslateAsync(TranslationRequest request, DetectionResult? detection, CancellationToken cancellationToken)
     {
         ValidateTranslationRequest(request);
 
@@ -85,7 +85,17 @@ public class TranslationPipeline
         var matchSnapshots = glossaryResult.Matches.Select(match => match.Clone()).ToList();
         var normalizedRequest = NormalizeRequestForTranslation(request, glossaryResult.Text);
 
-        var detectionOutcome = DetectLanguageIfNeeded(normalizedRequest);
+        if (detection is not null && string.IsNullOrEmpty(normalizedRequest.SourceLanguage))
+        {
+            if (detection.Confidence < 0.75)
+            {
+                return PipelineExecutionResult.FromDetection(detection);
+            }
+
+            normalizedRequest.SourceLanguage = detection.Language;
+        }
+
+        var detectionOutcome = DetectLanguageIfNeeded(normalizedRequest, detection);
         if (detectionOutcome is DetectionResult pendingSelection)
         {
             return PipelineExecutionResult.FromDetection(pendingSelection);
@@ -182,14 +192,14 @@ public class TranslationPipeline
         };
     }
 
-    private DetectionResult? DetectLanguageIfNeeded(TranslationRequest request)
+    private DetectionResult? DetectLanguageIfNeeded(TranslationRequest request, DetectionResult? providedDetection)
     {
         if (!string.IsNullOrEmpty(request.SourceLanguage))
         {
             return null;
         }
 
-        var detection = _detector.Detect(request.Text);
+        var detection = providedDetection ?? _detector.Detect(request.Text);
         if (detection.Confidence < 0.75)
         {
             return detection;
@@ -224,5 +234,10 @@ public class TranslationPipeline
     public Task<ReplyResult> PostReplyAsync(ReplyRequest request, CancellationToken cancellationToken)
     {
         return _replyService.SendReplyAsync(request, cancellationToken);
+    }
+
+    public Task<ReplyResult> PostReplyAsync(ReplyRequest request, string finalText, string? toneApplied, CancellationToken cancellationToken)
+    {
+        return _replyService.SendReplyAsync(request, finalText, toneApplied, cancellationToken);
     }
 }

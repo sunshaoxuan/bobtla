@@ -135,9 +135,56 @@ public class ApiEndpointsTests : IClassFixture<WebApplicationFactory<Program>>
         Assert.Equal(HttpStatusCode.PaymentRequired, response.StatusCode);
     }
 
+    [Fact]
+    public async Task RewriteEndpointReturnsRewrittenTextForEditedInput()
+    {
+        var client = _factory.CreateClient();
+        var response = await client.PostAsJsonAsync("/api/rewrite", new RewriteRequest
+        {
+            Text = "Original",
+            EditedText = "用户自定义",
+            TenantId = "contoso",
+            UserId = "user",
+            Tone = ToneTemplateService.Business
+        });
+
+        response.EnsureSuccessStatusCode();
+        var payload = await response.Content.ReadFromJsonAsync<RewriteResponse>();
+        Assert.NotNull(payload);
+        Assert.Contains("用户自定义", payload!.RewrittenText);
+    }
+
+    [Fact]
+    public async Task ReplyEndpointReturnsSuccessPayload()
+    {
+        var client = _factory.CreateClient();
+        var response = await client.PostAsJsonAsync("/api/reply", new ReplyRequest
+        {
+            ThreadId = "thread",
+            Text = "Hello team",
+            EditedText = "手动编辑",
+            TenantId = "contoso",
+            UserId = "user",
+            ChannelId = "general",
+            LanguagePolicy = new ReplyLanguagePolicy { TargetLang = "ja", Tone = ToneTemplateService.Business }
+        });
+
+        response.EnsureSuccessStatusCode();
+        var payload = await response.Content.ReadFromJsonAsync<ReplyResult>();
+        Assert.NotNull(payload);
+        Assert.Equal("sent", payload!.Status);
+        Assert.Contains("手动编辑", payload.FinalText);
+    }
+
     private sealed class GlossaryResponse
     {
         public string ProcessedText { get; set; } = string.Empty;
         public List<GlossaryMatchDetail> Matches { get; set; } = new();
+    }
+
+    private sealed class RewriteResponse
+    {
+        public string RewrittenText { get; set; } = string.Empty;
+        public string ModelId { get; set; } = string.Empty;
     }
 }

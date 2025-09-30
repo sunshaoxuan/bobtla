@@ -73,8 +73,8 @@ public class TranslationPipelineTests
             SourceLanguage = "en"
         };
 
-        var first = await pipeline.ExecuteAsync(request, CancellationToken.None);
-        var second = await pipeline.ExecuteAsync(request, CancellationToken.None);
+        var first = await pipeline.TranslateAsync(request, CancellationToken.None);
+        var second = await pipeline.TranslateAsync(request, CancellationToken.None);
 
         Assert.False(first.RequiresLanguageSelection);
         Assert.False(second.RequiresLanguageSelection);
@@ -137,6 +137,49 @@ public class TranslationPipelineTests
     }
 
     [Fact]
+    public async Task TranslateAsyncReturnsDetectionWhenProvidedLowConfidence()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            DailyBudgetUsd = 0.2m,
+            CacheTtl = TimeSpan.FromHours(1),
+            RequestsPerMinute = 10,
+            MaxConcurrentTranslations = 2,
+            Providers = new List<ModelProviderOptions>
+            {
+                new() { Id = "primary", CostPerCharUsd = 0.1m, Regions = new List<string>{"japan"}, Certifications = new List<string>{"iso"} }
+            },
+            Compliance = new CompliancePolicyOptions
+            {
+                RequiredRegionTags = new List<string> { "japan" },
+                RequiredCertifications = new List<string> { "iso" }
+            }
+        });
+
+        var pipeline = BuildPipeline(options);
+
+        var detection = await pipeline.DetectAsync(new LanguageDetectionRequest
+        {
+            Text = "12345",
+            TenantId = "contoso"
+        }, CancellationToken.None);
+
+        Assert.True(detection.Confidence < 0.75);
+
+        var execution = await pipeline.TranslateAsync(new TranslationRequest
+        {
+            Text = "12345",
+            TenantId = "contoso",
+            UserId = "user",
+            TargetLanguage = "ja"
+        }, detection, CancellationToken.None);
+
+        Assert.True(execution.RequiresLanguageSelection);
+        Assert.NotNull(execution.Detection);
+        Assert.Equal(detection.Language, execution.Detection!.Language);
+    }
+
+    [Fact]
     public async Task ThrowsWhenRateLimitExceeded()
     {
         var options = Options.Create(new PluginOptions
@@ -156,7 +199,7 @@ public class TranslationPipelineTests
 
         var pipeline = BuildPipeline(options);
 
-        var first = await pipeline.ExecuteAsync(new TranslationRequest
+        var first = await pipeline.TranslateAsync(new TranslationRequest
         {
             Text = "first",
             TenantId = "contoso",
@@ -167,7 +210,7 @@ public class TranslationPipelineTests
 
         Assert.NotNull(first.Translation);
 
-        await Assert.ThrowsAsync<RateLimitExceededException>(() => pipeline.ExecuteAsync(new TranslationRequest
+        await Assert.ThrowsAsync<RateLimitExceededException>(() => pipeline.TranslateAsync(new TranslationRequest
         {
             Text = "second",
             TenantId = "contoso",
@@ -199,7 +242,7 @@ public class TranslationPipelineTests
 
         var pipeline = BuildPipeline(options);
 
-        var japanese = await pipeline.ExecuteAsync(new TranslationRequest
+        var japanese = await pipeline.TranslateAsync(new TranslationRequest
         {
             Text = "locale test",
             TenantId = "contoso",
@@ -209,7 +252,7 @@ public class TranslationPipelineTests
             UiLocale = "ja-JP"
         }, CancellationToken.None);
 
-        var chinese = await pipeline.ExecuteAsync(new TranslationRequest
+        var chinese = await pipeline.TranslateAsync(new TranslationRequest
         {
             Text = "locale test",
             TenantId = "contoso",
@@ -344,7 +387,7 @@ public class TranslationPipelineTests
 
         var pipeline = BuildPipeline(options, glossary);
 
-        var execution = await pipeline.ExecuteAsync(new TranslationRequest
+        await Assert.ThrowsAsync<GlossaryConflictException>(() => pipeline.TranslateAsync(new TranslationRequest
         {
             Text = "GPU",
             TenantId = "contoso",
@@ -407,7 +450,7 @@ public class TranslationPipelineTests
             }
         };
 
-        var result = await pipeline.ExecuteAsync(request, CancellationToken.None);
+        var result = await pipeline.TranslateAsync(request, CancellationToken.None);
 
         var translation = Assert.NotNull(result.Translation);
         var match = Assert.Single(translation.GlossaryMatches);
@@ -433,7 +476,7 @@ public class TranslationPipelineTests
 
         var pipeline = BuildPipeline(options);
 
-        var result = await pipeline.ExecuteAsync(new TranslationRequest
+        var result = await pipeline.TranslateAsync(new TranslationRequest
         {
             Text = "Hello there",
             TenantId = "contoso",
@@ -467,7 +510,7 @@ public class TranslationPipelineTests
 
         var pipeline = BuildPipeline(options);
 
-        var result = await pipeline.ExecuteAsync(new TranslationRequest
+        var result = await pipeline.TranslateAsync(new TranslationRequest
         {
             Text = "Besok pagi kami akan berangkat ke pasar untuk membeli sayur segar dan buah segar.",
             TenantId = "contoso",
@@ -498,7 +541,7 @@ public class TranslationPipelineTests
 
         var pipeline = BuildPipeline(options);
 
-        var result = await pipeline.ExecuteAsync(new TranslationRequest
+        var result = await pipeline.TranslateAsync(new TranslationRequest
         {
             Text = "La nation et la population attendent une solution rapide.",
             TenantId = "contoso",
@@ -557,7 +600,7 @@ public class TranslationPipelineTests
 
         var pipeline = BuildPipeline(options);
 
-        var result = await pipeline.ExecuteAsync(new TranslationRequest
+        var result = await pipeline.TranslateAsync(new TranslationRequest
         {
             Text = "東京都庁",
             TenantId = "contoso",
@@ -589,7 +632,7 @@ public class TranslationPipelineTests
 
         var pipeline = BuildPipeline(options);
 
-        var result = await pipeline.ExecuteAsync(new TranslationRequest
+        var result = await pipeline.TranslateAsync(new TranslationRequest
         {
             Text = "東京都大阪府。",
             TenantId = "contoso",
@@ -629,7 +672,7 @@ public class TranslationPipelineTests
             TargetLanguage = "ja"
         };
 
-        var detectionResult = await pipeline.ExecuteAsync(initialRequest, CancellationToken.None);
+        var detectionResult = await pipeline.TranslateAsync(initialRequest, CancellationToken.None);
         var detected = Assert.NotNull(detectionResult.Detection);
         var selectedLanguage = detected.Candidates.First().Language;
 
@@ -642,7 +685,7 @@ public class TranslationPipelineTests
             SourceLanguage = selectedLanguage
         };
 
-        var translationResult = await pipeline.ExecuteAsync(manualRequest, CancellationToken.None);
+        var translationResult = await pipeline.TranslateAsync(manualRequest, CancellationToken.None);
 
         Assert.False(translationResult.RequiresLanguageSelection);
         var translation = Assert.NotNull(translationResult.Translation);
@@ -668,7 +711,7 @@ public class TranslationPipelineTests
 
         var pipeline = BuildPipeline(options);
 
-        var result = await pipeline.ExecuteAsync(new TranslationRequest
+        var result = await pipeline.TranslateAsync(new TranslationRequest
         {
             Text = "漢字語彙句読点、標準。",
             TenantId = "contoso",
