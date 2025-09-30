@@ -39,4 +39,14 @@ public class LanguageDetectorTests
         Assert.Contains(result.Candidates, candidate => string.Equals(candidate.Language, "ja", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(result.Candidates, candidate => string.Equals(candidate.Language, "zh", StringComparison.OrdinalIgnoreCase));
     }
+
+    [Fact]
+    public void Detect_DiacriticFreeForeignSentenceRemainsUncertain()
+    {
+        var detector = new LanguageDetector();
+
+        var result = detector.Detect("Besok pagi kami akan berangkat ke pasar untuk membeli sayur segar dan buah segar.");
+
+        Assert.True(result.Confidence < 0.75);
+    }
 }

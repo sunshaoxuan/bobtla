@@ -98,6 +98,9 @@ public class LanguageDetector
     private static readonly Regex ScotsSignature = new("nae|dinnae", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex PortugueseBrazilSignature = new("[ão]", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex ChinesePunctuation = new("[。！？、《》「」『』]", RegexOptions.Compiled);
+    private static readonly Regex EnglishIndicatorPattern = new(
+        "\\b(the|and|for|with|this|that|from|have|has|was|were|been|being|are|is|into|which|about|because|while|where|when|what|who|whose|than|then|them|these|those|your|their|there|over|after|before|between|without|should|would|could|can't|don't|doesn't|won't|it's|i'm|we're|you're|they're)\\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly IReadOnlyList<LanguageDefinition> LanguageDefinitions = BuildLanguageDefinitions();
 
@@ -293,7 +296,9 @@ public class LanguageDetector
                     scriptLetterCount >= 18 &&
                     uniqueLetters >= 7;
 
-                if (!hasRepresentativeStructure)
+                var hasEnglishIndicators = ContainsEnglishIndicators(text);
+
+                if (!hasRepresentativeStructure || !hasEnglishIndicators)
                 {
                     penalty = scriptLetterCount >= 12 ? 0.22 : 0.18;
                 }
@@ -314,6 +319,19 @@ public class LanguageDetector
         }
 
         return penalty;
+    }
+
+    private static bool ContainsEnglishIndicators(string text)
+    {
+        if (EnglishIndicatorPattern.IsMatch(text))
+        {
+            return true;
+        }
+
+        // Apostrophes can appear in contractions without spaces (e.g. "dont" typo).
+        // Look for common English bigrams to provide additional weak evidence.
+        var lowered = text.ToLowerInvariant();
+        return lowered.Contains("ing ") || lowered.Contains("ed ") || lowered.Contains("tion");
     }
 
     private static int CountWords(string text)

@@ -350,6 +350,37 @@ public class TranslationPipelineTests
     }
 
     [Fact]
+    public async Task ReturnsLanguageSelectionForAmbiguousLatinSentence()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            Providers = new List<ModelProviderOptions>
+            {
+                new() { Id = "primary", Regions = new List<string>{"japan"}, Certifications = new List<string>{"iso"} }
+            },
+            Compliance = new CompliancePolicyOptions
+            {
+                RequiredRegionTags = new List<string> { "japan" },
+                RequiredCertifications = new List<string> { "iso" }
+            }
+        });
+
+        var pipeline = BuildPipeline(options);
+
+        var result = await pipeline.ExecuteAsync(new TranslationRequest
+        {
+            Text = "Besok pagi kami akan berangkat ke pasar untuk membeli sayur segar dan buah segar.",
+            TenantId = "contoso",
+            UserId = "user",
+            TargetLanguage = "ja"
+        }, CancellationToken.None);
+
+        Assert.True(result.RequiresLanguageSelection);
+        var detection = Assert.NotNull(result.Detection);
+        Assert.True(detection.Confidence < 0.75);
+    }
+
+    [Fact]
     public async Task ReturnsJapaneseCandidateForKanjiOnlyDetection()
     {
         var options = Options.Create(new PluginOptions
