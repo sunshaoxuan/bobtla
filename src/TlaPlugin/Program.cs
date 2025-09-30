@@ -11,6 +11,7 @@ using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Microsoft.Graph;
 using TlaPlugin.Configuration;
 using TlaPlugin.Models;
 using TlaPlugin.Services;
@@ -24,10 +25,8 @@ builder.Services.Configure<PluginOptions>(builder.Configuration.GetSection("Plug
 
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient();
-builder.Services.AddHttpClient<ITeamsReplyClient, TeamsReplyClient>(client =>
-{
-    client.BaseAddress = new Uri("https://graph.microsoft.com/v1.0/");
-});
+builder.Services.AddSingleton<GraphServiceClient>(_ => new GraphServiceClient(new AnonymousAuthenticationProvider()));
+builder.Services.AddSingleton<ITeamsMessageClient, GraphTeamsMessageClient>();
 builder.Services.AddSingleton(provider =>
 {
     var glossary = new GlossaryService();

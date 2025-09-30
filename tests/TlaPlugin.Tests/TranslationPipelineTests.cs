@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using TlaPlugin.Configuration;
 using TlaPlugin.Models;
@@ -123,14 +124,14 @@ public class TranslationPipelineTests
             }
         });
 
-        var context = new ContextRetrievalService(options);
-        context.SeedMessages("contoso", "general", new[]
+        var graph = new FakeTeamsMessageClient();
+        graph.Messages.AddRange(new[]
         {
             new ContextMessage { Author = "Alex", Text = "Budget approval pending", Timestamp = DateTimeOffset.UtcNow.AddMinutes(-3) },
             new ContextMessage { Author = "Taylor", Text = "Please translate the contract draft", Timestamp = DateTimeOffset.UtcNow.AddMinutes(-1) }
         });
 
-        var pipeline = BuildPipeline(options, contextOverride: context);
+        var pipeline = BuildPipeline(options, teamsClient: graph);
 
         var request = new TranslationRequest
         {
@@ -185,14 +186,14 @@ public class TranslationPipelineTests
             }
         });
 
-        var context = new ContextRetrievalService(options);
-        context.SeedMessages("contoso", "general", new[]
+        var graph = new FakeTeamsMessageClient();
+        graph.Messages.AddRange(new[]
         {
             new ContextMessage { Author = "Alex", Text = "Budget approval pending", Timestamp = DateTimeOffset.UtcNow.AddMinutes(-3) },
             new ContextMessage { Author = "Taylor", Text = "Contract draft ready for review", Timestamp = DateTimeOffset.UtcNow.AddMinutes(-1) }
         });
 
-        var pipeline = BuildPipeline(options, contextOverride: context);
+        var pipeline = BuildPipeline(options, teamsClient: graph);
 
         var request = new TranslationRequest
         {
@@ -245,8 +246,8 @@ public class TranslationPipelineTests
             }
         });
 
-        var context = new ContextRetrievalService(options);
-        context.SeedMessages("contoso", "general", new[]
+        var graph = new FakeTeamsMessageClient();
+        graph.Messages.AddRange(new[]
         {
             new ContextMessage
             {
@@ -262,7 +263,7 @@ public class TranslationPipelineTests
             }
         });
 
-        var pipeline = BuildPipeline(options, contextOverride: context);
+        var pipeline = BuildPipeline(options, teamsClient: graph);
 
         var request = new TranslationRequest
         {
@@ -966,7 +967,7 @@ public class TranslationPipelineTests
         var rewrite = new RewriteService(router, throttle);
         var reply = new ReplyService(rewrite, new NoopTeamsReplyClient(), tokenBroker, metrics, options);
 
-        var context = new ContextRetrievalService(options);
+        var context = new ContextRetrievalService(new NullTeamsMessageClient(), new MemoryCache(new MemoryCacheOptions()), options);
 
         var pipeline = new TranslationPipeline(router, glossary, new OfflineDraftStore(options), new LanguageDetector(), cache, throttle, context, rewrite, reply, options);
 
@@ -986,7 +987,12 @@ public class TranslationPipelineTests
         Assert.Contains(detectionResult.Candidates, candidate => candidate.Language == "en");
     }
 
-    private static TranslationPipeline BuildPipeline(IOptions<PluginOptions> options, GlossaryService? glossaryOverride = null, ContextRetrievalService? contextOverride = null)
+    private static TranslationPipeline BuildPipeline(
+        IOptions<PluginOptions> options,
+        GlossaryService? glossaryOverride = null,
+        ContextRetrievalService? contextOverride = null,
+        ITeamsMessageClient? teamsClient = null,
+        IMemoryCache? memoryCache = null)
     {
         var glossary = glossaryOverride ?? new GlossaryService();
         var localization = new LocalizationCatalogService();
@@ -996,8 +1002,8 @@ public class TranslationPipelineTests
         var cache = new TranslationCache(options);
         var throttle = new TranslationThrottle(options);
         var rewrite = new RewriteService(router, throttle);
-        var reply = new ReplyService(rewrite, new NoopTeamsReplyClient(), tokenBroker, metrics, options);
-        var context = contextOverride ?? new ContextRetrievalService(options);
+        var reply = new ReplyService(rewrite, options);
+        var context = contextOverride ?? new ContextRetrievalService(teamsClient ?? new NullTeamsMessageClient(), memoryCache ?? new MemoryCache(new MemoryCacheOptions()), options);
         return new TranslationPipeline(router, glossary, new OfflineDraftStore(options), new LanguageDetector(), cache, throttle, context, rewrite, reply, options);
     }
 
@@ -1032,9 +1038,40 @@ public class TranslationPipelineTests
             => Task.FromResult(new AccessToken("token", DateTimeOffset.UtcNow.AddMinutes(5), "api://audience"));
     }
 
-    private sealed class NoopTeamsReplyClient : ITeamsReplyClient
+    private sealed class FakeTeamsMessageClient : ITeamsMessageClient
     {
-        public Task<TeamsReplyResponse> SendReplyAsync(TeamsReplyRequest request, CancellationToken cancellationToken)
-            => Task.FromResult(new TeamsReplyResponse("noop", DateTimeOffset.UtcNow, "sent"));
+        public List<ContextMessage> Messages { get; } = new();
+        public int CallCount { get; private set; }
+        public bool ShouldThrow { get; set; }
+
+        public Task<IReadOnlyList<ContextMessage>> GetRecentMessagesAsync(
+            string tenantId,
+            string? channelId,
+            string? threadId,
+            int maxMessages,
+            CancellationToken cancellationToken)
+        {
+            CallCount++;
+            if (ShouldThrow)
+            {
+                throw new InvalidOperationException("Graph failure");
+            }
+
+            var ordered = Messages
+                .OrderByDescending(message => message.Timestamp)
+                .Take(Math.Max(1, maxMessages))
+                .Select(message => new ContextMessage
+                {
+                    Id = message.Id,
+                    Author = message.Author,
+                    Timestamp = message.Timestamp,
+                    Text = message.Text,
+                    RelevanceScore = message.RelevanceScore
+                })
+                .ToList();
+
+            IReadOnlyList<ContextMessage> snapshot = ordered;
+            return Task.FromResult(snapshot);
+        }
     }
 }
