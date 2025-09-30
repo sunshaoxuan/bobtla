@@ -57,4 +57,18 @@ public class ConfigurationSummaryServiceTests
         Assert.Equal(1, summary.GlossaryEntryCount);
         Assert.Contains(ToneTemplateService.Business, summary.ToneTemplates.Keys);
     }
+
+    [Fact]
+    public void CreateSummary_ExposesExpandedLanguageList()
+    {
+        var options = Options.Create(new PluginOptions());
+        var service = new ConfigurationSummaryService(options, new ToneTemplateService(), new GlossaryService());
+
+        var summary = service.CreateSummary();
+
+        Assert.True(summary.SupportedLanguages.Count >= 30);
+        Assert.Contains("de-DE", summary.SupportedLanguages);
+        Assert.Contains("ar-SA", summary.SupportedLanguages);
+        Assert.Contains("vi-VN", summary.SupportedLanguages);
+    }
 }

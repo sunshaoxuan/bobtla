@@ -77,7 +77,8 @@ public class TranslationCache : IDisposable
             LatencyMs = source.LatencyMs,
             UiLocale = source.UiLocale,
             AdaptiveCard = (JsonObject?)(source.AdaptiveCard?.DeepClone()) ?? new JsonObject(),
-            AdditionalTranslations = new Dictionary<string, string>(source.AdditionalTranslations)
+            AdditionalTranslations = new Dictionary<string, string>(source.AdditionalTranslations),
+            GlossaryMatches = source.GlossaryMatches.Select(match => match.Clone()).ToList()
         };
     }
     public void Dispose()

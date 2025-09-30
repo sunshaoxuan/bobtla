@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Options;
@@ -141,9 +142,96 @@ public class TranslationPipelineTests
         Assert.Equal("翻译结果", zhTitle);
     }
 
-    private static TranslationPipeline BuildPipeline(IOptions<PluginOptions> options)
+    [Fact]
+    public async Task ThrowsGlossaryConflictWhenDecisionMissing()
     {
+        var options = Options.Create(new PluginOptions
+        {
+            Providers = new List<ModelProviderOptions>
+            {
+                new() { Id = "primary", Regions = new List<string>{"japan"}, Certifications = new List<string>{"iso"} }
+            },
+            Compliance = new CompliancePolicyOptions
+            {
+                RequiredRegionTags = new List<string> { "japan" },
+                RequiredCertifications = new List<string> { "iso" }
+            }
+        });
+
         var glossary = new GlossaryService();
+        glossary.LoadEntries(new[]
+        {
+            new GlossaryEntry("GPU", "图形处理器", "tenant:contoso"),
+            new GlossaryEntry("GPU", "显卡", "channel:finance")
+        });
+
+        var pipeline = BuildPipeline(options, glossary);
+
+        await Assert.ThrowsAsync<GlossaryConflictException>(() => pipeline.ExecuteAsync(new TranslationRequest
+        {
+            Text = "GPU", 
+            TenantId = "contoso",
+            UserId = "user",
+            TargetLanguage = "ja",
+            SourceLanguage = "en",
+            ChannelId = "finance"
+        }, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task AppliesGlossaryDecisionWhenProvided()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            Providers = new List<ModelProviderOptions>
+            {
+                new() { Id = "primary", Regions = new List<string>{"japan"}, Certifications = new List<string>{"iso"} }
+            },
+            Compliance = new CompliancePolicyOptions
+            {
+                RequiredRegionTags = new List<string> { "japan" },
+                RequiredCertifications = new List<string> { "iso" }
+            }
+        });
+
+        var glossary = new GlossaryService();
+        glossary.LoadEntries(new[]
+        {
+            new GlossaryEntry("GPU", "图形处理器", "tenant:contoso"),
+            new GlossaryEntry("GPU", "显卡", "channel:finance")
+        });
+
+        var pipeline = BuildPipeline(options, glossary);
+
+        var request = new TranslationRequest
+        {
+            Text = "GPU", 
+            TenantId = "contoso",
+            UserId = "user",
+            TargetLanguage = "ja",
+            SourceLanguage = "en",
+            ChannelId = "finance",
+            GlossaryDecisions = new Dictionary<string, GlossaryDecision>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["GPU"] = new GlossaryDecision
+                {
+                    Kind = GlossaryDecisionKind.UseAlternative,
+                    Target = "显卡",
+                    Scope = "channel:finance"
+                }
+            }
+        };
+
+        var result = await pipeline.ExecuteAsync(request, CancellationToken.None);
+
+        var match = Assert.Single(result.GlossaryMatches);
+        Assert.Equal(GlossaryDecisionKind.UseAlternative, match.Resolution);
+        Assert.Equal("显卡", match.AppliedTarget);
+    }
+
+    private static TranslationPipeline BuildPipeline(IOptions<PluginOptions> options, GlossaryService? glossaryOverride = null)
+    {
+        var glossary = glossaryOverride ?? new GlossaryService();
         var localization = new LocalizationCatalogService();
         var router = new TranslationRouter(new ModelProviderFactory(options), new ComplianceGateway(options), new BudgetGuard(options.Value), new AuditLogger(), new ToneTemplateService(), new TokenBroker(new KeyVaultSecretResolver(options), options), new UsageMetricsService(), localization, options);
         var cache = new TranslationCache(options);

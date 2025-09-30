@@ -35,7 +35,14 @@ public class LocalizationCatalogService
                     ["tla.error.budget.title"] = "予算制限",
                     ["tla.error.rate.title"] = "レート制限",
                     ["tla.error.translation.title"] = "翻訳エラー",
-                    ["tla.ui.reply.success"] = "返信を送信しました"
+                    ["tla.ui.glossary.conflictTitle"] = "用語の選択が必要です",
+                    ["tla.ui.glossary.conflictDescription"] = "一致した用語に複数の候補が見つかりました。使用する訳語を選択してください。",
+                    ["tla.ui.glossary.conflictItem"] = "{0}（{1} 件）",
+                    ["tla.ui.glossary.option.preferred"] = "推奨訳 {0} （{1}）",
+                    ["tla.ui.glossary.option.alternative"] = "代替訳 {0} （{1}）",
+                    ["tla.ui.glossary.option.original"] = "原文を保持",
+                    ["tla.ui.glossary.submit"] = "選択を適用",
+                    ["tla.ui.glossary.cancel"] = "取消"
                 }),
             ["zh-CN"] = new CatalogDefinition(
                 "简体中文 (中国)",
@@ -54,7 +61,14 @@ public class LocalizationCatalogService
                     ["tla.error.budget.title"] = "预算限制",
                     ["tla.error.rate.title"] = "速率限制",
                     ["tla.error.translation.title"] = "翻译失败",
-                    ["tla.ui.reply.success"] = "回复已发送"
+                    ["tla.ui.glossary.conflictTitle"] = "请选择术语翻译",
+                    ["tla.ui.glossary.conflictDescription"] = "检测到多个术语候选，请选择希望保留的译法。",
+                    ["tla.ui.glossary.conflictItem"] = "{0}（{1} 次出现）",
+                    ["tla.ui.glossary.option.preferred"] = "推荐译文 {0}（{1}）",
+                    ["tla.ui.glossary.option.alternative"] = "备选译文 {0}（{1}）",
+                    ["tla.ui.glossary.option.original"] = "保留原文",
+                    ["tla.ui.glossary.submit"] = "提交选择",
+                    ["tla.ui.glossary.cancel"] = "取消"
                 })
         };
 
