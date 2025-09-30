@@ -49,6 +49,19 @@ public class LanguageDetectorTests
 
         Assert.True(result.Confidence < 0.75);
         Assert.Contains(result.Candidates, candidate => string.Equals(candidate.Language, "ja", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(result.Candidates, candidate => string.Equals(candidate.Language, "zh", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Detect_PureHanTextWithSharedPunctuationKeepsBothCandidates()
+    {
+        var detector = new LanguageDetector();
+
+        var result = detector.Detect("漢字表記のみ、句読点。");
+
+        Assert.True(result.Confidence < 0.75);
+        Assert.Contains(result.Candidates, candidate => string.Equals(candidate.Language, "ja", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(result.Candidates, candidate => string.Equals(candidate.Language, "zh", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

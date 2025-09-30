@@ -442,6 +442,7 @@ public class TranslationPipelineTests
         var detection = Assert.NotNull(result.Detection);
         Assert.True(detection.Confidence < 0.75);
         Assert.Contains(detection.Candidates, candidate => string.Equals(candidate.Language, "ja", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(detection.Candidates, candidate => string.Equals(candidate.Language, "zh", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -488,6 +489,39 @@ public class TranslationPipelineTests
         var translation = Assert.NotNull(translationResult.Translation);
         Assert.Equal(selectedLanguage, translation.SourceLanguage);
         Assert.Equal("ja", translation.TargetLanguage);
+    }
+
+    [Fact]
+    public async Task ReturnsBothHanCandidatesForSharedPunctuationDetection()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            Providers = new List<ModelProviderOptions>
+            {
+                new() { Id = "primary", Regions = new List<string>{"japan"}, Certifications = new List<string>{"iso"} }
+            },
+            Compliance = new CompliancePolicyOptions
+            {
+                RequiredRegionTags = new List<string> { "japan" },
+                RequiredCertifications = new List<string> { "iso" }
+            }
+        });
+
+        var pipeline = BuildPipeline(options);
+
+        var result = await pipeline.ExecuteAsync(new TranslationRequest
+        {
+            Text = "漢字表記のみ、句読点。",
+            TenantId = "contoso",
+            UserId = "user",
+            TargetLanguage = "en"
+        }, CancellationToken.None);
+
+        Assert.True(result.RequiresLanguageSelection);
+        var detection = Assert.NotNull(result.Detection);
+        Assert.True(detection.Confidence < 0.75);
+        Assert.Contains(detection.Candidates, candidate => string.Equals(candidate.Language, "ja", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(detection.Candidates, candidate => string.Equals(candidate.Language, "zh", StringComparison.OrdinalIgnoreCase));
     }
 
     private static TranslationPipeline BuildPipeline(IOptions<PluginOptions> options, GlossaryService? glossaryOverride = null)

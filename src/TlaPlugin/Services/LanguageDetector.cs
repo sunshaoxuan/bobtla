@@ -144,17 +144,22 @@ public class LanguageDetector
         var hasSignatureMatch = false;
         var hasJapaneseKana = false;
         var containsChinesePunctuation = false;
-        var hasNeutralHanPunctuation = false;
+        var isAmbiguousHan = false;
         var penalizeHanForLackOfKana = false;
 
         if (primary.Key == WritingSystem.Han)
         {
             hasJapaneseKana = ContainsJapaneseKana(trimmed);
             containsChinesePunctuation = ChinesePunctuation.IsMatch(trimmed);
+            isAmbiguousHan = !hasJapaneseKana;
+            if (containsChinesePunctuation && !hasJapaneseKana)
+            {
+                // Shared punctuation does not disambiguate Han-only text.
+                isAmbiguousHan = true;
+            }
             if (!hasJapaneseKana)
             {
                 penalizeHanForLackOfKana = true;
-                hasNeutralHanPunctuation = containsChinesePunctuation;
             }
         }
 
@@ -177,7 +182,7 @@ public class LanguageDetector
                 if (string.Equals(definition.Code, "ja", StringComparison.OrdinalIgnoreCase))
                 {
                     // 纯汉字不够判断日语，若缺少假名则降低分值。
-                    if (!hasJapaneseKana)
+                    if (isAmbiguousHan)
                     {
                         score -= 0.18;
                     }
@@ -188,11 +193,7 @@ public class LanguageDetector
                     {
                         score -= 0.15;
                     }
-                    if (containsChinesePunctuation && !hasNeutralHanPunctuation)
-                    {
-                        score += 0.05;
-                    }
-                    if (penalizeHanForLackOfKana)
+                    if (isAmbiguousHan)
                     {
                         score -= 0.12;
                     }
