@@ -62,3 +62,34 @@ TLA 参考实现基于 .NET 7 Minimal API 与 SQLite，支撑 Microsoft Teams �
 4. `npm test` – 使用 Node 测试仪表盘视图模型与消息扩展逻辑，覆盖阶段聚合、本地化排序与 Teams 体验。【F:tests/dashboardViewModel.test.js†L1-L35】【F:tests/messageExtension.test.js†L1-L80】
 
 > 代码注释统一改写为日文，界面默认文案保持日文并提供中文覆盖，避免混用多种语言，符合多语言治理规范。【F:src/TlaPlugin/Services/TranslationRouter.cs†L18-L176】【F:src/TlaPlugin/Teams/MessageExtensionHandler.cs†L9-L94】【F:src/TlaPlugin/Services/LocalizationCatalogService.cs†L1-L122】
+
+### 请求示例
+
+消息扩展和 Compose 插件现在可以显式携带 RAG 开关与上下文提示，后端会在 `ExtensionData` 中解析 `useRag` 与 `contextHints` 字段：
+
+```http
+POST /api/translate
+Content-Type: application/json
+
+{
+  "text": "Need a formal Japanese reply",
+  "sourceLanguage": "en",
+  "targetLanguage": "ja",
+  "tenantId": "contoso",
+  "userId": "alex",
+  "channelId": "general",
+  "useRag": true,
+  "contextHints": [
+    "budget review",
+    "contract draft"
+  ],
+  "metadata": {
+    "origin": "messageExtension",
+    "modelId": "model-a",
+    "tone": "formal",
+    "useTerminology": true
+  }
+}
+```
+
+关闭 RAG 时只需省略提示或保持数组为空，后端会退回传统翻译流程。

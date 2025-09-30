@@ -126,13 +126,20 @@ test("switching language updates translate payload", async ({ page }) => {
   const detectRequest = page.waitForRequest("**/api/detect");
   await sourceInput.fill("hello world");
   await detectRequest;
+  const translateRequest = page.waitForRequest("**/api/translate");
   await previewButton.click();
+  const translatePayload = (await translateRequest).postDataJSON();
   await expect(translationInput).toHaveValue("hola");
+  expect(translatePayload.useRag).toBe(false);
+  expect(Array.isArray(translatePayload.contextHints)).toBe(true);
+  expect(translatePayload.contextHints.length).toBe(0);
   await targetSelect.selectOption("ja");
   const secondDetect = page.waitForRequest("**/api/detect");
   await sourceInput.fill("good night");
   await secondDetect;
+  const secondTranslate = page.waitForRequest("**/api/translate");
   await previewButton.click();
+  await secondTranslate;
   await expect(translationInput).toHaveValue("こんにちは");
   const detected = await page.locator("[data-detected-language]").innerText();
   expect(detected).toContain("en");
@@ -161,4 +168,22 @@ test("edited translation is rewritten before reply", async ({ page }) => {
   expect(lastSubmit.translation).toBe("【润色】hola team");
   expect(lastSubmit.replyStatus).toBe("ok");
   expect(lastSubmit.tone).toBe("formal");
+});
+
+test("rag toggle sends context hints", async ({ page }) => {
+  const ragToggle = page.locator("[data-rag-toggle]");
+  const hintsInput = page.locator("[data-context-hints]");
+  const sourceInput = page.locator("[data-source-text]");
+  const previewButton = page.locator("[data-preview-translation]");
+
+  await ragToggle.check();
+  await hintsInput.fill("budget review\ncontract draft");
+  const detectRequest = page.waitForRequest("**/api/detect");
+  await sourceInput.fill("Need translation");
+  await detectRequest;
+  const translateRequest = page.waitForRequest("**/api/translate");
+  await previewButton.click();
+  const payload = (await translateRequest).postDataJSON();
+  expect(payload.useRag).toBe(true);
+  expect(payload.contextHints).toEqual(["budget review", "contract draft"]);
 });

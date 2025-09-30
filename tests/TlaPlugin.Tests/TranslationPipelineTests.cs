@@ -154,6 +154,65 @@ public class TranslationPipelineTests
     }
 
     [Fact]
+    public async Task TranslateAsyncRespectsContextHintsWhenProvided()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            DailyBudgetUsd = 1m,
+            CacheTtl = TimeSpan.FromHours(1),
+            RequestsPerMinute = 10,
+            MaxConcurrentTranslations = 2,
+            Rag = new RagOptions
+            {
+                Enabled = true,
+                MaxMessages = 5,
+                SummaryThreshold = int.MaxValue
+            },
+            Providers = new List<ModelProviderOptions>
+            {
+                new()
+                {
+                    Id = "primary",
+                    CostPerCharUsd = 0.1m,
+                    Regions = new List<string>{"japan"},
+                    Certifications = new List<string>{"iso"}
+                }
+            },
+            Compliance = new CompliancePolicyOptions
+            {
+                RequiredRegionTags = new List<string> { "japan" },
+                RequiredCertifications = new List<string> { "iso" }
+            }
+        });
+
+        var context = new ContextRetrievalService(options);
+        context.SeedMessages("contoso", "general", new[]
+        {
+            new ContextMessage { Author = "Alex", Text = "Budget approval pending", Timestamp = DateTimeOffset.UtcNow.AddMinutes(-3) },
+            new ContextMessage { Author = "Taylor", Text = "Contract draft ready for review", Timestamp = DateTimeOffset.UtcNow.AddMinutes(-1) }
+        });
+
+        var pipeline = BuildPipeline(options, contextOverride: context);
+
+        var request = new TranslationRequest
+        {
+            Text = "Here is the purchase summary",
+            TenantId = "contoso",
+            UserId = "user",
+            ChannelId = "general",
+            TargetLanguage = "ja",
+            SourceLanguage = "en",
+            UseRag = true,
+            ContextHints = new List<string> { "contract" }
+        };
+
+        var result = await pipeline.TranslateAsync(request, CancellationToken.None);
+        var translation = Assert.NotNull(result.Translation);
+        Assert.Contains("Contract draft", translation.RawTranslatedText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Budget approval pending", translation.RawTranslatedText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task TranslateAsyncSummarizesContextWhenThresholdExceeded()
     {
         var options = Options.Create(new PluginOptions

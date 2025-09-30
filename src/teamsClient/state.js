@@ -44,11 +44,33 @@ export function buildDialogState({ models, languages, context } = {}) {
     sourceLanguage: metadata.languages[0]?.id ?? "auto",
     targetLanguage,
     useTerminology: true,
+    useRag: false,
+    contextHints: [],
     tone: "neutral",
     charCount: 0,
     detectedLanguage: undefined,
     detectionConfidence: 0
   };
+}
+
+function normalizeContextHints(hints) {
+  if (!hints) {
+    return [];
+  }
+  const list = Array.isArray(hints) ? hints : [hints];
+  return list
+    .map((item) => (typeof item === "string" ? item.trim() : ""))
+    .filter(Boolean);
+}
+
+function applyRagPreferences(payload, state) {
+  if (!payload || !state) {
+    return payload;
+  }
+  const contextHints = normalizeContextHints(state.contextHints);
+  payload.useRag = Boolean(state.useRag);
+  payload.contextHints = contextHints;
+  return payload;
 }
 
 export function calculateCostHint({ charCount, modelId }, models = [], pricing = {}) {
@@ -69,7 +91,7 @@ export function buildTranslatePayload(state, context) {
   if (!state.targetLanguage) {
     throw new Error("缺少目标语言");
   }
-  return {
+  const payload = {
     text: state.text,
     sourceLanguage: state.sourceLanguage === "auto" ? undefined : state.sourceLanguage,
     targetLanguage: state.targetLanguage,
@@ -83,6 +105,7 @@ export function buildTranslatePayload(state, context) {
       tone: state.tone
     }
   };
+  return applyRagPreferences(payload, state);
 }
 
 export function buildDetectPayload(state, context) {
@@ -116,7 +139,7 @@ export function buildReplyPayload(state, context, text) {
   if (!text?.trim()) {
     throw new Error("缺少回帖文本");
   }
-  return {
+  const payload = {
     translation: text,
     sourceLanguage: state.sourceLanguage === "auto" ? state.detectedLanguage : state.sourceLanguage,
     targetLanguage: state.targetLanguage,
@@ -129,6 +152,7 @@ export function buildReplyPayload(state, context, text) {
       useTerminology: Boolean(state.useTerminology)
     }
   };
+  return applyRagPreferences(payload, state);
 }
 
 export function updateStateWithResponse(state, response) {
