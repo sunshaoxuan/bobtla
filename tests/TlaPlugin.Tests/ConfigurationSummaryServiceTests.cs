@@ -70,5 +70,9 @@ public class ConfigurationSummaryServiceTests
         Assert.Contains("en-GB", summary.SupportedLanguages);
         Assert.Contains("yi-001", summary.SupportedLanguages);
         Assert.Contains("zu-ZA", summary.SupportedLanguages);
+        Assert.Contains("ace-ID", summary.SupportedLanguages);
+        Assert.Contains("ban-ID", summary.SupportedLanguages);
+        Assert.Contains("bug-ID", summary.SupportedLanguages);
+        Assert.Contains("min-ID", summary.SupportedLanguages);
     }
 }

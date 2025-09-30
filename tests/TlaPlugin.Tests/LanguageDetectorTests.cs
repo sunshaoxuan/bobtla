@@ -29,6 +29,39 @@ public class LanguageDetectorTests
     }
 
     [Fact]
+    public void Detect_IdentifiesAzerbaijaniWithExtendedLatinLetters()
+    {
+        var detector = new LanguageDetector();
+
+        var result = detector.Detect("Azərbaycan dili çox zəngindir və müxtəlif səslərdən ibarətdir.");
+
+        Assert.Equal("az", result.Language);
+        Assert.True(result.Confidence >= 0.75);
+    }
+
+    [Fact]
+    public void Detect_IdentifiesTurkmenWithUniqueCharacters()
+    {
+        var detector = new LanguageDetector();
+
+        var result = detector.Detect("Türkmen dilinde täzelikler we öwrenmek üçin mümkinçilikler bar.");
+
+        Assert.Equal("tk", result.Language);
+        Assert.True(result.Confidence >= 0.75);
+    }
+
+    [Fact]
+    public void Detect_IdentifiesOromoPatterns()
+    {
+        var detector = new LanguageDetector();
+
+        var result = detector.Detect("Oromoon afaan bareedaa dha; dubbii sirrii fi gammachiisaa qaba.");
+
+        Assert.Equal("om", result.Language);
+        Assert.True(result.Confidence >= 0.75);
+    }
+
+    [Fact]
     public void Detect_ReturnsJapaneseCandidateForKanjiOnlyText()
     {
         var detector = new LanguageDetector();
