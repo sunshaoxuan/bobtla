@@ -4,7 +4,8 @@ import {
   buildDialogState,
   buildTranslatePayload,
   buildReplyPayload,
-  calculateCostHint
+  calculateCostHint,
+  updateStateWithResponse
 } from "./state.js";
 
 function resolveComposeUi(root = typeof document !== "undefined" ? document : undefined) {
@@ -102,15 +103,15 @@ export async function initComposePlugin({ ui = resolveComposeUi(), teams, fetche
     const payload = buildTranslatePayload({ ...state }, context);
     try {
       const response = await translateText(payload, fetcher);
-      if (response?.metadata?.tone) {
-        state.tone = response.metadata.tone;
-        if (ui.toneToggle) {
-          ui.toneToggle.checked = state.tone === "formal";
-        }
+      const nextState = updateStateWithResponse(state, response);
+      state.translation = nextState.translation;
+      state.modelId = nextState.modelId;
+      state.tone = nextState.tone;
+      state.detectedLanguage = nextState.detectedLanguage;
+      if (ui.toneToggle) {
+        ui.toneToggle.checked = state.tone === "formal";
       }
-      state.detectedLanguage = response?.detectedLanguage ?? state.detectedLanguage;
-      state.translation = response.text ?? "";
-      setPreview(ui.preview, state.translation);
+      setPreview(ui.preview, state.translation ?? "");
     } catch (error) {
       setPreview(ui.preview, `翻译失败：${error.message}`);
     }
