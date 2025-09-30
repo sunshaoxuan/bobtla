@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Options;
@@ -43,9 +45,29 @@ public class TranslationPipeline
             throw new TranslationException("許容される文字数を超えています。");
         }
 
+        GlossaryApplicationResult glossaryResult;
+        if (request.UseGlossary)
+        {
+            glossaryResult = _glossary.Apply(request.Text, request.TenantId, request.ChannelId, request.UserId, request.GlossaryDecisions);
+            if (glossaryResult.RequiresResolution)
+            {
+                throw new GlossaryConflictException(glossaryResult, request);
+            }
+        }
+        else
+        {
+            glossaryResult = new GlossaryApplicationResult
+            {
+                Text = request.Text,
+                Matches = Array.Empty<GlossaryMatchDetail>()
+            };
+        }
+
+        var matchSnapshots = glossaryResult.Matches.Select(match => match.Clone()).ToList();
+
         var resolvedRequest = new TranslationRequest
         {
-            Text = request.UseGlossary ? _glossary.Apply(request.Text, request.TenantId, request.ChannelId, request.UserId) : request.Text,
+            Text = glossaryResult.Text,
             SourceLanguage = request.SourceLanguage,
             TargetLanguage = request.TargetLanguage,
             TenantId = request.TenantId,
@@ -54,7 +76,11 @@ public class TranslationPipeline
             Tone = request.Tone,
             AdditionalTargetLanguages = new List<string>(request.AdditionalTargetLanguages),
             UseGlossary = request.UseGlossary,
-            UiLocale = request.UiLocale
+            UiLocale = request.UiLocale,
+            GlossaryDecisions = request.GlossaryDecisions.ToDictionary(
+                pair => pair.Key,
+                pair => pair.Value.Clone(),
+                StringComparer.OrdinalIgnoreCase)
         };
 
         if (string.IsNullOrEmpty(resolvedRequest.SourceLanguage))
@@ -69,11 +95,13 @@ public class TranslationPipeline
 
         if (_cache.TryGet(resolvedRequest, out var cached))
         {
+            cached.SetGlossaryMatches(matchSnapshots.Select(match => match.Clone()));
             return cached;
         }
 
         using var lease = await _throttle.AcquireAsync(resolvedRequest.TenantId, cancellationToken);
         var result = await _router.TranslateAsync(resolvedRequest, cancellationToken);
+        result.SetGlossaryMatches(matchSnapshots);
         _cache.Set(resolvedRequest, result);
         return result;
     }

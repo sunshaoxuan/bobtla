@@ -94,6 +94,49 @@ const FALLBACK_LOCALES = [
   { id: "zh-CN", displayName: "简体中文" }
 ];
 
+const FALLBACK_LANGUAGES = [
+  "ja-JP",
+  "en-US",
+  "zh-CN",
+  "zh-TW",
+  "ko-KR",
+  "fr-FR",
+  "de-DE",
+  "es-ES",
+  "it-IT",
+  "pt-BR",
+  "pt-PT",
+  "ru-RU",
+  "nl-NL",
+  "sv-SE",
+  "da-DK",
+  "fi-FI",
+  "nb-NO",
+  "pl-PL",
+  "cs-CZ",
+  "sk-SK",
+  "hu-HU",
+  "tr-TR",
+  "ar-SA",
+  "he-IL",
+  "hi-IN",
+  "th-TH",
+  "vi-VN",
+  "id-ID",
+  "ms-MY",
+  "uk-UA",
+  "el-GR",
+  "ro-RO",
+  "bg-BG",
+  "hr-HR",
+  "sl-SI",
+  "lt-LT",
+  "lv-LV",
+  "et-EE",
+  "sr-RS",
+  "ta-IN"
+];
+
 async function fetchJson(url) {
   try {
     const response = await fetch(url);
@@ -227,11 +270,30 @@ function renderLocales(locales) {
   });
 }
 
+function renderLanguages(languages) {
+  const list = document.querySelector("[data-language-list]");
+  const count = document.querySelector("[data-language-count]");
+  const items = Array.isArray(languages) ? languages.filter((code) => typeof code === "string") : [];
+  if (count) {
+    count.textContent = `当前支持 ${items.length} 种语言`;
+  }
+  if (!list) return;
+  list.innerHTML = "";
+  items.forEach((code) => {
+    const entry = document.createElement("li");
+    const [language, region] = String(code).split("-");
+    const meta = region ? region.toUpperCase() : language.toUpperCase();
+    entry.innerHTML = `<strong>${code}</strong><span>${meta}</span>`;
+    list.appendChild(entry);
+  });
+}
+
 async function bootstrap() {
-  const [status, roadmap, locales] = await Promise.all([
+  const [status, roadmap, locales, configuration] = await Promise.all([
     fetchJson("/api/status"),
     fetchJson("/api/roadmap"),
-    fetchJson("/api/localization/locales")
+    fetchJson("/api/localization/locales"),
+    fetchJson("/api/configuration")
   ]);
 
   const mergedCards = buildStatusCards(status ?? FALLBACK_STATUS, roadmap ?? FALLBACK_ROADMAP);
@@ -239,6 +301,7 @@ async function bootstrap() {
   renderTimeline(mergedCards.timeline);
   renderTests(mergedCards.tests);
   renderLocales(formatLocaleOptions(locales ?? FALLBACK_LOCALES));
+  renderLanguages(configuration?.supportedLanguages ?? FALLBACK_LANGUAGES);
 }
 
 document.addEventListener("DOMContentLoaded", bootstrap);
