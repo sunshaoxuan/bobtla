@@ -15,9 +15,13 @@ function resolveDefaultTargetLanguage(languages = [], locale = "") {
       return match.id;
     }
   }
-  const defaultLocale = languages.find((lang) => lang.isDefault);
+  const defaultLocale = languages.find((lang) => lang.isDefault && lang.id !== "auto");
   if (defaultLocale) {
     return defaultLocale.id;
+  }
+  const firstNonAuto = languages.find((lang) => lang.id !== "auto");
+  if (firstNonAuto) {
+    return firstNonAuto.id;
   }
   return languages[0].id;
 }

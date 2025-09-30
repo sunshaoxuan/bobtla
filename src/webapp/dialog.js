@@ -68,10 +68,20 @@ export async function initMessageExtensionDialog({ ui = resolveDialogUi(), teams
 
   applySelectOptions(ui.modelSelect, metadata.models, { valueKey: "id", labelKey: "displayName" });
   applySelectOptions(ui.sourceSelect, metadata.languages, { valueKey: "id", labelKey: "name" });
-  applySelectOptions(ui.targetSelect, metadata.languages.filter((lang) => lang.id !== "auto"), {
+
+  const targetLanguages = metadata.languages.filter((lang) => lang.id !== "auto");
+  applySelectOptions(ui.targetSelect, targetLanguages, {
     valueKey: "id",
     labelKey: "name"
   });
+
+  const availableTargetIds = targetLanguages.map((lang) => lang.id);
+  if (!availableTargetIds.includes(state.targetLanguage) && availableTargetIds.length) {
+    state.targetLanguage = availableTargetIds[0];
+    if (ui.targetSelect) {
+      ui.targetSelect.value = state.targetLanguage;
+    }
+  }
 
   if (ui.modelSelect) {
     ui.modelSelect.value = state.modelId;
