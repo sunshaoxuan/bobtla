@@ -64,4 +64,6 @@ test("listOfflineDrafts returns saved drafts", () => {
   assert.equal(drafts.length, 1);
   assert.equal(drafts[0].status, "PENDING");
   assert.equal(drafts[0].targetLanguage, "es");
+  assert.equal(drafts[0].resultText, null);
+  assert.equal(drafts[0].metadata.origin, "offlineDraft");
 });

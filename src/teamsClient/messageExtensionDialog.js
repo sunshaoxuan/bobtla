@@ -124,6 +124,24 @@ function updateOfflineStatus(ui, message, { isError = false } = {}) {
   ui.offlineStatus.dataset.variant = isError ? "error" : "";
 }
 
+function describeDraft(draft) {
+  const id = draft.id ?? draft.Id ?? "--";
+  const status = draft.status ?? draft.Status ?? "未知";
+  const target = draft.targetLanguage ?? draft.TargetLanguage ?? "--";
+  const attempts = draft.attempts ?? draft.Attempts ?? 0;
+  const result = draft.resultText ?? draft.ResultText;
+  const error = draft.errorReason ?? draft.ErrorReason;
+  const parts = [`#${id}`, status, `目标 ${target}`, `重试 ${attempts}`];
+  if (status === "SUCCEEDED" && result) {
+    const preview = String(result).slice(0, 40);
+    parts.push(`结果：${preview}${result.length > 40 ? "…" : ""}`);
+  }
+  if (status === "FAILED" && error) {
+    parts.push(`原因：${error}`);
+  }
+  return parts.join(" · ");
+}
+
 function renderOfflineDrafts(ui, drafts) {
   if (!ui.offlineList) {
     return;
@@ -136,7 +154,7 @@ function renderOfflineDrafts(ui, drafts) {
     return;
   }
   const entries = drafts.map((draft) => {
-    const label = `#${draft.id ?? draft.Id ?? "--"} · ${draft.status ?? draft.Status ?? "未知"} · ${draft.targetLanguage ?? draft.TargetLanguage ?? "--"}`;
+    const label = describeDraft(draft);
     if (typeof document !== "undefined" && typeof document?.createElement === "function") {
       const item = document.createElement("li");
       item.textContent = label;
@@ -338,6 +356,28 @@ export async function initMessageExtensionDialog({ ui = resolveDialogUi(), teams
       const draftsPayload = response?.drafts ?? response?.Drafts;
       const drafts = Array.isArray(draftsPayload) ? draftsPayload : [];
       renderOfflineDrafts(ui, drafts);
+      const completed = drafts.find((draft) => (draft.status ?? draft.Status) === "SUCCEEDED");
+      if (completed) {
+        const id = completed.id ?? completed.Id ?? "--";
+        updateOfflineStatus(ui, `草稿 #${id} 已完成翻译，可直接回贴或在 Teams 活动提要查看。`);
+        return;
+      }
+      const failed = drafts.find((draft) => (draft.status ?? draft.Status) === "FAILED");
+      if (failed) {
+        const id = failed.id ?? failed.Id ?? "--";
+        const reason = failed.errorReason ?? failed.ErrorReason ?? "未知原因";
+        updateOfflineStatus(ui, `草稿 #${id} 多次失败：${reason}`, { isError: true });
+        return;
+      }
+      if (drafts.length > 0) {
+        const waiting = drafts.some((draft) => (draft.status ?? draft.Status) === "PROCESSING");
+        const pending = drafts.some((draft) => (draft.status ?? draft.Status) === "PENDING");
+        if (waiting || pending) {
+          updateOfflineStatus(ui, "草稿正在后台翻译，稍后将通过 Teams 提醒您。");
+          return;
+        }
+      }
+      updateOfflineStatus(ui, "");
     } catch (error) {
       console.warn("获取离线草稿失败", error);
       updateOfflineStatus(ui, `草稿列表更新失败：${error.message ?? error}`, { isError: true });
@@ -361,16 +401,20 @@ export async function initMessageExtensionDialog({ ui = resolveDialogUi(), teams
       originalText,
       targetLanguage: state.targetLanguage,
       tenantId: context?.tenant?.id,
-      userId: context?.user?.id
+      userId: context?.user?.id,
+      sourceLanguage: state.sourceLanguage,
+      channelId: context?.channel?.id,
+      metadata: { modelId: state.modelId }
     };
     updateOfflineStatus(ui, "正在保存离线草稿…");
     try {
       const authorization = await resolveAuthorization();
       const response = await saveOfflineDraft(payload, fetcher, { authorization });
       if (response?.type === "offlineDraftSaved") {
-        const draftId = response.draftId ?? response.id ?? "--";
-        const status = response.status ?? "PENDING";
-        updateOfflineStatus(ui, `草稿 #${draftId} 状态：${status}`);
+        const draftPayload = response.draft ?? {};
+        const draftId = response.draftId ?? draftPayload.id ?? response.id ?? "--";
+        const status = response.status ?? draftPayload.status ?? "PENDING";
+        updateOfflineStatus(ui, `草稿 #${draftId} 已保存，当前状态：${status}`);
         await refreshOfflineDrafts();
       } else {
         updateOfflineStatus(ui, "草稿保存结果未知", { isError: true });

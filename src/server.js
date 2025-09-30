@@ -10,6 +10,7 @@ import { ComplianceGateway } from "./services/complianceGateway.js";
 import { TranslationPipeline } from "./services/translationPipeline.js";
 import { MessageExtensionHandler } from "./teams/messageExtension.js";
 import { DEFAULT_MODEL_ALLOW_LIST, compliancePolicy } from "./config.js";
+import { DraftReplayService } from "./services/draftReplayService.js";
 
 function buildMetadata() {
   return {
@@ -66,7 +67,24 @@ function buildHandler() {
     retry: 1
   });
   const pipeline = new TranslationPipeline({ router, offlineDraftStore: drafts });
-  return new MessageExtensionHandler({ pipeline });
+  const notifier = {
+    notifyDraftCompleted({ userId, draftId, resultText }) {
+      const preview = typeof resultText === "string" ? resultText.slice(0, 40) : "";
+      console.log(`Offline draft #${draftId} for ${userId} completed. Preview: ${preview}`);
+    }
+  };
+  const replayService = new DraftReplayService({
+    offlineDraftStore: drafts,
+    pipeline,
+    notifier
+  });
+  if (process.env.NODE_ENV !== "test") {
+    replayService.start();
+  }
+  pipeline.replayService = replayService;
+  const handler = new MessageExtensionHandler({ pipeline });
+  handler.replayService = replayService;
+  return handler;
 }
 
 export function createServer({ handler = buildHandler(), metadata = buildMetadata() } = {}) {

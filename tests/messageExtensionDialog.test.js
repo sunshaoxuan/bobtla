@@ -7,7 +7,7 @@ function createStubElement(initial = {}) {
     value: initial.value ?? "",
     checked: Boolean(initial.checked),
     textContent: initial.textContent ?? "",
-    hidden: false,
+    hidden: initial.hidden ?? false,
     dataset: initial.dataset ?? {},
     listeners: new Map(),
     replaceChildren() {},
@@ -368,6 +368,86 @@ test("initMessageExtensionDialog corrects target when locale missing from metada
   assert.equal(replyCall.body.targetLanguage, "ja");
 });
 
+test("dialog surfaces offline draft completion state", async () => {
+  const fetchCalls = [];
+  const fakeFetch = async (url, options = {}) => {
+    fetchCalls.push({ url, method: options.method ?? "GET" });
+    return {
+      ok: true,
+      async json() {
+        if (url === "/api/metadata") {
+          return {
+            models: [{ id: "model-a", displayName: "Model A", costPerCharUsd: 0.00002 }],
+            languages: [
+              { id: "auto", name: "Auto", isDefault: true },
+              { id: "ja", name: "日本語" }
+            ],
+            features: { offlineDraft: true },
+            pricing: { currency: "USD" }
+          };
+        }
+        if (url.startsWith("/api/offline-draft") && (options.method ?? "GET") === "GET") {
+          return {
+            drafts: [
+              { id: "draft-1", status: "SUCCEEDED", targetLanguage: "ja", resultText: "こんにちは" },
+              { id: "draft-2", status: "FAILED", targetLanguage: "ja", errorReason: "budget" }
+            ]
+          };
+        }
+        throw new Error(`unexpected url ${url}`);
+      }
+    };
+  };
+
+  const ui = {
+    modelSelect: createStubElement(),
+    sourceSelect: createStubElement(),
+    targetSelect: createStubElement(),
+    terminologyToggle: createStubElement({ checked: true }),
+    ragToggle: createStubElement({ checked: false }),
+    contextHintsInput: createStubElement(),
+    detectedLabel: createStubElement(),
+    costHint: createStubElement(),
+    input: createStubElement({ value: "hello" }),
+    translation: createStubElement(),
+    previewButton: createStubElement(),
+    submitButton: createStubElement(),
+    errorBanner: createStubElement(),
+    offlineSection: createStubElement({ hidden: true }),
+    offlineStatus: createStubElement(),
+    offlineList: {
+      items: [],
+      replaceChildren(...items) {
+        this.items = items;
+      }
+    },
+    offlineButton: createStubElement()
+  };
+
+  const teams = {
+    app: {
+      async initialize() {},
+      async getContext() {
+        return { tenant: { id: "tenant" }, user: { id: "user" }, channel: { id: "channel" }, app: { locale: "ja-JP" } };
+      }
+    },
+    authentication: {
+      async getAuthToken() {
+        return "token";
+      }
+    },
+    dialog: { submit() {} }
+  };
+
+  await initMessageExtensionDialog({ ui, teams, fetcher: fakeFetch });
+  assert.equal(ui.offlineSection.hidden, false);
+  assert.ok(ui.offlineStatus.textContent.includes("已完成翻译"));
+  assert.equal(ui.offlineStatus.dataset.variant, "");
+  assert.equal(ui.offlineList.items.length >= 1, true);
+  assert.ok(String(ui.offlineList.items[0].textContent).includes("SUCCEEDED"));
+  assert.ok(String(ui.offlineList.items[1].textContent).includes("FAILED"));
+});
+
 test("dialog uses concrete target when user locale is unavailable", async () => {
   const fetchCalls = [];
   const fakeFetch = async (url, options = {}) => {
@@ -660,7 +740,11 @@ test("dialog saves offline drafts and refreshes list", async () => {
   assert.equal(offlineButton.hidden, false);
 
   await ui.offlineButton.trigger("click");
-  assert.match(offlineStatus.textContent, /草稿 #42 状态：PENDING/);
+  assert.ok(
+    /草稿正在后台翻译/.test(offlineStatus.textContent) ||
+      /草稿 #42 已保存/.test(offlineStatus.textContent),
+    `unexpected status message: ${offlineStatus.textContent}`
+  );
 
   const postCall = fetchCalls.find((call) => call.url === "/api/offline-draft" && call.method === "POST");
   assert.ok(postCall, "expected offline draft POST call");
@@ -671,4 +755,5 @@ test("dialog saves offline drafts and refreshes list", async () => {
   const listCall = fetchCalls.find((call) => call.url.startsWith("/api/offline-draft?") && call.method === "GET");
   assert.ok(listCall, "expected offline draft GET call");
   assert.equal(offlineList.items.length, 1);
+  assert.ok(String(offlineList.items[0].textContent).includes("PENDING"));
 });

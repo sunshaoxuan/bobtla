@@ -58,15 +58,20 @@ export class MessageExtensionHandler {
     }
   }
 
-  async handleOfflineDraft({ originalText, targetLanguage, tenantId, userId }) {
+  async handleOfflineDraft({ originalText, targetLanguage, tenantId, userId, sourceLanguage, channelId, metadata }) {
     const draft = this.pipeline.saveOfflineDraft({
       userId,
       tenantId,
       originalText,
-      targetLanguage
+      targetLanguage,
+      sourceLanguage,
+      channelId,
+      metadata
     });
     return {
       type: "offlineDraftSaved",
+      draftId: draft.id,
+      status: draft.status,
       draft
     };
   }
