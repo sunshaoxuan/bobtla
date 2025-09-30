@@ -1,6 +1,9 @@
 using System.Collections.Generic;
+using System.IO;
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
@@ -111,6 +114,56 @@ public class ApiEndpointsTests : IClassFixture<WebApplicationFactory<Program>>
     }
 
     [Fact]
+    public async Task GlossaryUploadEndpointRejectsRequestWithoutFile()
+    {
+        var client = _factory.CreateClient();
+        using var form = new MultipartFormDataContent
+        {
+            { new StringContent("tenant"), "scopeType" },
+            { new StringContent("contoso"), "scopeId" }
+        };
+
+        var response = await client.PostAsync("/api/glossary/upload", form);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GlossaryUploadEndpointReturnsConflicts()
+    {
+        var client = _factory.CreateClient();
+        var csv = "source,target\nCPU,处理器\nGPU,显卡";
+        using var form = new MultipartFormDataContent
+        {
+            { new StringContent("tenant"), "scopeType" },
+            { new StringContent("contoso"), "scopeId" },
+            { new StringContent("false"), "overwrite" }
+        };
+
+        var stream = new MemoryStream(Encoding.UTF8.GetBytes(csv));
+        var fileContent = new StreamContent(stream);
+        fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("text/csv");
+        form.Add(fileContent, "file", "upload.csv");
+
+        var response = await client.PostAsync("/api/glossary/upload", form);
+        response.EnsureSuccessStatusCode();
+
+        var payload = await response.Content.ReadFromJsonAsync<GlossaryUploadResponse>();
+        Assert.NotNull(payload);
+        Assert.Equal(1, payload!.Imported);
+        Assert.Equal(0, payload.Updated);
+        Assert.Single(payload.Conflicts);
+        Assert.Empty(payload.Errors);
+
+        var conflicts = payload.Conflicts[0];
+        Assert.Equal("CPU", conflicts.Source);
+        Assert.Equal("tenant:contoso", conflicts.Scope);
+
+        var glossary = await client.GetFromJsonAsync<List<GlossaryEntry>>("/api/glossary");
+        Assert.Contains(glossary!, entry => entry.Source == "GPU" && entry.Target == "显卡");
+    }
+
+    [Fact]
     public async Task RewriteEndpointReturnsPaymentRequiredWhenOverBudget()
     {
         var client = _factory.WithWebHostBuilder(builder =>
@@ -180,6 +233,14 @@ public class ApiEndpointsTests : IClassFixture<WebApplicationFactory<Program>>
     {
         public string ProcessedText { get; set; } = string.Empty;
         public List<GlossaryMatchDetail> Matches { get; set; } = new();
+    }
+
+    private sealed class GlossaryUploadResponse
+    {
+        public int Imported { get; set; }
+        public int Updated { get; set; }
+        public List<GlossaryUploadConflict> Conflicts { get; set; } = new();
+        public List<string> Errors { get; set; } = new();
     }
 
     private sealed class RewriteResponse

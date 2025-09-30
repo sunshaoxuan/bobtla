@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using TlaPlugin.Models;
 using TlaPlugin.Services;
 using Xunit;
@@ -107,5 +108,62 @@ public class GlossaryServiceTests
         Assert.Equal(GlossaryDecisionKind.Unspecified, match.Resolution);
         Assert.False(match.Replaced);
         Assert.Equal("CPU upgrade", result.Text);
+    }
+
+    [Fact]
+    public void ImportEntries_AddsAndUpdatesEntries()
+    {
+        var service = new GlossaryService();
+        service.LoadEntries(new[]
+        {
+            new GlossaryEntry("GPU", "图形处理器", "tenant:contoso", new Dictionary<string, string> { ["id"] = "gpu" })
+        });
+
+        var result = service.ImportEntries(
+            "tenant:contoso",
+            new[]
+            {
+                new GlossaryUploadEntry("CPU", "中央处理器"),
+                new GlossaryUploadEntry("GPU", "显卡")
+            },
+            overwriteConflicts: true);
+
+        Assert.Equal(1, result.ImportedCount);
+        Assert.Equal(1, result.UpdatedCount);
+        Assert.Empty(result.Conflicts);
+        Assert.Empty(result.Errors);
+
+        var entries = service.GetEntries().Where(entry => entry.Scope == "tenant:contoso").ToList();
+        Assert.Contains(entries, entry => entry.Source == "CPU" && entry.Target == "中央处理器");
+        Assert.Contains(entries, entry => entry.Source == "GPU" && entry.Target == "显卡");
+    }
+
+    [Fact]
+    public void ImportEntries_ReportsConflicts_WhenOverwriteDisabled()
+    {
+        var service = new GlossaryService();
+        service.LoadEntries(new[]
+        {
+            new GlossaryEntry("NDA", "保密协议", "tenant:contoso")
+        });
+
+        var result = service.ImportEntries(
+            "tenant:contoso",
+            new[]
+            {
+                new GlossaryUploadEntry("NDA", "保密契約"),
+                new GlossaryUploadEntry("", "缺失源词")
+            },
+            overwriteConflicts: false);
+
+        Assert.Equal(0, result.ImportedCount);
+        Assert.Equal(0, result.UpdatedCount);
+        Assert.Single(result.Conflicts);
+        Assert.Single(result.Errors);
+        var conflict = result.Conflicts.Single();
+        Assert.Equal("NDA", conflict.Source);
+        Assert.Equal("保密协议", conflict.ExistingTarget);
+        Assert.Equal("保密契約", conflict.IncomingTarget);
+        Assert.Equal("tenant:contoso", conflict.Scope);
     }
 }

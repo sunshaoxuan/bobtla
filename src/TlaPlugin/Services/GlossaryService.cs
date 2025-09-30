@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Text.RegularExpressions;
 using TlaPlugin.Models;
@@ -13,12 +14,98 @@ public class GlossaryService
 {
     private readonly IList<GlossaryEntry> _entries = new List<GlossaryEntry>();
 
+    private static readonly string[] AllowedScopes = new[] { "tenant", "channel", "user" };
+
     public void LoadEntries(IEnumerable<GlossaryEntry> entries)
     {
         foreach (var entry in entries)
         {
             _entries.Add(entry);
         }
+    }
+
+    /// <summary>
+    /// 从上传数据导入术语条目，并返回导入结果与冲突信息。
+    /// </summary>
+    public GlossaryUploadResult ImportEntries(
+        string scope,
+        IEnumerable<GlossaryUploadEntry> items,
+        bool overwriteConflicts)
+    {
+        if (items is null)
+        {
+            throw new ArgumentNullException(nameof(items));
+        }
+
+        var normalizedScope = NormalizeScope(scope);
+        var imported = 0;
+        var updated = 0;
+        var conflicts = new List<GlossaryUploadConflict>();
+        var errors = new List<string>();
+        var comparer = StringComparer.OrdinalIgnoreCase;
+        var index = 0;
+
+        foreach (var item in items)
+        {
+            index++;
+            if (item is null)
+            {
+                errors.Add($"行 {index}: 项目为空。");
+                continue;
+            }
+
+            var source = NormalizeTerm(item.Source);
+            var target = NormalizeTerm(item.Target);
+            if (string.IsNullOrEmpty(source) || string.IsNullOrEmpty(target))
+            {
+                errors.Add($"行 {index}: 缺少源词或译文。");
+                continue;
+            }
+
+            var existing = _entries.LastOrDefault(entry =>
+                comparer.Equals(entry.Scope, normalizedScope)
+                && comparer.Equals(entry.Source, source));
+
+            if (existing is not null)
+            {
+                if (comparer.Equals(existing.Target, target))
+                {
+                    continue;
+                }
+
+                if (!overwriteConflicts)
+                {
+                    conflicts.Add(new GlossaryUploadConflict(source, existing.Target, target, normalizedScope));
+                    continue;
+                }
+
+                var metadata = existing.Metadata is null
+                    ? new Dictionary<string, string>(comparer)
+                    : new Dictionary<string, string>(existing.Metadata, comparer);
+                EnsureIdentifier(metadata);
+
+                _entries.Remove(existing);
+                _entries.Add(existing with { Target = target, Metadata = metadata });
+                updated++;
+                continue;
+            }
+
+            var entryMetadata = item.Metadata is null
+                ? new Dictionary<string, string>(comparer)
+                : new Dictionary<string, string>(item.Metadata, comparer);
+            EnsureIdentifier(entryMetadata);
+
+            _entries.Add(new GlossaryEntry(source, target, normalizedScope, entryMetadata));
+            imported++;
+        }
+
+        return new GlossaryUploadResult
+        {
+            ImportedCount = imported,
+            UpdatedCount = updated,
+            Conflicts = new ReadOnlyCollection<GlossaryUploadConflict>(conflicts),
+            Errors = new ReadOnlyCollection<string>(errors)
+        };
     }
 
     /// <summary>
@@ -253,6 +340,44 @@ public class GlossaryService
         }
 
         return decisions.TryGetValue(source, out var decision) ? decision : null;
+    }
+
+
+    private static string NormalizeScope(string scope)
+    {
+        if (string.IsNullOrWhiteSpace(scope))
+        {
+            throw new ArgumentException("Scope is required.", nameof(scope));
+        }
+
+        var trimmed = scope.Trim();
+        var parts = trimmed.Split(':', 2, StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length != 2)
+        {
+            throw new ArgumentException("Scope must follow the pattern '<kind>:<id>'.", nameof(scope));
+        }
+
+        var prefix = parts[0].ToLowerInvariant();
+        if (!AllowedScopes.Contains(prefix))
+        {
+            throw new ArgumentException($"Unsupported scope '{parts[0]}'.", nameof(scope));
+        }
+
+        return string.Concat(prefix, ":", parts[1]);
+    }
+
+    private static string NormalizeTerm(string value)
+    {
+        return value?.Trim() ?? string.Empty;
+    }
+
+    private static void EnsureIdentifier(IDictionary<string, string> metadata)
+    {
+        const string key = "id";
+        if (!metadata.ContainsKey(key))
+        {
+            metadata[key] = Guid.NewGuid().ToString("N");
+        }
     }
 
     private static int Priority(string scope, string tenantId, string? channelId, string userId)

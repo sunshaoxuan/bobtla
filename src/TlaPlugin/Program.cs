@@ -4,6 +4,10 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using System.Security.Authentication;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using TlaPlugin.Configuration;
@@ -291,6 +295,72 @@ app.MapGet("/api/glossary", (GlossaryService glossary) =>
     return Results.Json(glossary.GetEntries(), options: jsonOptions);
 });
 
+app.MapPost("/api/glossary/upload", async (HttpRequest request, GlossaryService glossary, CancellationToken cancellationToken) =>
+{
+    if (!request.HasFormContentType)
+    {
+        return Results.BadRequest(new { error = "需要 multipart/form-data 请求。" });
+    }
+
+    var form = await request.ReadFormAsync(cancellationToken);
+    var file = form.Files.GetFile("file");
+    if (file is null || file.Length == 0)
+    {
+        return Results.BadRequest(new { error = "请选择包含术语的文件。" });
+    }
+
+    var overwriteRaw = form["overwrite"].ToString();
+    var overwrite = bool.TryParse(overwriteRaw, out var parsed)
+        ? parsed
+        : string.Equals(overwriteRaw, "on", StringComparison.OrdinalIgnoreCase);
+
+    var scope = ResolveScope(form);
+    if (string.IsNullOrWhiteSpace(scope))
+    {
+        return Results.BadRequest(new { error = "必须提供术语作用域。" });
+    }
+
+    List<GlossaryUploadEntry> entries;
+    List<string> parseErrors;
+    try
+    {
+        (entries, parseErrors) = await ParseGlossaryEntriesAsync(file, cancellationToken);
+    }
+    catch (FormatException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+
+    if (entries.Count == 0)
+    {
+        return Results.BadRequest(new { error = "文件中未找到有效术语。", errors = parseErrors });
+    }
+
+    GlossaryUploadResult result;
+    try
+    {
+        result = glossary.ImportEntries(scope, entries, overwrite);
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+
+    var combinedErrors = parseErrors.Concat(result.Errors).ToList();
+
+    return Results.Json(new
+    {
+        imported = result.ImportedCount,
+        updated = result.UpdatedCount,
+        conflicts = result.Conflicts,
+        errors = combinedErrors
+    }, options: jsonOptions);
+});
+
 app.MapGet("/api/audit", (AuditLogger auditLogger) =>
 {
     return Results.Json(auditLogger.Export(), options: jsonOptions);
@@ -325,6 +395,223 @@ app.MapGet("/api/roadmap", (DevelopmentRoadmapService roadmapService) =>
     var roadmap = roadmapService.GetRoadmap();
     return Results.Json(roadmap, options: jsonOptions);
 });
+
+
+static string? ResolveScope(IFormCollection form)
+{
+    var scope = form["scope"].ToString();
+    if (!string.IsNullOrWhiteSpace(scope))
+    {
+        return scope.Trim();
+    }
+
+    var scopeType = form["scopeType"].ToString();
+    if (string.IsNullOrWhiteSpace(scopeType))
+    {
+        return null;
+    }
+
+    var identifier = form["scopeId"].ToString();
+    if (string.IsNullOrWhiteSpace(identifier))
+    {
+        identifier = scopeType switch
+        {
+            "tenant" => form["tenantId"].ToString(),
+            "channel" => form["channelId"].ToString(),
+            "user" => form["userId"].ToString(),
+            _ => identifier
+        };
+    }
+
+    if (string.IsNullOrWhiteSpace(identifier))
+    {
+        return null;
+    }
+
+    return string.Concat(scopeType.Trim(), ":", identifier.Trim());
+}
+
+static async Task<(List<GlossaryUploadEntry> Entries, List<string> Errors)> ParseGlossaryEntriesAsync(IFormFile file, CancellationToken cancellationToken)
+{
+    await using var buffer = new MemoryStream();
+    await file.CopyToAsync(buffer, cancellationToken);
+    buffer.Position = 0;
+
+    if (IsTermBase(file.FileName))
+    {
+        return ParseTermBase(buffer);
+    }
+
+    buffer.Position = 0;
+    return ParseCsv(buffer);
+}
+
+static bool IsTermBase(string? fileName)
+{
+    if (string.IsNullOrWhiteSpace(fileName))
+    {
+        return false;
+    }
+
+    return fileName.EndsWith(".tbx", StringComparison.OrdinalIgnoreCase)
+        || fileName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase);
+}
+
+static (List<GlossaryUploadEntry> Entries, List<string> Errors) ParseCsv(Stream stream)
+{
+    var entries = new List<GlossaryUploadEntry>();
+    var errors = new List<string>();
+    stream.Position = 0;
+    using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, leaveOpen: true);
+    string? line;
+    var row = 0;
+    var headerSkipped = false;
+
+    while ((line = reader.ReadLine()) is not null)
+    {
+        row++;
+        if (string.IsNullOrWhiteSpace(line))
+        {
+            continue;
+        }
+
+        var cells = SplitCsvLine(line);
+        if (!headerSkipped && LooksLikeHeader(cells))
+        {
+            headerSkipped = true;
+            continue;
+        }
+
+        var source = cells.Length > 0 ? cells[0] : string.Empty;
+        var target = cells.Length > 1 ? cells[1] : string.Empty;
+        if (string.IsNullOrWhiteSpace(source) && string.IsNullOrWhiteSpace(target))
+        {
+            errors.Add($"行 {row}: 未提供源词或译文。");
+            continue;
+        }
+
+        var metadata = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (cells.Length > 2 && !string.IsNullOrWhiteSpace(cells[2]))
+        {
+            metadata["note"] = cells[2];
+        }
+
+        entries.Add(new GlossaryUploadEntry(source, target, metadata));
+    }
+
+    return (entries, errors);
+}
+
+static (List<GlossaryUploadEntry> Entries, List<string> Errors) ParseTermBase(Stream stream)
+{
+    var entries = new List<GlossaryUploadEntry>();
+    var errors = new List<string>();
+    stream.Position = 0;
+    XDocument document;
+    try
+    {
+        document = XDocument.Load(stream);
+    }
+    catch (Exception ex)
+    {
+        throw new FormatException($"TermBase 文件解析失败: {ex.Message}");
+    }
+
+    var ns = document.Root?.Name.Namespace ?? XNamespace.None;
+    var xmlNs = XNamespace.Get("http://www.w3.org/XML/1998/namespace");
+    var index = 0;
+
+    foreach (var entry in document.Descendants(ns + "termEntry"))
+    {
+        index++;
+        var langSets = entry.Elements(ns + "langSet").ToList();
+        if (langSets.Count < 2)
+        {
+            errors.Add($"词条 {index}: 缺少目标语言集。");
+            continue;
+        }
+
+        var sourceTerm = langSets[0].Descendants(ns + "term").FirstOrDefault()?.Value?.Trim();
+        var targetTerm = langSets[1].Descendants(ns + "term").FirstOrDefault()?.Value?.Trim();
+        if (string.IsNullOrWhiteSpace(sourceTerm) || string.IsNullOrWhiteSpace(targetTerm))
+        {
+            errors.Add($"词条 {index}: 缺少源词或译文。");
+            continue;
+        }
+
+        var metadata = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var sourceLang = langSets[0].Attribute(xmlNs + "lang")?.Value ?? langSets[0].Attribute("lang")?.Value;
+        var targetLang = langSets[1].Attribute(xmlNs + "lang")?.Value ?? langSets[1].Attribute("lang")?.Value;
+        if (!string.IsNullOrWhiteSpace(sourceLang))
+        {
+            metadata["sourceLang"] = sourceLang!;
+        }
+        if (!string.IsNullOrWhiteSpace(targetLang))
+        {
+            metadata["targetLang"] = targetLang!;
+        }
+
+        var note = entry.Descendants(ns + "note").FirstOrDefault()?.Value?.Trim();
+        if (!string.IsNullOrWhiteSpace(note))
+        {
+            metadata["note"] = note!;
+        }
+
+        entries.Add(new GlossaryUploadEntry(sourceTerm!, targetTerm!, metadata));
+    }
+
+    return (entries, errors);
+}
+
+static string[] SplitCsvLine(string line)
+{
+    var values = new List<string>();
+    var builder = new StringBuilder();
+    var inQuotes = false;
+
+    for (var i = 0; i < line.Length; i++)
+    {
+        var current = line[i];
+        if (current == '"')
+        {
+            if (inQuotes && i + 1 < line.Length && line[i + 1] == '"')
+            {
+                builder.Append('"');
+                i++;
+                continue;
+            }
+
+            inQuotes = !inQuotes;
+            continue;
+        }
+
+        if (current == ',' && !inQuotes)
+        {
+            values.Add(builder.ToString().Trim());
+            builder.Clear();
+            continue;
+        }
+
+        builder.Append(current);
+    }
+
+    values.Add(builder.ToString().Trim());
+    return values.ToArray();
+}
+
+static bool LooksLikeHeader(string[] cells)
+{
+    if (cells.Length < 2)
+    {
+        return false;
+    }
+
+    var first = cells[0].Trim().ToLowerInvariant();
+    var second = cells[1].Trim().ToLowerInvariant();
+    return (first.Contains("source") && second.Contains("target"))
+        || (first.Contains("term") && second.Contains("translation"));
+}
+
 
 app.Run();
 
