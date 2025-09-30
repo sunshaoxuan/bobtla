@@ -102,8 +102,10 @@ public class LanguageDetector
         "\\b(the|and|for|with|this|that|from|have|has|was|were|been|being|are|is|into|which|about|because|while|where|when|what|who|whose|than|then|them|these|those|your|their|there|over|after|before|between|without|should|would|could|can't|don't|doesn't|won't|it's|i'm|we're|you're|they're)\\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex EnglishMorphologyPattern = new(
-        "\\b\\p{L}+(?:ing|ings|ed|tion|tions)\\b",
+        "\\b\\p{L}+(?:ing|ings|ed)\\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private sealed record EnglishEvidence(int StopwordMatches, int MorphologyMatches);
 
     private static readonly IReadOnlyList<LanguageDefinition> LanguageDefinitions = BuildLanguageDefinitions();
 
@@ -305,9 +307,10 @@ public class LanguageDetector
                     scriptLetterCount >= 18 &&
                     uniqueLetters >= 7;
 
-                var englishEvidenceScore = CalculateEnglishEvidenceScore(text);
-                var hasAnyEnglishEvidence = englishEvidenceScore > 0;
-                var hasStrongEnglishEvidence = englishEvidenceScore >= 2;
+                var englishEvidence = CalculateEnglishEvidence(text);
+                var hasAnyEnglishEvidence = englishEvidence.StopwordMatches > 0 || englishEvidence.MorphologyMatches > 0;
+                var combinedEvidence = englishEvidence.StopwordMatches + Math.Min(englishEvidence.MorphologyMatches, 2);
+                var hasStrongEnglishEvidence = englishEvidence.StopwordMatches > 0 && combinedEvidence >= 2;
 
                 if (!hasAnyEnglishEvidence)
                 {
@@ -341,12 +344,12 @@ public class LanguageDetector
         return penalty;
     }
 
-    private static int CalculateEnglishEvidenceScore(string text)
+    private static EnglishEvidence CalculateEnglishEvidence(string text)
     {
-        var evidence = EnglishIndicatorPattern.Matches(text).Count;
-        evidence += EnglishMorphologyPattern.Matches(text).Count;
+        var stopwordMatches = EnglishIndicatorPattern.Matches(text).Count;
+        var morphologyMatches = EnglishMorphologyPattern.Matches(text).Count;
 
-        return evidence;
+        return new EnglishEvidence(stopwordMatches, morphologyMatches);
     }
 
     private static int CountWords(string text)
