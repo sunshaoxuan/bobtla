@@ -144,13 +144,18 @@ public class LanguageDetector
         var hasSignatureMatch = false;
         var hasJapaneseKana = false;
         var containsChinesePunctuation = false;
-        var isAmbiguousHan = false;
+        var hasNeutralHanPunctuation = false;
+        var penalizeHanForLackOfKana = false;
 
         if (primary.Key == WritingSystem.Han)
         {
             hasJapaneseKana = ContainsJapaneseKana(trimmed);
             containsChinesePunctuation = ChinesePunctuation.IsMatch(trimmed);
-            isAmbiguousHan = !hasJapaneseKana && !containsChinesePunctuation;
+            if (!hasJapaneseKana)
+            {
+                penalizeHanForLackOfKana = true;
+                hasNeutralHanPunctuation = containsChinesePunctuation;
+            }
         }
 
         foreach (var definition in definitions)
@@ -164,7 +169,7 @@ public class LanguageDetector
 
             if (primary.Key == WritingSystem.Han)
             {
-                if (isAmbiguousHan)
+                if (penalizeHanForLackOfKana)
                 {
                     score -= 0.08;
                 }
@@ -183,11 +188,11 @@ public class LanguageDetector
                     {
                         score -= 0.15;
                     }
-                    if (containsChinesePunctuation)
+                    if (containsChinesePunctuation && !hasNeutralHanPunctuation)
                     {
                         score += 0.05;
                     }
-                    else if (isAmbiguousHan)
+                    if (penalizeHanForLackOfKana)
                     {
                         score -= 0.12;
                     }
