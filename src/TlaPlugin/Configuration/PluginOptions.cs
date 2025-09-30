@@ -103,4 +103,5 @@ public class SecurityOptions
     {
         ["tla-client-secret"] = "local-dev-secret"
     };
+    public IList<string> AllowedReplyChannels { get; set; } = new List<string>();
 }

@@ -59,4 +59,15 @@ public class MockModelProvider : IModelProvider
         };
         return Task.FromResult($"{translatedText} {suffix}");
     }
+
+    public Task<string> SummarizeAsync(string text, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return Task.FromResult(string.Empty);
+        }
+
+        var trimmed = text.Length > 60 ? text[..60] + "…" : text;
+        return Task.FromResult($"概要: {trimmed}");
+    }
 }

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
 using TlaPlugin.Models;
@@ -24,19 +25,55 @@ public class GlossaryService
     /// </summary>
     public string Apply(string text, string tenantId, string? channelId, string userId)
     {
-        var ordered = _entries
+        var detailed = ApplyDetailed(text, tenantId, channelId, userId, GlossaryPolicy.Fallback);
+        return detailed.ProcessedText;
+    }
+
+    /// <summary>
+    /// 返回详细的术语命中信息。
+    /// </summary>
+    public GlossaryApplicationResult ApplyDetailed(
+        string text,
+        string tenantId,
+        string? channelId,
+        string userId,
+        GlossaryPolicy policy,
+        IEnumerable<string>? glossaryIds = null)
+    {
+        var candidates = _entries
             .Where(e => e.Scope == $"tenant:{tenantId}" || e.Scope == $"channel:{channelId}" || e.Scope == $"user:{userId}")
             .OrderBy(e => Priority(e.Scope, tenantId, channelId, userId))
             .ToList();
 
-        var result = text;
-        foreach (var entry in ordered)
+        if (glossaryIds is not null && glossaryIds.Any())
         {
-            var pattern = Regex.Escape(entry.Source);
-            result = Regex.Replace(result, pattern, entry.Target, RegexOptions.IgnoreCase);
+            candidates = candidates
+                .Where(entry => entry.Metadata != null && entry.Metadata.TryGetValue("id", out var id) && glossaryIds.Contains(id))
+                .ToList();
         }
 
-        return result;
+        var matches = new List<GlossaryMatch>();
+        var result = text;
+        foreach (var entry in candidates)
+        {
+            var pattern = Regex.Escape(entry.Source);
+            var regex = new Regex(pattern, RegexOptions.IgnoreCase);
+            var hitCount = regex.Matches(result).Count;
+            if (hitCount == 0)
+            {
+                continue;
+            }
+
+            result = regex.Replace(result, entry.Target);
+            matches.Add(new GlossaryMatch(entry.Source, entry.Target, entry.Scope, hitCount));
+        }
+
+        if (policy == GlossaryPolicy.Strict && matches.Count == 0)
+        {
+            throw new GlossaryApplicationException("指定された用語が見つかりませんでした。");
+        }
+
+        return new GlossaryApplicationResult(result, matches);
     }
 
     /// <summary>
