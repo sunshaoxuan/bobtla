@@ -61,6 +61,29 @@ public class MessageExtensionHandler
         {
             return BuildErrorCard(catalog, "tla.error.rate.title", ex.Message);
         }
+        catch (LanguageDetectionLowConfidenceException ex)
+        {
+            static string Resolve(LocalizationCatalog catalog, string key) =>
+                catalog.Strings.TryGetValue(key, out var value) ? value : key;
+
+            var candidates = new JsonArray();
+            foreach (var candidate in ex.Detection.Candidates)
+            {
+                candidates.Add(new JsonObject
+                {
+                    ["language"] = candidate.Language,
+                    ["confidence"] = candidate.Confidence
+                });
+            }
+
+            return new JsonObject
+            {
+                ["type"] = "languageSelection",
+                ["title"] = Resolve(catalog, "tla.error.detection.title"),
+                ["message"] = Resolve(catalog, "tla.error.detection.body"),
+                ["candidates"] = candidates
+            };
+        }
         catch (TranslationException ex)
         {
             return BuildErrorCard(catalog, "tla.error.translation.title", ex.Message);
@@ -77,6 +100,65 @@ public class MessageExtensionHandler
             ["status"] = record.Status,
             ["createdAt"] = record.CreatedAt.ToString("O")
         });
+    }
+
+    public async Task<JsonObject> HandleRewriteAsync(RewriteRequest request)
+    {
+        var locale = request.UiLocale ?? _options.DefaultUiLocale;
+        var catalog = _localization.GetCatalog(locale);
+        try
+        {
+            var rewritten = await _pipeline.RewriteAsync(request, CancellationToken.None);
+            return new JsonObject
+            {
+                ["type"] = "rewriteResult",
+                ["text"] = rewritten,
+                ["tone"] = request.Tone
+            };
+        }
+        catch (BudgetExceededException ex)
+        {
+            return BuildErrorCard(catalog, "tla.error.budget.title", ex.Message);
+        }
+        catch (RateLimitExceededException ex)
+        {
+            return BuildErrorCard(catalog, "tla.error.rate.title", ex.Message);
+        }
+        catch (TranslationException ex)
+        {
+            return BuildErrorCard(catalog, "tla.error.translation.title", ex.Message);
+        }
+    }
+
+    public async Task<JsonObject> HandleReplyAsync(ReplyRequest request)
+    {
+        var locale = request.UiLocale ?? _options.DefaultUiLocale;
+        var catalog = _localization.GetCatalog(locale);
+        try
+        {
+            var result = await _pipeline.PostReplyAsync(request, CancellationToken.None);
+            return new JsonObject
+            {
+                ["type"] = "replyPosted",
+                ["status"] = result.Status,
+                ["messageId"] = result.MessageId,
+                ["language"] = result.Language,
+                ["postedAt"] = result.PostedAt.ToString("O"),
+                ["title"] = catalog.Strings.TryGetValue("tla.ui.reply.success", out var title) ? title : "Reply sent"
+            };
+        }
+        catch (BudgetExceededException ex)
+        {
+            return BuildErrorCard(catalog, "tla.error.budget.title", ex.Message);
+        }
+        catch (RateLimitExceededException ex)
+        {
+            return BuildErrorCard(catalog, "tla.error.rate.title", ex.Message);
+        }
+        catch (TranslationException ex)
+        {
+            return BuildErrorCard(catalog, "tla.error.translation.title", ex.Message);
+        }
     }
 
     private static JsonObject BuildErrorCard(LocalizationCatalog catalog, string titleKey, string message)

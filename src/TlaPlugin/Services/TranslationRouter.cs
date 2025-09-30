@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Security.Authentication;
@@ -155,6 +156,92 @@ public class TranslationRouter
         throw new TranslationException("利用可能なモデルが見つかりません。");
     }
 
+    public async Task<string> RewriteAsync(RewriteRequest request, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.Text))
+        {
+            throw new TranslationException("改写内容不能为空。");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.UserId))
+        {
+            _metrics.RecordFailure(request.TenantId, UsageMetricsService.FailureReasons.Authentication);
+            throw new AuthenticationException("用户 ID が空のため、トークンを取得できません。");
+        }
+
+        var token = await _tokenBroker.ExchangeOnBehalfOfAsync(request.TenantId, request.UserId, cancellationToken);
+        if (token.ExpiresOn <= DateTimeOffset.UtcNow)
+        {
+            _metrics.RecordFailure(request.TenantId, UsageMetricsService.FailureReasons.Authentication);
+            throw new AuthenticationException("取得したトークンの有効期限が切れています。");
+        }
+
+        var allowedProviders = 0;
+        foreach (var provider in _providers)
+        {
+            var report = _compliance.Evaluate(request.Text, provider.Options);
+            if (!report.Allowed)
+            {
+                continue;
+            }
+
+            allowedProviders++;
+            var estimatedCost = Math.Max(1, request.Text.Length) * provider.Options.CostPerCharUsd * 0.2m;
+            if (!_budget.TryReserve(request.TenantId, estimatedCost))
+            {
+                _metrics.RecordFailure(request.TenantId, UsageMetricsService.FailureReasons.Budget);
+                throw new BudgetExceededException("本日の翻訳予算を使い切りました。");
+            }
+
+            try
+            {
+                var sw = Stopwatch.StartNew();
+                var rewritten = await provider.RewriteAsync(request.Text, request.Tone, cancellationToken);
+                sw.Stop();
+
+                _audit.Record(request.TenantId, request.UserId, provider.Options.Id, request.Text, rewritten, estimatedCost, (int)sw.ElapsedMilliseconds, token.Audience);
+                _metrics.RecordSuccess(request.TenantId, provider.Options.Id, estimatedCost, (int)sw.ElapsedMilliseconds, 1);
+                return rewritten;
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or TaskCanceledException)
+            {
+                // 尝试下一模型。
+            }
+        }
+
+        if (allowedProviders == 0)
+        {
+            _metrics.RecordFailure(request.TenantId, UsageMetricsService.FailureReasons.Compliance);
+        }
+        else
+        {
+            _metrics.RecordFailure(request.TenantId, UsageMetricsService.FailureReasons.Provider);
+        }
+
+        throw new TranslationException("改写流程未找到可用模型。");
+    }
+
+    public Task<ReplyResult> PostReplyAsync(ReplyRequest request, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.UserId))
+        {
+            _metrics.RecordFailure(request.TenantId, UsageMetricsService.FailureReasons.Authentication);
+            throw new AuthenticationException("ユーザー ID が空のため、トークンを取得できません。");
+        }
+
+        var messageId = Guid.NewGuid().ToString("N");
+        _audit.Record(request.TenantId, request.UserId, "manual-reply", request.Text, request.Text, 0m, 0, null);
+        var result = new ReplyResult
+        {
+            MessageId = messageId,
+            Status = "posted",
+            Language = request.Language ?? string.Empty,
+            PostedAt = DateTimeOffset.UtcNow
+        };
+
+        return Task.FromResult(result);
+    }
+
     private JsonObject BuildAdaptiveCard(
         LocalizationCatalog catalog,
         string translatedText,
@@ -278,6 +365,17 @@ public class TranslationRouter
             }
         };
     }
+}
+
+public class LanguageDetectionLowConfidenceException : TranslationException
+{
+    public LanguageDetectionLowConfidenceException(DetectionResult detection)
+        : base("言語を自動判定できません。候補から選択してください。")
+    {
+        Detection = detection;
+    }
+
+    public DetectionResult Detection { get; }
 }
 
 public class TranslationException : Exception

@@ -228,3 +228,98 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+.dialog,
+.compose,
+.settings {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 32px 24px 48px;
+  display: grid;
+  gap: 24px;
+}
+
+.dialog__controls,
+.dialog__editor,
+.compose__main,
+.settings__main {
+  display: grid;
+  gap: 16px;
+}
+
+.dialog__controls label,
+.compose__main label,
+.settings__main label {
+  display: grid;
+  gap: 6px;
+  font-weight: 500;
+}
+
+.dialog__editor,
+.compose__editor {
+  display: grid;
+  gap: 8px;
+}
+
+textarea,
+select,
+input[type="text"] {
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--text-primary);
+  padding: 12px;
+  font: inherit;
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dialog__footer,
+.compose__footer,
+.settings__footer {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.btn {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  padding: 10px 18px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.btn--primary {
+  background: var(--accent);
+  color: #021a35;
+  border-color: transparent;
+}
+
+.dialog__error {
+  margin: 0;
+  padding: 12px;
+  border-radius: 10px;
+  background: rgba(255, 77, 79, 0.15);
+  color: #ffb3b5;
+}
+
+.dialog__cost {
+  color: var(--text-secondary);
+}
+
+.settings__models {
+  display: grid;
+  gap: 10px;
+}
+
+.settings__status {
+  color: var(--text-secondary);
+  min-height: 24px;
+}
