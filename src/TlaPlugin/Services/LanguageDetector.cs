@@ -101,6 +101,9 @@ public class LanguageDetector
     private static readonly Regex EnglishIndicatorPattern = new(
         "\\b(the|and|for|with|this|that|from|have|has|was|were|been|being|are|is|into|which|about|because|while|where|when|what|who|whose|than|then|them|these|those|your|their|there|over|after|before|between|without|should|would|could|can't|don't|doesn't|won't|it's|i'm|we're|you're|they're)\\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex EnglishMorphologyPattern = new(
+        "\\b\\p{L}+(?:ing|ings|ed|tion|tions)\\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly IReadOnlyList<LanguageDefinition> LanguageDefinitions = BuildLanguageDefinitions();
 
@@ -301,11 +304,22 @@ public class LanguageDetector
                     scriptLetterCount >= 18 &&
                     uniqueLetters >= 7;
 
-                var hasEnglishIndicators = ContainsEnglishIndicators(text);
+                var englishEvidenceScore = CalculateEnglishEvidenceScore(text);
+                var hasAnyEnglishEvidence = englishEvidenceScore > 0;
+                var hasStrongEnglishEvidence = englishEvidenceScore >= 2;
 
-                if (!hasRepresentativeStructure || !hasEnglishIndicators)
+                if (!hasAnyEnglishEvidence)
                 {
-                    penalty = scriptLetterCount >= 12 ? 0.22 : 0.18;
+                    var basePenalty = scriptLetterCount >= 12 ? 0.22 : 0.18;
+                    penalty = Math.Max(penalty, basePenalty);
+                }
+                else if (!hasRepresentativeStructure && scriptLetterCount >= 12)
+                {
+                    penalty = Math.Max(penalty, 0.1);
+                }
+                else if (hasRepresentativeStructure && !hasStrongEnglishEvidence && scriptLetterCount >= 18)
+                {
+                    penalty = Math.Max(penalty, 0.06);
                 }
             }
 
@@ -326,17 +340,12 @@ public class LanguageDetector
         return penalty;
     }
 
-    private static bool ContainsEnglishIndicators(string text)
+    private static int CalculateEnglishEvidenceScore(string text)
     {
-        if (EnglishIndicatorPattern.IsMatch(text))
-        {
-            return true;
-        }
+        var evidence = EnglishIndicatorPattern.Matches(text).Count;
+        evidence += EnglishMorphologyPattern.Matches(text).Count;
 
-        // Apostrophes can appear in contractions without spaces (e.g. "dont" typo).
-        // Look for common English bigrams to provide additional weak evidence.
-        var lowered = text.ToLowerInvariant();
-        return lowered.Contains("ing ") || lowered.Contains("ed ") || lowered.Contains("tion");
+        return evidence;
     }
 
     private static int CountWords(string text)

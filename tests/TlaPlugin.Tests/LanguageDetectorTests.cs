@@ -59,5 +59,6 @@ public class LanguageDetectorTests
         var result = detector.Detect("Besok pagi kami akan berangkat ke pasar untuk membeli sayur segar dan buah segar.");
 
         Assert.True(result.Confidence < 0.75);
+        Assert.NotEmpty(result.Candidates);
     }
 }
