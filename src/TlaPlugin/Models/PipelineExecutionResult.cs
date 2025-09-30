@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace TlaPlugin.Models;
 
@@ -7,10 +9,16 @@ namespace TlaPlugin.Models;
 /// </summary>
 public class PipelineExecutionResult
 {
-    private PipelineExecutionResult(TranslationResult? translation, DetectionResult? detection)
+    private PipelineExecutionResult(
+        TranslationResult? translation,
+        DetectionResult? detection,
+        GlossaryApplicationResult? glossaryConflicts,
+        TranslationRequest? pendingRequest)
     {
         Translation = translation;
         Detection = detection;
+        GlossaryConflicts = glossaryConflicts;
+        PendingRequest = pendingRequest;
     }
 
     /// <summary>
@@ -28,6 +36,21 @@ public class PipelineExecutionResult
     /// </summary>
     public bool RequiresLanguageSelection => Detection is not null && Translation is null;
 
+    /// <summary>
+    /// 获取需要用户处理的术语冲突详情。
+    /// </summary>
+    public GlossaryApplicationResult? GlossaryConflicts { get; }
+
+    /// <summary>
+    /// 当存在术语冲突时，包含重新提交所需的原始请求副本。
+    /// </summary>
+    public TranslationRequest? PendingRequest { get; }
+
+    /// <summary>
+    /// 指示是否需要用户解决术语冲突。
+    /// </summary>
+    public bool RequiresGlossaryResolution => GlossaryConflicts is not null && GlossaryConflicts.RequiresResolution;
+
     public static PipelineExecutionResult FromTranslation(TranslationResult translation)
     {
         if (translation is null)
@@ -35,7 +58,7 @@ public class PipelineExecutionResult
             throw new ArgumentNullException(nameof(translation));
         }
 
-        return new PipelineExecutionResult(translation, null);
+        return new PipelineExecutionResult(translation, null, null, null);
     }
 
     public static PipelineExecutionResult FromDetection(DetectionResult detection)
@@ -45,6 +68,48 @@ public class PipelineExecutionResult
             throw new ArgumentNullException(nameof(detection));
         }
 
-        return new PipelineExecutionResult(null, detection);
+        return new PipelineExecutionResult(null, detection, null, null);
+    }
+
+    public static PipelineExecutionResult FromGlossaryConflict(
+        GlossaryApplicationResult conflicts,
+        TranslationRequest request)
+    {
+        if (conflicts is null)
+        {
+            throw new ArgumentNullException(nameof(conflicts));
+        }
+
+        if (request is null)
+        {
+            throw new ArgumentNullException(nameof(request));
+        }
+
+        return new PipelineExecutionResult(
+            null,
+            null,
+            conflicts.Clone(),
+            CloneRequest(request));
+    }
+
+    private static TranslationRequest CloneRequest(TranslationRequest request)
+    {
+        return new TranslationRequest
+        {
+            Text = request.Text,
+            SourceLanguage = request.SourceLanguage,
+            TargetLanguage = request.TargetLanguage,
+            TenantId = request.TenantId,
+            UserId = request.UserId,
+            ChannelId = request.ChannelId,
+            Tone = request.Tone,
+            UseGlossary = request.UseGlossary,
+            UiLocale = request.UiLocale,
+            AdditionalTargetLanguages = new List<string>(request.AdditionalTargetLanguages),
+            GlossaryDecisions = request.GlossaryDecisions.ToDictionary(
+                pair => pair.Key,
+                pair => pair.Value.Clone(),
+                StringComparer.OrdinalIgnoreCase)
+        };
     }
 }

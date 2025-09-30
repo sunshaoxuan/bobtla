@@ -75,7 +75,13 @@ public class TranslationPipeline
     {
         ValidateTranslationRequest(request);
 
-        var glossaryResult = ResolveGlossary(request);
+        var preview = PreviewGlossary(request);
+        if (preview.RequiresResolution)
+        {
+            return PipelineExecutionResult.FromGlossaryConflict(preview, request);
+        }
+
+        var glossaryResult = ApplyGlossary(request);
         var matchSnapshots = glossaryResult.Matches.Select(match => match.Clone()).ToList();
         var normalizedRequest = NormalizeRequestForTranslation(request, glossaryResult.Text);
 
@@ -108,7 +114,7 @@ public class TranslationPipeline
         }
     }
 
-    private GlossaryApplicationResult ResolveGlossary(TranslationRequest request)
+    private GlossaryApplicationResult PreviewGlossary(TranslationRequest request)
     {
         if (!request.UseGlossary)
         {
@@ -119,13 +125,33 @@ public class TranslationPipeline
             };
         }
 
-        var result = _glossary.Apply(request.Text, request.TenantId, request.ChannelId, request.UserId, request.GlossaryDecisions);
-        if (result.RequiresResolution)
+        return _glossary.Preview(
+            request.Text,
+            request.TenantId,
+            request.ChannelId,
+            request.UserId,
+            GlossaryPolicy.Fallback,
+            null,
+            request.GlossaryDecisions);
+    }
+
+    private GlossaryApplicationResult ApplyGlossary(TranslationRequest request)
+    {
+        if (!request.UseGlossary)
         {
-            throw new GlossaryConflictException(result, request);
+            return new GlossaryApplicationResult
+            {
+                Text = request.Text,
+                Matches = Array.Empty<GlossaryMatchDetail>()
+            };
         }
 
-        return result;
+        return _glossary.Apply(
+            request.Text,
+            request.TenantId,
+            request.ChannelId,
+            request.UserId,
+            request.GlossaryDecisions);
     }
 
     private TranslationRequest NormalizeRequestForTranslation(TranslationRequest request, string resolvedText)
