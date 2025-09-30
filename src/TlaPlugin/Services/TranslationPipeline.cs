@@ -66,12 +66,14 @@ public class TranslationPipeline
         return Task.FromResult(_detector.Detect(request.Text));
     }
 
-    public Task<TranslationResult> ExecuteAsync(TranslationRequest request, CancellationToken cancellationToken)
+    private const double MinimumDetectionConfidence = 0.75;
+
+    public Task<PipelineExecutionResult> ExecuteAsync(TranslationRequest request, CancellationToken cancellationToken)
     {
         return TranslateAsync(request, cancellationToken);
     }
 
-    public async Task<TranslationResult> TranslateAsync(TranslationRequest request, CancellationToken cancellationToken)
+    public async Task<PipelineExecutionResult> TranslateAsync(TranslationRequest request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.Text))
         {
@@ -121,10 +123,30 @@ public class TranslationPipeline
                 StringComparer.OrdinalIgnoreCase)
         };
 
+        DetectionResult? detection = null;
+
         if (string.IsNullOrEmpty(resolvedRequest.SourceLanguage))
         {
-            var detection = _detector.Detect(resolvedRequest.Text);
-            if (detection.Confidence < 0.75)
+            detection = _detector.Detect(resolvedRequest.Text);
+            if (detection.Confidence < MinimumDetectionConfidence)
+            {
+                try
+                {
+                    var providerDetection = await _router.DetectAsync(new LanguageDetectionRequest
+                    {
+                        Text = resolvedRequest.Text,
+                        TenantId = resolvedRequest.TenantId
+                    }, cancellationToken);
+
+                    detection = DetectionResultExtensions.Merge(detection, providerDetection);
+                }
+                catch (TranslationException)
+                {
+                    // 如果路由器检测失败，则保留启发式检测结果以供兜底。
+                }
+            }
+
+            if (detection.Confidence < MinimumDetectionConfidence)
             {
                 return PipelineExecutionResult.FromDetection(detection);
             }
@@ -138,10 +160,20 @@ public class TranslationPipeline
         }
 
         using var lease = await _throttle.AcquireAsync(resolvedRequest.TenantId, cancellationToken);
-        var result = await _router.TranslateAsync(resolvedRequest, cancellationToken);
-        result.SetGlossaryMatches(matchSnapshots);
-        _cache.Set(resolvedRequest, result);
-        return PipelineExecutionResult.FromTranslation(result);
+        try
+        {
+            var result = await _router.TranslateAsync(resolvedRequest, cancellationToken);
+            result.SetGlossaryMatches(matchSnapshots);
+            _cache.Set(resolvedRequest, result);
+            return PipelineExecutionResult.FromTranslation(result);
+        }
+        catch (LowConfidenceDetectionException ex)
+        {
+            var merged = detection is null
+                ? ex.Detection
+                : DetectionResultExtensions.Merge(detection, ex.Detection);
+            return PipelineExecutionResult.FromDetection(merged);
+        }
     }
 
     public OfflineDraftRecord SaveDraft(OfflineDraftRequest request)

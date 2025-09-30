@@ -88,7 +88,7 @@ public class TranslationPipelineTests
 
         Assert.True(detection.Confidence < 0.75);
 
-        var result = await pipeline.TranslateAsync(new TranslationRequest
+        var execution = await pipeline.ExecuteAsync(new TranslationRequest
         {
             Text = "12345",
             TenantId = "contoso",
@@ -97,8 +97,9 @@ public class TranslationPipelineTests
             SourceLanguage = "en"
         }, CancellationToken.None);
 
-        Assert.Equal("ja", result.TargetLanguage);
-        Assert.Contains("12345", result.TranslatedText);
+        var translation = Assert.NotNull(execution.Translation);
+        Assert.Equal("ja", translation.TargetLanguage);
+        Assert.Contains("12345", translation.TranslatedText);
     }
 
     [Fact]
