@@ -47,6 +47,7 @@ builder.Services.AddSingleton<TranslationPipeline>();
 builder.Services.AddSingleton<MessageExtensionHandler>();
 builder.Services.AddSingleton<ConfigurationSummaryService>();
 builder.Services.AddSingleton<ProjectStatusService>();
+builder.Services.AddSingleton<DevelopmentRoadmapService>();
 
 var app = builder.Build();
 
@@ -100,6 +101,12 @@ app.MapGet("/api/localization/catalog/{locale?}", (string? locale, LocalizationC
 {
     var catalog = localization.GetCatalog(locale);
     return Results.Json(catalog, options: new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+});
+
+app.MapGet("/api/roadmap", (DevelopmentRoadmapService roadmapService) =>
+{
+    var roadmap = roadmapService.GetRoadmap();
+    return Results.Json(roadmap, options: new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
 });
 
 app.Run();

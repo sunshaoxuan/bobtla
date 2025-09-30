@@ -26,7 +26,7 @@ public class ProjectStatusService
 
     private static readonly IReadOnlyList<string> NextSteps = new List<string>
     {
-        "完成真实模型联通与延迟监控",
+        "在真实模型链路中补充重试与延迟监控",
         "替换 Key Vault/OBO 模拟为生产 SDK",
         "实现 Teams Tab 设置页与术语管理前端",
         "启动前后端联调与端到端测试"
@@ -40,7 +40,7 @@ public class ProjectStatusService
         var current = Stages.FirstOrDefault(s => !s.Completed) ?? Stages.Last();
         var overallPercent = CalculateOverallPercent();
         var frontend = new FrontendProgress(
-            CompletionPercent: 25,
+            CompletionPercent: 35,
             DataPlaneReady: true,
             UiImplemented: false,
             IntegrationReady: false);
