@@ -12,14 +12,14 @@ public class ProjectStatusServiceTests
 
         var snapshot = service.GetSnapshot();
 
-        Assert.Equal("stage9", snapshot.CurrentStageId);
-        Assert.Contains(snapshot.Stages, stage => stage.Id == "stage9" && !stage.Completed);
-        Assert.Equal(4, snapshot.NextSteps.Count);
+        Assert.Equal("phase4", snapshot.CurrentStageId);
+        Assert.Contains(snapshot.Stages, stage => stage.Id == "phase4" && !stage.Completed);
+        Assert.Equal(3, snapshot.NextSteps.Count);
         Assert.Contains(snapshot.NextSteps, step => step.Contains("前端"));
-        Assert.Equal(90, snapshot.OverallCompletionPercent);
+        Assert.Equal(60, snapshot.OverallCompletionPercent);
         Assert.True(snapshot.Frontend.DataPlaneReady);
-        Assert.False(snapshot.Frontend.UiImplemented);
+        Assert.True(snapshot.Frontend.UiImplemented);
         Assert.False(snapshot.Frontend.IntegrationReady);
-        Assert.Equal(35, snapshot.Frontend.CompletionPercent);
+        Assert.Equal(55, snapshot.Frontend.CompletionPercent);
     }
 }

@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TLA 团队前端仪表盘</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="dashboard">
+      <section class="summary">
+        <h1>Teams 翻译助手 · 前端仪表盘</h1>
+        <div class="summary__grid">
+          <article class="card">
+            <h2>整体进度</h2>
+            <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" data-overall-progress>
+              <span>0%</span>
+            </div>
+            <p data-overall-text>整体完成度 0%</p>
+          </article>
+          <article class="card">
+            <h2>前端完成度</h2>
+            <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" data-frontend-progress>
+              <span>0%</span>
+            </div>
+            <p data-frontend-text>前端完成度 0%</p>
+            <ul class="readiness" data-readiness></ul>
+          </article>
+          <article class="card">
+            <h2>当前阶段</h2>
+            <h3 data-active-stage-title>阶段加载中</h3>
+            <p data-active-stage-body>正在同步阶段目标...</p>
+            <h4>下一步</h4>
+            <ul class="next-steps" data-next-steps></ul>
+          </article>
+          <article class="card">
+            <h2>可用界面语言</h2>
+            <ul class="locale-list" data-locale-list></ul>
+          </article>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>阶段时间线</h2>
+        <div class="timeline" data-timeline></div>
+      </section>
+
+      <section class="section">
+        <h2>测试覆盖</h2>
+        <ul class="test-list" data-test-list></ul>
+      </section>
+    </main>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
