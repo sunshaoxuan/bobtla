@@ -56,9 +56,15 @@ export async function initComposePlugin({ ui = resolveComposeUi(), teams, fetche
     ui.targetSelect.optionsData = targetLanguages;
   }
 
+  const availableTargetIds = targetLanguages.map((lang) => lang.id);
+  const fallbackTarget = availableTargetIds[0] ?? "";
+  if (!availableTargetIds.includes(state.targetLanguage)) {
+    state.targetLanguage = fallbackTarget;
+  }
+
   if (ui.targetSelect) {
-    if (!targetLanguages.some((lang) => lang.id === state.targetLanguage) && targetLanguages.length) {
-      state.targetLanguage = targetLanguages[0].id;
+    if (!availableTargetIds.includes(ui.targetSelect.value)) {
+      ui.targetSelect.value = fallbackTarget;
     }
     ui.targetSelect.value = state.targetLanguage;
     ui.targetSelect.addEventListener?.("change", (event) => {

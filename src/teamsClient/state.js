@@ -1,29 +1,33 @@
 import { FALLBACK_METADATA } from "./api.js";
 
+function isSelectableLanguage(language) {
+  return Boolean(language?.id) && language.id !== "auto";
+}
+
 function resolveDefaultTargetLanguage(languages = [], locale = "") {
   if (!Array.isArray(languages) || languages.length === 0) {
     return "en";
   }
   const exactLocale = languages.find((lang) => lang.id === locale);
-  if (exactLocale) {
+  if (isSelectableLanguage(exactLocale)) {
     return exactLocale.id;
   }
   const normalized = locale?.split?.("-")?.[0];
   if (normalized) {
     const match = languages.find((lang) => lang.id === normalized);
-    if (match) {
+    if (isSelectableLanguage(match)) {
       return match.id;
     }
   }
-  const defaultLocale = languages.find((lang) => lang.isDefault && lang.id !== "auto");
+  const defaultLocale = languages.find((lang) => lang.isDefault && isSelectableLanguage(lang));
   if (defaultLocale) {
     return defaultLocale.id;
   }
-  const firstNonAuto = languages.find((lang) => lang.id !== "auto");
-  if (firstNonAuto) {
-    return firstNonAuto.id;
+  const firstSelectable = languages.find((lang) => isSelectableLanguage(lang));
+  if (firstSelectable) {
+    return firstSelectable.id;
   }
-  return languages[0].id;
+  return languages[0]?.id ?? "en";
 }
 
 export function buildDialogState({ models, languages, context } = {}) {

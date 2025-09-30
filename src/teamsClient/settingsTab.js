@@ -51,6 +51,11 @@ function renderDefaultLanguage(select, languages, state) {
     return;
   }
   const candidates = languages.filter((lang) => lang.id !== "auto");
+  const candidateIds = candidates.map((lang) => lang.id);
+  const fallbackTarget = candidateIds[0] ?? "";
+  if (!candidateIds.includes(state.targetLanguage)) {
+    state.targetLanguage = fallbackTarget;
+  }
   if (typeof select.replaceChildren === "function" && typeof document !== "undefined") {
     const options = candidates.map((lang) => {
       const option = document.createElement("option");
@@ -61,6 +66,9 @@ function renderDefaultLanguage(select, languages, state) {
     select.replaceChildren(...options);
   } else {
     select.optionsData = candidates;
+  }
+  if (!candidateIds.includes(select.value)) {
+    select.value = fallbackTarget;
   }
   select.value = state.targetLanguage;
   select.addEventListener?.("change", (event) => {
