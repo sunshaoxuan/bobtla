@@ -91,8 +91,15 @@ public class TranslationPipeline
             return PipelineExecutionResult.FromTranslation(cached);
         }
 
-        var translation = await TranslateWithRouterAsync(normalizedRequest, matchSnapshots, cancellationToken);
-        return PipelineExecutionResult.FromTranslation(translation);
+        try
+        {
+            var translation = await TranslateWithRouterAsync(normalizedRequest, matchSnapshots, cancellationToken);
+            return PipelineExecutionResult.FromTranslation(translation);
+        }
+        catch (LowConfidenceDetectionException ex)
+        {
+            return PipelineExecutionResult.FromDetection(ex.Detection);
+        }
     }
 
     private void ValidateTranslationRequest(TranslationRequest request)

@@ -62,6 +62,7 @@ public class LanguageDetector
     private static readonly Regex HungarianSignature = new("[áéíóöőúüű]", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex RomanianSignature = new("[ăâîșşțţ]", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex TurkishSignature = new("[çğıİöşü]", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex TurkmenSignature = new("[äöüýň]", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex CatalanSignature = new("[àçèéíïòóúü·]", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex BasqueSignature = new("tx|tz|dd" , RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex CroatianSignature = new("[čćđšž]", RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -83,6 +84,7 @@ public class LanguageDetector
     private static readonly Regex HausaSignature = new("[ƙƴɓ]", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex IgboSignature = new("[ịọụ]", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex SomaliSignature = new("[xq']", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex OromoSignature = new("(dh|ny|aa|ee|oo)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex TagalogSignature = new("ng", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex CebuanoSignature = new("[ñ]", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex MaoriSignature = new("wh|ng", RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -606,6 +608,8 @@ public class LanguageDetector
             new("hu", WritingSystem.Latin, HungarianSignature, 0.32, 0.05),
             new("ro", WritingSystem.Latin, RomanianSignature, 0.32, 0.05),
             new("tr", WritingSystem.Latin, TurkishSignature, 0.3, 0.06),
+            new("az", WritingSystem.Latin, TurkishSignature, 0.28, 0.04),
+            new("tk", WritingSystem.Latin, TurkmenSignature, 0.26, 0.03),
             new("ca", WritingSystem.Latin, CatalanSignature, 0.3, 0.05),
             new("eu", WritingSystem.Latin, BasqueSignature, 0.26, 0.04),
             new("gl", WritingSystem.Latin, GalicianSignature, 0.28, 0.04),
@@ -647,12 +651,13 @@ public class LanguageDetector
             new("war", WritingSystem.Latin, TagalogSignature, 0.2, 0.0),
             new("pam", WritingSystem.Latin, TagalogSignature, 0.2, 0.0),
             new("su", WritingSystem.Latin, null, 0.18, 0.0),
+            new("ace", WritingSystem.Latin, null, 0.18, 0.0),
             new("jv", WritingSystem.Latin, null, 0.18, 0.01),
             new("bug", WritingSystem.Latin, null, 0.18, 0.0),
             new("vi", WritingSystem.Latin, VietnameseSignature, 0.34, 0.05),
-            new("ace", WritingSystem.Latin, null, 0.18, 0.0),
             new("sw", WritingSystem.Latin, SwahiliSignature, 0.2, 0.02),
             new("yo", WritingSystem.Latin, YorubaSignature, 0.3, 0.02),
+            new("om", WritingSystem.Latin, OromoSignature, 0.24, 0.01),
             new("ha", WritingSystem.Latin, HausaSignature, 0.32, 0.02),
             new("ig", WritingSystem.Latin, IgboSignature, 0.3, 0.02),
             new("mg", WritingSystem.Latin, null, 0.2, 0.0),
