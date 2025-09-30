@@ -377,9 +377,8 @@ public class MessageExtensionHandler
                 }
             };
 
-            if (ordered.Count > 1)
+            foreach (var alternate in ordered.Skip(1))
             {
-                var alternate = ordered.Skip(1).First();
                 choices.Add(new JsonObject
                 {
                     ["title"] = string.Format(CultureInfo.InvariantCulture, Resolve(catalog, "tla.ui.glossary.option.alternative"), alternate.Target, alternate.Scope),
