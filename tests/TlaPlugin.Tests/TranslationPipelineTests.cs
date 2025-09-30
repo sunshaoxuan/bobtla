@@ -381,6 +381,38 @@ public class TranslationPipelineTests
     }
 
     [Fact]
+    public async Task ReturnsLanguageSelectionForDiacriticFreeFrenchSentence()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            Providers = new List<ModelProviderOptions>
+            {
+                new() { Id = "primary", Regions = new List<string>{"japan"}, Certifications = new List<string>{"iso"} }
+            },
+            Compliance = new CompliancePolicyOptions
+            {
+                RequiredRegionTags = new List<string> { "japan" },
+                RequiredCertifications = new List<string> { "iso" }
+            }
+        });
+
+        var pipeline = BuildPipeline(options);
+
+        var result = await pipeline.ExecuteAsync(new TranslationRequest
+        {
+            Text = "La nation et la population attendent une solution rapide.",
+            TenantId = "contoso",
+            UserId = "user",
+            TargetLanguage = "ja"
+        }, CancellationToken.None);
+
+        Assert.True(result.RequiresLanguageSelection);
+        var detection = Assert.NotNull(result.Detection);
+        Assert.True(detection.Confidence < 0.75);
+        Assert.NotEmpty(detection.Candidates);
+    }
+
+    [Fact]
     public async Task DetectAsync_DiacriticFreeForeignSentenceRemainsUncertain()
     {
         var options = Options.Create(new PluginOptions

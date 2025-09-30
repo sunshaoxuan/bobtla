@@ -74,4 +74,15 @@ public class LanguageDetectorTests
         Assert.True(result.Confidence < 0.75);
         Assert.NotEmpty(result.Candidates);
     }
+
+    [Fact]
+    public void Detect_DiacriticFreeFrenchSentenceRemainsUncertain()
+    {
+        var detector = new LanguageDetector();
+
+        var result = detector.Detect("La nation et la population attendent une solution rapide.");
+
+        Assert.True(result.Confidence < 0.75);
+        Assert.NotEmpty(result.Candidates);
+    }
 }
