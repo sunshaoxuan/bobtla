@@ -947,14 +947,16 @@ public class TranslationPipelineTests
         });
 
         var localization = new LocalizationCatalogService();
+        var metrics = new UsageMetricsService();
+        var tokenBroker = new StaticTokenBroker();
         var router = new TranslationRouter(
             new ModelProviderFactory(options),
             new ComplianceGateway(options),
             new BudgetGuard(options.Value),
             new AuditLogger(),
             new ToneTemplateService(),
-            new StaticTokenBroker(),
-            new UsageMetricsService(),
+            tokenBroker,
+            metrics,
             localization,
             options,
             new[] { new LowConfidenceModelProvider(providerOptions, detection) });
@@ -963,7 +965,7 @@ public class TranslationPipelineTests
         var glossary = new GlossaryService();
         var cache = new TranslationCache(options);
         var rewrite = new RewriteService(router, throttle);
-        var reply = new ReplyService(rewrite, options);
+        var reply = new ReplyService(rewrite, new NoopTeamsReplyClient(), tokenBroker, metrics, options);
 
         var context = new ContextRetrievalService(new NullTeamsMessageClient(), new MemoryCache(new MemoryCacheOptions()), options);
 
@@ -994,7 +996,9 @@ public class TranslationPipelineTests
     {
         var glossary = glossaryOverride ?? new GlossaryService();
         var localization = new LocalizationCatalogService();
-        var router = new TranslationRouter(new ModelProviderFactory(options), new ComplianceGateway(options), new BudgetGuard(options.Value), new AuditLogger(), new ToneTemplateService(), new TokenBroker(new KeyVaultSecretResolver(options), options), new UsageMetricsService(), localization, options);
+        var metrics = new UsageMetricsService();
+        var tokenBroker = new TokenBroker(new KeyVaultSecretResolver(options), options);
+        var router = new TranslationRouter(new ModelProviderFactory(options), new ComplianceGateway(options), new BudgetGuard(options.Value), new AuditLogger(), new ToneTemplateService(), tokenBroker, metrics, localization, options);
         var cache = new TranslationCache(options);
         var throttle = new TranslationThrottle(options);
         var rewrite = new RewriteService(router, throttle);

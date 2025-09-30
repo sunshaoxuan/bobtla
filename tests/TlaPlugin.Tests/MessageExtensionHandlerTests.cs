@@ -418,6 +418,9 @@ public class MessageExtensionHandlerTests
         Assert.Equal("replyPosted", response["type"]?.GetValue<string>());
         Assert.Contains("自定义编辑内容", response["finalText"]!.GetValue<string>());
         Assert.Equal(ToneTemplateService.Business, response["toneApplied"]?.GetValue<string>());
+        Assert.Equal("reply-001", response["messageId"]?.GetValue<string>());
+        Assert.Equal("sent", response["status"]?.GetValue<string>());
+        Assert.Equal(new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero).ToString("O"), response["postedAt"]?.GetValue<string>());
     }
 
     [Fact]
@@ -456,7 +459,7 @@ public class MessageExtensionHandlerTests
         Assert.Equal("application/vnd.microsoft.card.adaptive", attachment["contentType"]!.GetValue<string>());
     }
 
-    private static MessageExtensionHandler BuildHandler(IOptions<PluginOptions> options, GlossaryService? glossaryOverride = null, ContextRetrievalService? contextOverride = null)
+    private static MessageExtensionHandler BuildHandler(IOptions<PluginOptions> options, GlossaryService? glossaryOverride = null, ContextRetrievalService? contextOverride = null, ITeamsReplyClient? replyClientOverride = null)
     {
         var glossary = glossaryOverride ?? new GlossaryService();
         if (glossaryOverride is null)
@@ -466,7 +469,9 @@ public class MessageExtensionHandlerTests
         var compliance = new ComplianceGateway(options);
         var resolver = new KeyVaultSecretResolver(options);
         var localization = new LocalizationCatalogService();
-        var router = new TranslationRouter(new ModelProviderFactory(options), compliance, new BudgetGuard(options.Value), new AuditLogger(), new ToneTemplateService(), new TokenBroker(resolver, options), new UsageMetricsService(), localization, options);
+        var metrics = new UsageMetricsService();
+        var tokenBroker = new TokenBroker(resolver, options);
+        var router = new TranslationRouter(new ModelProviderFactory(options), compliance, new BudgetGuard(options.Value), new AuditLogger(), new ToneTemplateService(), tokenBroker, metrics, localization, options);
         var cache = new TranslationCache(options);
         var throttle = new TranslationThrottle(options);
         var rewrite = new RewriteService(router, throttle);
@@ -474,5 +479,11 @@ public class MessageExtensionHandlerTests
         var context = contextOverride ?? new ContextRetrievalService(new NullTeamsMessageClient(), new MemoryCache(new MemoryCacheOptions()), options);
         var pipeline = new TranslationPipeline(router, glossary, new OfflineDraftStore(options), new LanguageDetector(), cache, throttle, context, rewrite, reply, options);
         return new MessageExtensionHandler(pipeline, localization, options);
+    }
+
+    private sealed class StubTeamsReplyClient : ITeamsReplyClient
+    {
+        public Task<TeamsReplyResponse> SendReplyAsync(TeamsReplyRequest request, CancellationToken cancellationToken)
+            => Task.FromResult(new TeamsReplyResponse("reply-001", new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero), "sent"));
     }
 }
