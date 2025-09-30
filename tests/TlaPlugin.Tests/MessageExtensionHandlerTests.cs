@@ -208,6 +208,69 @@ public class MessageExtensionHandlerTests
     }
 
     [Fact]
+    public async Task GlossaryConflictCardIncludesAllCandidateChoices()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            Providers = new List<ModelProviderOptions>
+            {
+                new() { Id = "primary", Regions = new List<string>{"japan"}, Certifications = new List<string>{"iso"} }
+            },
+            Compliance = new CompliancePolicyOptions
+            {
+                RequiredRegionTags = new List<string> { "japan" },
+                RequiredCertifications = new List<string> { "iso" }
+            }
+        });
+
+        var glossary = new GlossaryService();
+        glossary.LoadEntries(new[]
+        {
+            new GlossaryEntry("GPU", "ユーザー訳", "user:user"),
+            new GlossaryEntry("GPU", "チャンネル訳", "channel:finance"),
+            new GlossaryEntry("GPU", "テナント訳", "tenant:contoso")
+        });
+
+        var handler = BuildHandler(options, glossary);
+
+        var response = await handler.HandleTranslateAsync(new TranslationRequest
+        {
+            Text = "GPU",
+            TenantId = "contoso",
+            UserId = "user",
+            TargetLanguage = "ja",
+            SourceLanguage = "en",
+            ChannelId = "finance"
+        });
+
+        var attachment = response["attachments"]!.AsArray().First().AsObject();
+        var card = attachment["content"]!.AsObject();
+        var body = card["body"]!.AsArray();
+        var choiceSet = body.First(node => node!.AsObject()["type"]!.GetValue<string>() == "Input.ChoiceSet")!.AsObject();
+        var choices = choiceSet["choices"]!.AsArray();
+
+        Assert.Equal(4, choices.Count);
+
+        var decodedChoices = choices
+            .Select(choice => JsonNode.Parse(choice!.AsObject()["value"]!.GetValue<string>())!.AsObject())
+            .ToList();
+
+        var preferred = Assert.Single(decodedChoices.Where(node => node["kind"]!.GetValue<string>() == nameof(GlossaryDecisionKind.UsePreferred)));
+        Assert.Equal("ユーザー訳", preferred["target"]!.GetValue<string>());
+        Assert.Equal("user:user", preferred["scope"]!.GetValue<string>());
+
+        var alternatives = decodedChoices
+            .Where(node => node["kind"]!.GetValue<string>() == nameof(GlossaryDecisionKind.UseAlternative))
+            .ToList();
+        Assert.Equal(2, alternatives.Count);
+        Assert.Contains(alternatives, node => node["target"]!.GetValue<string>() == "チャンネル訳" && node["scope"]!.GetValue<string>() == "channel:finance");
+        Assert.Contains(alternatives, node => node["target"]!.GetValue<string>() == "テナント訳" && node["scope"]!.GetValue<string>() == "tenant:contoso");
+
+        var keepOriginal = Assert.Single(decodedChoices.Where(node => node["kind"]!.GetValue<string>() == nameof(GlossaryDecisionKind.KeepOriginal)));
+        Assert.False(keepOriginal.ContainsKey("target"));
+    }
+
+    [Fact]
     public async Task ReturnsLocalizedErrorCardWhenLocaleProvided()
     {
         var options = Options.Create(new PluginOptions
