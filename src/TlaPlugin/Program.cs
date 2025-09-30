@@ -71,6 +71,11 @@ app.MapPost("/api/offline-draft", async (OfflineDraftRequest request, MessageExt
 
 app.MapPost("/api/detect", async (LanguageDetectionRequest request, TranslationRouter router, IOptions<PluginOptions> options, CancellationToken cancellationToken) =>
 {
+    if (request is null || string.IsNullOrWhiteSpace(request.Text))
+    {
+        return Results.BadRequest(new { error = "Text is required." });
+    }
+
     if (request.Text.Length > options.Value.MaxCharactersPerRequest)
     {
         return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
