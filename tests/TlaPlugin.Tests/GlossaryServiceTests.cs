@@ -26,6 +26,7 @@ public class GlossaryServiceTests
         Assert.True(conflict.HasConflict);
         Assert.Equal(GlossaryDecisionKind.Unspecified, conflict.Resolution);
         Assert.Equal(2, conflict.Candidates.Count);
+        Assert.False(conflict.Replaced);
 
         var decisions = new Dictionary<string, GlossaryDecision>(StringComparer.OrdinalIgnoreCase)
         {
@@ -72,5 +73,35 @@ public class GlossaryServiceTests
         Assert.Null(match.AppliedTarget);
         Assert.Equal("Compliance review", result.Text);
         Assert.Equal(GlossaryDecisionKind.KeepOriginal, match.Resolution);
+    }
+
+    [Fact]
+    public void Apply_OrdersCandidatesByScopePriority()
+    {
+        var service = new GlossaryService();
+        service.LoadEntries(new[]
+        {
+            new GlossaryEntry("CPU", "中央处理器", "tenant:contoso"),
+            new GlossaryEntry("CPU", "处理器", "channel:finance"),
+            new GlossaryEntry("CPU", "自定义翻译", "user:owner")
+        });
+
+        var result = service.Apply("CPU upgrade", "contoso", "finance", "owner");
+
+        Assert.True(result.HasConflicts);
+        Assert.True(result.RequiresResolution);
+        var match = Assert.Single(result.Matches);
+        Assert.Equal("CPU", match.Source);
+        Assert.True(match.HasConflict);
+        Assert.Equal(3, match.Candidates.Count);
+        Assert.Equal("user:owner", match.Candidates[0].Scope);
+        Assert.Equal(0, match.Candidates[0].Priority);
+        Assert.Equal("channel:finance", match.Candidates[1].Scope);
+        Assert.Equal(1, match.Candidates[1].Priority);
+        Assert.Equal("tenant:contoso", match.Candidates[2].Scope);
+        Assert.Equal(2, match.Candidates[2].Priority);
+        Assert.Equal(GlossaryDecisionKind.Unspecified, match.Resolution);
+        Assert.False(match.Replaced);
+        Assert.Equal("CPU upgrade", result.Text);
     }
 }
