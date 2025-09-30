@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+
 namespace TlaPlugin.Models;
 
 /// <summary>
@@ -20,4 +23,6 @@ public class TranslationRequest
     public IList<string> AdditionalTargetLanguages { get; set; } = new List<string>();
     public string? UiLocale { get; set; }
         = null;
+    public IDictionary<string, GlossaryDecision> GlossaryDecisions { get; set; }
+        = new Dictionary<string, GlossaryDecision>(StringComparer.OrdinalIgnoreCase);
 }

@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json.Nodes;
 
 namespace TlaPlugin.Models;
@@ -22,4 +24,11 @@ public class TranslationResult
         = new JsonObject();
     public IDictionary<string, string> AdditionalTranslations { get; set; }
         = new Dictionary<string, string>();
+    public IReadOnlyList<GlossaryMatchDetail> GlossaryMatches { get; set; }
+        = Array.Empty<GlossaryMatchDetail>();
+
+    public void SetGlossaryMatches(IEnumerable<GlossaryMatchDetail> matches)
+    {
+        GlossaryMatches = matches.Select(match => match.Clone()).ToList();
+    }
 }

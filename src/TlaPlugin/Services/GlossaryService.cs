@@ -23,7 +23,12 @@ public class GlossaryService
     /// <summary>
     /// 按优先级顺序应用术语表。
     /// </summary>
-    public string Apply(string text, string tenantId, string? channelId, string userId)
+    public GlossaryApplicationResult Apply(
+        string text,
+        string tenantId,
+        string? channelId,
+        string userId,
+        IDictionary<string, GlossaryDecision>? decisions = null)
     {
         var detailed = ApplyDetailed(text, tenantId, channelId, userId, GlossaryPolicy.Fallback);
         return detailed.ProcessedText;

@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BOBTLA 设置页</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="settings" data-settings-root>
+    <header class="settings__header">
+      <h1>租户配置</h1>
+      <p>管理允许的模型、默认目标语言与术语策略。</p>
+    </header>
+    <main class="settings__main">
+      <section>
+        <h2>允许模型</h2>
+        <div class="settings__models" data-model-list></div>
+      </section>
+      <section>
+        <h2>默认目标语言</h2>
+        <select data-default-language aria-label="默认目标语言"></select>
+      </section>
+      <section>
+        <label class="toggle">
+          <input type="checkbox" data-terminology-toggle checked /> 启用术语库
+        </label>
+      </section>
+      <p class="settings__status" data-settings-status></p>
+    </main>
+    <footer class="settings__footer">
+      <button type="button" class="btn btn--primary" data-settings-save>保存配置</button>
+    </footer>
+    <script type="module" src="./settingsTab.js"></script>
+  </body>
+</html>

@@ -30,9 +30,19 @@ public class LocalizationCatalogService
                     ["tla.ui.action.insertLocale"] = "{0} を挿入",
                     ["tla.ui.action.showOriginal"] = "原文を表示",
                     ["tla.ui.action.changeLanguage"] = "別の言語を選択",
+                    ["tla.error.detection.title"] = "言語を選択",
+                    ["tla.error.detection.body"] = "自動検出の信頼度が低いため、候補から源言語を選択してください。",
                     ["tla.error.budget.title"] = "予算制限",
                     ["tla.error.rate.title"] = "レート制限",
-                    ["tla.error.translation.title"] = "翻訳エラー"
+                    ["tla.error.translation.title"] = "翻訳エラー",
+                    ["tla.ui.glossary.conflictTitle"] = "用語の選択が必要です",
+                    ["tla.ui.glossary.conflictDescription"] = "一致した用語に複数の候補が見つかりました。使用する訳語を選択してください。",
+                    ["tla.ui.glossary.conflictItem"] = "{0}（{1} 件）",
+                    ["tla.ui.glossary.option.preferred"] = "推奨訳 {0} （{1}）",
+                    ["tla.ui.glossary.option.alternative"] = "代替訳 {0} （{1}）",
+                    ["tla.ui.glossary.option.original"] = "原文を保持",
+                    ["tla.ui.glossary.submit"] = "選択を適用",
+                    ["tla.ui.glossary.cancel"] = "取消"
                 }),
             ["zh-CN"] = new CatalogDefinition(
                 "简体中文 (中国)",
@@ -46,9 +56,19 @@ public class LocalizationCatalogService
                     ["tla.ui.action.insertLocale"] = "插入 {0}",
                     ["tla.ui.action.showOriginal"] = "查看原文",
                     ["tla.ui.action.changeLanguage"] = "选择其他语言",
+                    ["tla.error.detection.title"] = "请选择语言",
+                    ["tla.error.detection.body"] = "自动检测置信度不足，请从候选项中选择源语言。",
                     ["tla.error.budget.title"] = "预算限制",
                     ["tla.error.rate.title"] = "速率限制",
-                    ["tla.error.translation.title"] = "翻译失败"
+                    ["tla.error.translation.title"] = "翻译失败",
+                    ["tla.ui.glossary.conflictTitle"] = "请选择术语翻译",
+                    ["tla.ui.glossary.conflictDescription"] = "检测到多个术语候选，请选择希望保留的译法。",
+                    ["tla.ui.glossary.conflictItem"] = "{0}（{1} 次出现）",
+                    ["tla.ui.glossary.option.preferred"] = "推荐译文 {0}（{1}）",
+                    ["tla.ui.glossary.option.alternative"] = "备选译文 {0}（{1}）",
+                    ["tla.ui.glossary.option.original"] = "保留原文",
+                    ["tla.ui.glossary.submit"] = "提交选择",
+                    ["tla.ui.glossary.cancel"] = "取消"
                 })
         };
 

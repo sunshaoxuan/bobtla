@@ -182,6 +182,18 @@ app.MapGet("/api/cost-latency", (int payloadSize, string modelId, CostEstimatorS
     }
 });
 
+app.MapPost("/api/rewrite", async (RewriteRequest request, MessageExtensionHandler handler) =>
+{
+    var result = await handler.HandleRewriteAsync(request);
+    return Results.Json(result, options: new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+});
+
+app.MapPost("/api/reply", async (ReplyRequest request, MessageExtensionHandler handler) =>
+{
+    var result = await handler.HandleReplyAsync(request);
+    return Results.Json(result, options: new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+});
+
 app.MapGet("/api/configuration", (ConfigurationSummaryService service) =>
 {
     var summary = service.CreateSummary();

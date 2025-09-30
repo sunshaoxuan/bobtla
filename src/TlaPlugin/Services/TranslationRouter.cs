@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Security.Authentication;
@@ -429,6 +430,17 @@ public class TranslationRouter
             }
         };
     }
+}
+
+public class LanguageDetectionLowConfidenceException : TranslationException
+{
+    public LanguageDetectionLowConfidenceException(DetectionResult detection)
+        : base("言語を自動判定できません。候補から選択してください。")
+    {
+        Detection = detection;
+    }
+
+    public DetectionResult Detection { get; }
 }
 
 public class TranslationException : Exception

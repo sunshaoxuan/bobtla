@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Options;
@@ -155,6 +156,57 @@ public class MessageExtensionHandlerTests
     }
 
     [Fact]
+    public async Task ReturnsGlossaryConflictCardWhenResolutionRequired()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            Providers = new List<ModelProviderOptions>
+            {
+                new() { Id = "primary", Regions = new List<string>{"japan"}, Certifications = new List<string>{"iso"} }
+            },
+            Compliance = new CompliancePolicyOptions
+            {
+                RequiredRegionTags = new List<string> { "japan" },
+                RequiredCertifications = new List<string> { "iso" }
+            }
+        });
+
+        var glossary = new GlossaryService();
+        glossary.LoadEntries(new[]
+        {
+            new GlossaryEntry("GPU", "图形处理器", "tenant:contoso"),
+            new GlossaryEntry("GPU", "显卡", "channel:finance")
+        });
+
+        var handler = BuildHandler(options, glossary);
+
+        var response = await handler.HandleTranslateAsync(new TranslationRequest
+        {
+            Text = "GPU", 
+            TenantId = "contoso",
+            UserId = "user",
+            TargetLanguage = "ja",
+            SourceLanguage = "en",
+            ChannelId = "finance"
+        });
+
+        Assert.Equal("message", response["type"]?.GetValue<string>());
+        var attachment = response["attachments"]!.AsArray().First().AsObject();
+        var card = attachment["content"]!.AsObject();
+        Assert.Equal("AdaptiveCard", card["type"]!.GetValue<string>());
+        var body = card["body"]!.AsArray();
+        var choiceSet = body.First(node => node!.AsObject()["type"]!.GetValue<string>() == "Input.ChoiceSet")!.AsObject();
+        var choices = choiceSet["choices"]!.AsArray();
+        Assert.Equal(3, choices.Count);
+        var encoded = choices[0]!.AsObject()["value"]!.GetValue<string>();
+        var decoded = JsonNode.Parse(encoded)!.AsObject();
+        Assert.Equal("GPU", decoded["source"]!.GetValue<string>());
+        Assert.Equal("UsePreferred", decoded["kind"]!.GetValue<string>());
+        var actions = card["actions"]!.AsArray();
+        Assert.Contains(actions.Select(action => action!.AsObject()["data"]!.AsObject()["action"]?.GetValue<string>()), value => value == "resolveGlossary");
+    }
+
+    [Fact]
     public async Task ReturnsLocalizedErrorCardWhenLocaleProvided()
     {
         var options = Options.Create(new PluginOptions
@@ -296,10 +348,13 @@ public class MessageExtensionHandlerTests
         Assert.Contains("速率", title["text"]!.GetValue<string>());
     }
 
-    private static MessageExtensionHandler BuildHandler(IOptions<PluginOptions> options)
+    private static MessageExtensionHandler BuildHandler(IOptions<PluginOptions> options, GlossaryService? glossaryOverride = null)
     {
-        var glossary = new GlossaryService();
-        glossary.LoadEntries(new[] { new GlossaryEntry("hello", "你好", "tenant:contoso") });
+        var glossary = glossaryOverride ?? new GlossaryService();
+        if (glossaryOverride is null)
+        {
+            glossary.LoadEntries(new[] { new GlossaryEntry("hello", "你好", "tenant:contoso") });
+        }
         var compliance = new ComplianceGateway(options);
         var resolver = new KeyVaultSecretResolver(options);
         var localization = new LocalizationCatalogService();

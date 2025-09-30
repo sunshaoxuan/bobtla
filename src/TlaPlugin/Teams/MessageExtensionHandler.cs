@@ -1,3 +1,9 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using System.Text.Encodings.Web;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
@@ -43,6 +49,10 @@ public class MessageExtensionHandler
                 }
             };
         }
+        catch (GlossaryConflictException ex)
+        {
+            return BuildGlossaryConflictCard(catalog, ex);
+        }
         catch (BudgetExceededException ex)
         {
             return BuildErrorCard(catalog, "tla.error.budget.title", ex.Message);
@@ -50,6 +60,29 @@ public class MessageExtensionHandler
         catch (RateLimitExceededException ex)
         {
             return BuildErrorCard(catalog, "tla.error.rate.title", ex.Message);
+        }
+        catch (LanguageDetectionLowConfidenceException ex)
+        {
+            static string Resolve(LocalizationCatalog catalog, string key) =>
+                catalog.Strings.TryGetValue(key, out var value) ? value : key;
+
+            var candidates = new JsonArray();
+            foreach (var candidate in ex.Detection.Candidates)
+            {
+                candidates.Add(new JsonObject
+                {
+                    ["language"] = candidate.Language,
+                    ["confidence"] = candidate.Confidence
+                });
+            }
+
+            return new JsonObject
+            {
+                ["type"] = "languageSelection",
+                ["title"] = Resolve(catalog, "tla.error.detection.title"),
+                ["message"] = Resolve(catalog, "tla.error.detection.body"),
+                ["candidates"] = candidates
+            };
         }
         catch (TranslationException ex)
         {
@@ -67,6 +100,65 @@ public class MessageExtensionHandler
             ["status"] = record.Status,
             ["createdAt"] = record.CreatedAt.ToString("O")
         });
+    }
+
+    public async Task<JsonObject> HandleRewriteAsync(RewriteRequest request)
+    {
+        var locale = request.UiLocale ?? _options.DefaultUiLocale;
+        var catalog = _localization.GetCatalog(locale);
+        try
+        {
+            var rewritten = await _pipeline.RewriteAsync(request, CancellationToken.None);
+            return new JsonObject
+            {
+                ["type"] = "rewriteResult",
+                ["text"] = rewritten,
+                ["tone"] = request.Tone
+            };
+        }
+        catch (BudgetExceededException ex)
+        {
+            return BuildErrorCard(catalog, "tla.error.budget.title", ex.Message);
+        }
+        catch (RateLimitExceededException ex)
+        {
+            return BuildErrorCard(catalog, "tla.error.rate.title", ex.Message);
+        }
+        catch (TranslationException ex)
+        {
+            return BuildErrorCard(catalog, "tla.error.translation.title", ex.Message);
+        }
+    }
+
+    public async Task<JsonObject> HandleReplyAsync(ReplyRequest request)
+    {
+        var locale = request.UiLocale ?? _options.DefaultUiLocale;
+        var catalog = _localization.GetCatalog(locale);
+        try
+        {
+            var result = await _pipeline.PostReplyAsync(request, CancellationToken.None);
+            return new JsonObject
+            {
+                ["type"] = "replyPosted",
+                ["status"] = result.Status,
+                ["messageId"] = result.MessageId,
+                ["language"] = result.Language,
+                ["postedAt"] = result.PostedAt.ToString("O"),
+                ["title"] = catalog.Strings.TryGetValue("tla.ui.reply.success", out var title) ? title : "Reply sent"
+            };
+        }
+        catch (BudgetExceededException ex)
+        {
+            return BuildErrorCard(catalog, "tla.error.budget.title", ex.Message);
+        }
+        catch (RateLimitExceededException ex)
+        {
+            return BuildErrorCard(catalog, "tla.error.rate.title", ex.Message);
+        }
+        catch (TranslationException ex)
+        {
+            return BuildErrorCard(catalog, "tla.error.translation.title", ex.Message);
+        }
     }
 
     private static JsonObject BuildErrorCard(LocalizationCatalog catalog, string titleKey, string message)
@@ -106,5 +198,167 @@ public class MessageExtensionHandler
                 }
             }
         };
+    }
+
+    private JsonObject BuildGlossaryConflictCard(LocalizationCatalog catalog, GlossaryConflictException exception)
+    {
+        static string Resolve(LocalizationCatalog catalog, string key) =>
+            catalog.Strings.TryGetValue(key, out var value) ? value : key;
+
+        var body = new JsonArray
+        {
+            new JsonObject
+            {
+                ["type"] = "TextBlock",
+                ["text"] = Resolve(catalog, "tla.ui.glossary.conflictTitle"),
+                ["wrap"] = true,
+                ["weight"] = "Bolder",
+                ["size"] = "Medium"
+            },
+            new JsonObject
+            {
+                ["type"] = "TextBlock",
+                ["text"] = Resolve(catalog, "tla.ui.glossary.conflictDescription"),
+                ["wrap"] = true,
+                ["spacing"] = "Small"
+            }
+        };
+
+        var conflicts = exception.Result.Matches
+            .Where(match => match.HasConflict)
+            .ToList();
+
+        foreach (var conflict in conflicts)
+        {
+            body.Add(new JsonObject
+            {
+                ["type"] = "TextBlock",
+                ["text"] = string.Format(CultureInfo.InvariantCulture, Resolve(catalog, "tla.ui.glossary.conflictItem"), conflict.Source, conflict.Occurrences),
+                ["wrap"] = true,
+                ["weight"] = "Bolder",
+                ["spacing"] = "Medium"
+            });
+
+            var ordered = conflict.Candidates
+                .OrderBy(candidate => candidate.Priority)
+                .ThenBy(candidate => candidate.Target, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (ordered.Count == 0)
+            {
+                continue;
+            }
+
+            var preferred = ordered.First();
+            var preferredChoice = EncodeChoice(conflict.Source, GlossaryDecisionKind.UsePreferred, preferred);
+
+            var choices = new JsonArray
+            {
+                new JsonObject
+                {
+                    ["title"] = string.Format(CultureInfo.InvariantCulture, Resolve(catalog, "tla.ui.glossary.option.preferred"), preferred.Target, preferred.Scope),
+                    ["value"] = preferredChoice
+                }
+            };
+
+            if (ordered.Count > 1)
+            {
+                var alternate = ordered.Skip(1).First();
+                choices.Add(new JsonObject
+                {
+                    ["title"] = string.Format(CultureInfo.InvariantCulture, Resolve(catalog, "tla.ui.glossary.option.alternative"), alternate.Target, alternate.Scope),
+                    ["value"] = EncodeChoice(conflict.Source, GlossaryDecisionKind.UseAlternative, alternate)
+                });
+            }
+
+            choices.Add(new JsonObject
+            {
+                ["title"] = Resolve(catalog, "tla.ui.glossary.option.original"),
+                ["value"] = EncodeChoice(conflict.Source, GlossaryDecisionKind.KeepOriginal, null)
+            });
+
+            body.Add(new JsonObject
+            {
+                ["type"] = "Input.ChoiceSet",
+                ["id"] = $"glossary::{conflict.Source}",
+                ["style"] = "expanded",
+                ["isMultiSelect"] = false,
+                ["value"] = preferredChoice,
+                ["choices"] = choices
+            });
+        }
+
+        var data = new JsonObject
+        {
+            ["action"] = "resolveGlossary",
+            ["tenantId"] = exception.Request.TenantId,
+            ["userId"] = exception.Request.UserId,
+            ["channelId"] = exception.Request.ChannelId ?? string.Empty,
+            ["targetLanguage"] = exception.Request.TargetLanguage,
+            ["sourceLanguage"] = exception.Request.SourceLanguage ?? string.Empty,
+            ["tone"] = exception.Request.Tone,
+            ["useGlossary"] = exception.Request.UseGlossary,
+            ["uiLocale"] = exception.Request.UiLocale ?? string.Empty,
+            ["text"] = exception.Request.Text,
+            ["additionalTargetLanguages"] = new JsonArray(exception.Request.AdditionalTargetLanguages.Select(language => (JsonNode)language).ToArray())
+        };
+
+        var actions = new JsonArray
+        {
+            new JsonObject
+            {
+                ["type"] = "Action.Submit",
+                ["title"] = Resolve(catalog, "tla.ui.glossary.submit"),
+                ["data"] = data
+            },
+            new JsonObject
+            {
+                ["type"] = "Action.Submit",
+                ["title"] = Resolve(catalog, "tla.ui.glossary.cancel"),
+                ["data"] = new JsonObject
+                {
+                    ["action"] = "cancelGlossary"
+                }
+            }
+        };
+
+        return new JsonObject
+        {
+            ["type"] = "message",
+            ["attachments"] = new JsonArray
+            {
+                new JsonObject
+                {
+                    ["contentType"] = "application/vnd.microsoft.card.adaptive",
+                    ["content"] = new JsonObject
+                    {
+                        ["type"] = "AdaptiveCard",
+                        ["version"] = "1.5",
+                        ["body"] = body,
+                        ["actions"] = actions
+                    }
+                }
+            }
+        };
+    }
+
+    private static string EncodeChoice(string source, GlossaryDecisionKind kind, GlossaryCandidateDetail? candidate)
+    {
+        var payload = new JsonObject
+        {
+            ["source"] = source,
+            ["kind"] = kind.ToString()
+        };
+
+        if (candidate is not null)
+        {
+            payload["target"] = candidate.Target;
+            payload["scope"] = candidate.Scope;
+        }
+
+        return payload.ToJsonString(new JsonSerializerOptions
+        {
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+        });
     }
 }
