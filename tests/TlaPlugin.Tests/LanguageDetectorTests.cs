@@ -1,3 +1,4 @@
+using System;
 using TlaPlugin.Services;
 using Xunit;
 
@@ -25,5 +26,17 @@ public class LanguageDetectorTests
 
         Assert.Equal("es", result.Language);
         Assert.True(result.Confidence >= 0.75);
+    }
+
+    [Fact]
+    public void Detect_ReturnsJapaneseCandidateForKanjiOnlyText()
+    {
+        var detector = new LanguageDetector();
+
+        var result = detector.Detect("東京都庁");
+
+        Assert.True(result.Confidence < 0.75);
+        Assert.Contains(result.Candidates, candidate => string.Equals(candidate.Language, "ja", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(result.Candidates, candidate => string.Equals(candidate.Language, "zh", StringComparison.OrdinalIgnoreCase));
     }
 }

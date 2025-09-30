@@ -350,6 +350,38 @@ public class TranslationPipelineTests
     }
 
     [Fact]
+    public async Task ReturnsJapaneseCandidateForKanjiOnlyDetection()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            Providers = new List<ModelProviderOptions>
+            {
+                new() { Id = "primary", Regions = new List<string>{"japan"}, Certifications = new List<string>{"iso"} }
+            },
+            Compliance = new CompliancePolicyOptions
+            {
+                RequiredRegionTags = new List<string> { "japan" },
+                RequiredCertifications = new List<string> { "iso" }
+            }
+        });
+
+        var pipeline = BuildPipeline(options);
+
+        var result = await pipeline.ExecuteAsync(new TranslationRequest
+        {
+            Text = "東京都庁",
+            TenantId = "contoso",
+            UserId = "user",
+            TargetLanguage = "en"
+        }, CancellationToken.None);
+
+        Assert.True(result.RequiresLanguageSelection);
+        var detection = Assert.NotNull(result.Detection);
+        Assert.True(detection.Confidence < 0.75);
+        Assert.Contains(detection.Candidates, candidate => string.Equals(candidate.Language, "ja", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task RespectsManualSourceLanguageAfterDetection()
     {
         var options = Options.Create(new PluginOptions

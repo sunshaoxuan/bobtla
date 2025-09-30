@@ -139,6 +139,17 @@ public class LanguageDetector
 
         var scored = new List<(LanguageDefinition Definition, double Score)>();
         var hasSignatureMatch = false;
+        var hasJapaneseKana = false;
+        var containsChinesePunctuation = false;
+        var isAmbiguousHan = false;
+
+        if (primary.Key == WritingSystem.Han)
+        {
+            hasJapaneseKana = ContainsJapaneseKana(trimmed);
+            containsChinesePunctuation = ChinesePunctuation.IsMatch(trimmed);
+            isAmbiguousHan = !hasJapaneseKana && !containsChinesePunctuation;
+        }
+
         foreach (var definition in definitions)
         {
             var score = baseScore + definition.Bias;
@@ -150,23 +161,32 @@ public class LanguageDetector
 
             if (primary.Key == WritingSystem.Han)
             {
+                if (isAmbiguousHan)
+                {
+                    score -= 0.08;
+                }
+
                 if (string.Equals(definition.Code, "ja", StringComparison.OrdinalIgnoreCase))
                 {
                     // 纯汉字不够判断日语，若缺少假名则降低分值。
-                    if (!ContainsJapaneseKana(trimmed))
+                    if (!hasJapaneseKana)
                     {
-                        score -= 0.2;
+                        score -= 0.18;
                     }
                 }
                 else if (string.Equals(definition.Code, "zh", StringComparison.OrdinalIgnoreCase))
                 {
-                    if (ContainsJapaneseKana(trimmed))
+                    if (hasJapaneseKana)
                     {
                         score -= 0.15;
                     }
-                    if (ChinesePunctuation.IsMatch(trimmed))
+                    if (containsChinesePunctuation)
                     {
                         score += 0.05;
+                    }
+                    else if (isAmbiguousHan)
+                    {
+                        score -= 0.12;
                     }
                 }
             }
@@ -654,6 +674,7 @@ public class LanguageDetector
             new("ti", WritingSystem.Ethiopic, null, 0.34, 0.08),
 
             new("zh", WritingSystem.Han, null, 0.34, 0.18),
+            new("ja", WritingSystem.Han, null, 0.34, 0.16),
             new("ja", WritingSystem.Japanese, null, 0.34, 0.18),
             new("ko", WritingSystem.Hangul, null, 0.34, 0.18)
         };
