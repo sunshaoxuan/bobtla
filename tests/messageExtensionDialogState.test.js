@@ -30,19 +30,27 @@ test("buildTranslatePayload forwards metadata and context", () => {
     sourceLanguage: "auto",
     targetLanguage: "zh-Hans",
     modelId: "model-a",
-    useTerminology: false
+    useTerminology: false,
+    tone: "formal"
   };
   const context = { tenant: { id: "tenant1" }, user: { id: "user1" }, channel: { id: "channel1" } };
   const payload = buildTranslatePayload(state, context);
   assert.equal(payload.targetLanguage, "zh-Hans");
   assert.equal(payload.sourceLanguage, undefined);
-  assert.deepEqual(payload.metadata, { origin: "messageExtension", modelId: "model-a", useTerminology: false });
+  assert.deepEqual(payload.metadata, {
+    origin: "messageExtension",
+    modelId: "model-a",
+    useTerminology: false,
+    tone: "formal"
+  });
 });
 
 test("updateStateWithResponse stores translation text", () => {
-  const state = { text: "Hello", translation: "", modelId: "model-a" };
-  const response = { text: "你好", metadata: { modelId: "model-b" } };
+  const state = { text: "Hello", translation: "", modelId: "model-a", tone: "neutral" };
+  const response = { text: "你好", metadata: { modelId: "model-b", tone: "formal" }, detectedLanguage: "zh-Hans" };
   const next = updateStateWithResponse(state, response);
   assert.equal(next.translation, "你好");
   assert.equal(next.modelId, "model-b");
+  assert.equal(next.tone, "formal");
+  assert.equal(next.detectedLanguage, "zh-Hans");
 });

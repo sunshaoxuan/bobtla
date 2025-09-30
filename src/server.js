@@ -99,13 +99,20 @@ export function createServer({ handler = buildHandler(), metadata = buildMetadat
     }
     try {
       const payload = JSON.parse(body || "{}");
-      if (payload.type === "offlineDraft") {
-        const result = await handler.handleOfflineDraft(payload);
-        res.setHeader("Content-Type", "application/json");
-        res.end(JSON.stringify(result));
-        return;
+      let result;
+      if (url.pathname === "/api/detect") {
+        result = await handler.detectLanguage(payload);
+      } else if (url.pathname === "/api/translate") {
+        result = await handler.translate(payload);
+      } else if (url.pathname === "/api/rewrite") {
+        result = await handler.rewrite(payload);
+      } else if (url.pathname === "/api/reply") {
+        result = await handler.reply(payload);
+      } else if (payload.type === "offlineDraft") {
+        result = await handler.handleOfflineDraft(payload);
+      } else {
+        result = await handler.handleTranslateCommand(payload);
       }
-      const result = await handler.handleTranslateCommand(payload);
       res.setHeader("Content-Type", "application/json");
       res.end(JSON.stringify(result));
     } catch (error) {
