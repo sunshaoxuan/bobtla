@@ -1,17 +1,21 @@
 import { FALLBACK_METADATA } from "./apiClient.js";
 
+function isSelectableLanguage(language) {
+  return Boolean(language?.id) && language.id !== "auto";
+}
+
 function resolveDefaultTargetLanguage(languages = [], locale = "") {
   if (!Array.isArray(languages) || languages.length === 0) {
     return "en";
   }
   const exactLocale = languages.find((lang) => lang.id === locale);
-  if (exactLocale) {
+  if (isSelectableLanguage(exactLocale)) {
     return exactLocale.id;
   }
   const normalized = locale?.split?.("-")?.[0];
   if (normalized) {
     const match = languages.find((lang) => lang.id === normalized);
-    if (match) {
+    if (isSelectableLanguage(match)) {
       return match.id;
     }
   }

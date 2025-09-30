@@ -140,3 +140,61 @@ test("compose plugin falls back to first non-auto target", async () => {
   assert.equal(fetchCalls.length, 1);
   assert.equal(fetchCalls[0].options.targetLanguage, "fr");
 });
+
+test("compose plugin corrects target when locale missing from metadata", async () => {
+  const fetchCalls = [];
+  const fakeFetch = async (url, options = {}) => {
+    if (options.body) {
+      fetchCalls.push({ url, options: JSON.parse(options.body) });
+    }
+    return {
+      ok: true,
+      async json() {
+        if (url === "/api/metadata") {
+          return {
+            models: [{ id: "model-a", displayName: "Model A", costPerCharUsd: 0.00002 }],
+            languages: [
+              { id: "auto", name: "Auto", isDefault: true },
+              { id: "ja", name: "日本語" },
+              { id: "ko", name: "한국어" }
+            ],
+            features: { terminologyToggle: true },
+            pricing: { currency: "USD" }
+          };
+        }
+        return { text: "こんにちは" };
+      }
+    };
+  };
+
+  const suggestButton = createStubElement();
+  const input = createStubElement({ value: "hello" });
+  const preview = createStubElement();
+  const targetSelect = createStubElement();
+  targetSelect.replaceChildren = () => {};
+
+  const teams = {
+    app: {
+      async initialize() {},
+      async getContext() {
+        return { tenant: { id: "tenant" }, user: { id: "user" }, channel: { id: "channel" }, app: { locale: "pt-BR" } };
+      }
+    },
+    conversations: {
+      async sendMessageToConversation() {}
+    }
+  };
+
+  const { state } = await initComposePlugin({
+    ui: { input, targetSelect, suggestButton, preview },
+    teams,
+    fetcher: fakeFetch
+  });
+
+  await suggestButton.trigger("click");
+
+  assert.equal(state.targetLanguage, "ja");
+  assert.equal(targetSelect.value, "ja");
+  assert.equal(fetchCalls.length, 1);
+  assert.equal(fetchCalls[0].options.targetLanguage, "ja");
+});
