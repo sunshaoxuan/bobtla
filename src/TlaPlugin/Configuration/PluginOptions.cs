@@ -4,7 +4,7 @@ using System.Collections.Generic;
 namespace TlaPlugin.Configuration;
 
 /// <summary>
-/// プラグインの主要構成を保持するオプション。
+/// プラグイン全体の構成値を保持するオプション定義。
 /// </summary>
 public class PluginOptions
 {
@@ -29,13 +29,14 @@ public class PluginOptions
         "ja-JP",
         "en-US"
     };
+    public string DefaultUiLocale { get; set; } = "ja-JP";
     public IList<ModelProviderOptions> Providers { get; set; } = new List<ModelProviderOptions>();
     public CompliancePolicyOptions Compliance { get; set; } = new();
     public SecurityOptions Security { get; set; } = new();
 }
 
 /// <summary>
-/// モデル提供者の構成値。
+/// モデルプロバイダーを設定するためのオプション。
 /// </summary>
 public class ModelProviderOptions
 {
@@ -57,7 +58,7 @@ public class ModelProviderOptions
 }
 
 /// <summary>
-/// モデル提供者の種類を示す列挙体。
+/// 表示模型提供方类型的枚举。
 /// </summary>
 public enum ModelProviderKind
 {
@@ -71,7 +72,7 @@ public enum ModelProviderKind
 }
 
 /// <summary>
-/// 合規ポリシーの設定値。
+/// 合规策略相关配置。
 /// </summary>
 public class CompliancePolicyOptions
 {
@@ -88,7 +89,7 @@ public class CompliancePolicyOptions
 }
 
 /// <summary>
-/// キー管理と OBO 認証の設定値。
+/// 密钥管理与 OBO 认证的配置。
 /// </summary>
 public class SecurityOptions
 {
