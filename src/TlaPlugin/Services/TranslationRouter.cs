@@ -19,6 +19,9 @@ namespace TlaPlugin.Services;
 /// </summary>
 public class TranslationRouter
 {
+    private const double MinimumDetectionConfidence = 0.75;
+    private static readonly LanguageDetector FallbackDetector = new();
+
     private readonly IReadOnlyList<IModelProvider> _providers;
     private readonly ComplianceGateway _compliance;
     private readonly BudgetGuard _budget;
@@ -37,9 +40,10 @@ public class TranslationRouter
         ITokenBroker tokenBroker,
         UsageMetricsService metrics,
         LocalizationCatalogService localization,
-        IOptions<PluginOptions>? options = null)
+        IOptions<PluginOptions>? options = null,
+        IEnumerable<IModelProvider>? providerOverrides = null)
     {
-        _providers = providerFactory.CreateProviders();
+        _providers = providerOverrides?.ToList() ?? providerFactory.CreateProviders();
         _compliance = compliance;
         _budget = budget;
         _audit = audit;
@@ -64,33 +68,26 @@ public class TranslationRouter
             throw new TranslationException("検出対象が許容される文字数を超えています。");
         }
 
-        foreach (var provider in _providers)
-        {
-            try
-            {
-                return await provider.DetectAsync(request.Text, cancellationToken);
-            }
-            catch (Exception ex) when (ex is InvalidOperationException or TaskCanceledException)
-            {
-                continue;
-            }
-        }
-
-        if (!string.IsNullOrEmpty(request.TenantId))
-        {
-            _metrics.RecordFailure(request.TenantId, UsageMetricsService.FailureReasons.Provider);
-        }
-
-        throw new TranslationException("言語を検出できません。");
+        return await DetectWithFallbackAsync(request.Text, cancellationToken);
     }
 
     public async Task<TranslationResult> TranslateAsync(TranslationRequest request, CancellationToken cancellationToken)
     {
+        if (string.IsNullOrWhiteSpace(request.Text))
+        {
+            throw new TranslationException("翻訳する本文は必須です。");
+        }
+
         var sourceLanguage = request.SourceLanguage;
         DetectionResult? detection = null;
         if (string.IsNullOrEmpty(sourceLanguage))
         {
-            detection = await _providers.First().DetectAsync(request.Text, cancellationToken);
+            detection = await DetectWithFallbackAsync(request.Text, cancellationToken);
+            if (detection.Confidence < MinimumDetectionConfidence)
+            {
+                throw new LowConfidenceDetectionException(detection);
+            }
+
             sourceLanguage = detection.Language;
         }
 
@@ -280,6 +277,30 @@ public class TranslationRouter
         }
 
         throw new TranslationException("要約に使用できるモデルが見つかりません。");
+    }
+
+    private async Task<DetectionResult> DetectWithFallbackAsync(string text, CancellationToken cancellationToken)
+    {
+        var sanitized = text?.Trim() ?? string.Empty;
+        DetectionResult? providerDetection = null;
+
+        foreach (var provider in _providers)
+        {
+            try
+            {
+                providerDetection = await provider.DetectAsync(sanitized, cancellationToken);
+                break;
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or TaskCanceledException)
+            {
+                continue;
+            }
+        }
+
+        var fallback = FallbackDetector.Detect(sanitized);
+        return providerDetection is null
+            ? fallback
+            : DetectionResultExtensions.Merge(providerDetection, fallback);
     }
 
     private async Task<AccessToken> AcquireTokenAsync(string tenantId, string userId, CancellationToken cancellationToken)

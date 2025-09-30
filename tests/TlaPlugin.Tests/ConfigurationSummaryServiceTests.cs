@@ -66,9 +66,9 @@ public class ConfigurationSummaryServiceTests
 
         var summary = service.CreateSummary();
 
-        Assert.True(summary.SupportedLanguages.Count >= 30);
-        Assert.Contains("de-DE", summary.SupportedLanguages);
-        Assert.Contains("ar-SA", summary.SupportedLanguages);
-        Assert.Contains("vi-VN", summary.SupportedLanguages);
+        Assert.True(summary.SupportedLanguages.Count >= 100);
+        Assert.Contains("en-GB", summary.SupportedLanguages);
+        Assert.Contains("yi-001", summary.SupportedLanguages);
+        Assert.Contains("zu-ZA", summary.SupportedLanguages);
     }
 }

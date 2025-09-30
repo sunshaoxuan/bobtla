@@ -84,7 +84,22 @@ public class GlossaryApplicationResult
     public string Text { get; set; } = string.Empty;
     public IReadOnlyList<GlossaryMatchDetail> Matches { get; set; } = Array.Empty<GlossaryMatchDetail>();
 
+    public string ProcessedText
+    {
+        get => Text;
+        set => Text = value ?? string.Empty;
+    }
+
     public bool HasConflicts => Matches.Any(match => match.HasConflict);
 
     public bool RequiresResolution => Matches.Any(match => match.HasConflict && match.Resolution == GlossaryDecisionKind.Unspecified);
+
+    public GlossaryApplicationResult Clone()
+    {
+        return new GlossaryApplicationResult
+        {
+            Text = Text,
+            Matches = Matches.Select(match => match.Clone()).ToList()
+        };
+    }
 }

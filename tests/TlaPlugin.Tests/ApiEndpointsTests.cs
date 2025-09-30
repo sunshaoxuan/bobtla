@@ -138,6 +138,6 @@ public class ApiEndpointsTests : IClassFixture<WebApplicationFactory<Program>>
     private sealed class GlossaryResponse
     {
         public string ProcessedText { get; set; } = string.Empty;
-        public List<GlossaryMatch> Matches { get; set; } = new();
+        public List<GlossaryMatchDetail> Matches { get; set; } = new();
     }
 }

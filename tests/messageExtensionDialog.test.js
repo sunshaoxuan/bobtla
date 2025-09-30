@@ -52,6 +52,9 @@ test("dialog runs detect → translate → rewrite and submits rewritten text", 
         if (url === "/api/rewrite") {
           return { text: "【正式】hola", metadata: { tone: "formal" } };
         }
+        if (url === "/api/reply") {
+          return { status: "ok", card: { type: "AdaptiveCard", body: [] } };
+        }
         throw new Error(`unexpected url ${url}`);
       }
     };
@@ -96,8 +99,11 @@ test("dialog runs detect → translate → rewrite and submits rewritten text", 
   assert.equal(fetchCalls[1].body.text, "hello");
   await ui.submitButton.trigger("click");
   assert.equal(fetchCalls[2].url, "/api/rewrite");
+  assert.equal(fetchCalls[3].url, "/api/reply");
+  assert.equal(fetchCalls[3].body.translation, "【正式】hola");
   assert.equal(teams.dialog.lastSubmit.translation, "【正式】hola");
   assert.equal(teams.dialog.lastSubmit.tone, "formal");
+  assert.deepEqual(teams.dialog.lastSubmit.card, { type: "AdaptiveCard", body: [] });
   assert.equal(ui.translation.value, "【正式】hola");
 });
 
@@ -130,6 +136,9 @@ test("dialog defaults to first non-auto target and preserves detection label", a
         }
         if (url === "/api/rewrite") {
           return { text: "bonjour", metadata: { tone: "neutral" } };
+        }
+        if (url === "/api/reply") {
+          return { status: "ok", card: { type: "AdaptiveCard", body: [] } };
         }
         throw new Error(`unexpected url ${url}`);
       }
@@ -174,7 +183,8 @@ test("dialog defaults to first non-auto target and preserves detection label", a
   assert.equal(fetchCalls[0].url, "/api/detect");
   assert.match(ui.detectedLabel.textContent, /Français/);
   await ui.submitButton.trigger("click");
-  assert.equal(fetchCalls.at(-1).url, "/api/rewrite");
+  assert.equal(fetchCalls.at(-2).url, "/api/rewrite");
+  assert.equal(fetchCalls.at(-1).url, "/api/reply");
 });
 
 test("initMessageExtensionDialog corrects target when locale missing from metadata", async () => {
@@ -198,7 +208,19 @@ test("initMessageExtensionDialog corrects target when locale missing from metada
             pricing: { currency: "USD" }
           };
         }
-        return { text: "こんにちは", metadata: { modelId: "model-a" } };
+        if (url === "/api/detect") {
+          return { language: "ja", confidence: 0.7 };
+        }
+        if (url === "/api/translate") {
+          return { text: "こんにちは", metadata: { modelId: "model-a" } };
+        }
+        if (url === "/api/rewrite") {
+          return { text: "こんにちは", metadata: { tone: "neutral" } };
+        }
+        if (url === "/api/reply") {
+          return { status: "ok" };
+        }
+        throw new Error(`unexpected url ${url}`);
       }
     };
   };
@@ -233,12 +255,15 @@ test("initMessageExtensionDialog corrects target when locale missing from metada
   const { state } = await initMessageExtensionDialog({ ui, teams, fetcher: fakeFetch });
   await ui.input.trigger("input");
   await ui.previewButton.trigger("click");
+  await ui.submitButton.trigger("click");
 
   assert.equal(state.targetLanguage, "ja");
   assert.equal(ui.targetSelect.value, "ja");
+  const translateCall = fetchCalls.find((call) => call.url === "/api/translate");
+  const replyCall = fetchCalls.find((call) => call.url === "/api/reply");
   assert.equal(fetchCalls[0].url, "/api/detect");
-  assert.equal(fetchCalls.at(-1).url, "/api/translate");
-  assert.equal(fetchCalls.at(-1).body.targetLanguage, "ja");
+  assert.equal(translateCall.body.targetLanguage, "ja");
+  assert.equal(replyCall.body.targetLanguage, "ja");
 });
 
 test("dialog uses concrete target when user locale is unavailable", async () => {
@@ -266,6 +291,12 @@ test("dialog uses concrete target when user locale is unavailable", async () => 
         }
         if (url === "/api/translate") {
           return { text: "hola", metadata: { modelId: "model-a" } };
+        }
+        if (url === "/api/rewrite") {
+          return { text: "hola", metadata: { tone: "neutral" } };
+        }
+        if (url === "/api/reply") {
+          return { status: "ok" };
         }
         throw new Error(`unexpected url ${url}`);
       }
@@ -302,10 +333,89 @@ test("dialog uses concrete target when user locale is unavailable", async () => 
   const { state } = await initMessageExtensionDialog({ ui, teams, fetcher: fakeFetch });
   await ui.input.trigger("input");
   await ui.previewButton.trigger("click");
+  await ui.submitButton.trigger("click");
 
   const translateCall = fetchCalls.find((call) => call.url === "/api/translate");
+  const replyCall = fetchCalls.find((call) => call.url === "/api/reply");
   assert.equal(state.targetLanguage, "es");
   assert.equal(ui.targetSelect.value, "es");
   assert.ok(translateCall, "expected translate call");
+  assert.ok(replyCall, "expected reply call");
   assert.equal(translateCall.body.targetLanguage, "es");
+  assert.equal(replyCall.body.targetLanguage, "es");
+});
+
+test("dialog surfaces reply failures without closing dialog", async () => {
+  const fakeFetch = async (url, options = {}) => {
+    return {
+      ok: url !== "/api/reply",
+      async json() {
+        if (url === "/api/metadata") {
+          return {
+            models: [{ id: "model-a", displayName: "Model A", costPerCharUsd: 0.00002 }],
+            languages: [
+              { id: "auto", name: "Auto", isDefault: true },
+              { id: "es", name: "Español" }
+            ],
+            features: { terminologyToggle: true },
+            pricing: { currency: "USD" }
+          };
+        }
+        if (url === "/api/detect") {
+          return { language: "en", confidence: 0.8 };
+        }
+        if (url === "/api/translate") {
+          return { text: "hola", metadata: { modelId: "model-a" } };
+        }
+        if (url === "/api/rewrite") {
+          return { text: "hola", metadata: { tone: "neutral" } };
+        }
+        if (url === "/api/reply") {
+          return { error: "failed" };
+        }
+        throw new Error(`unexpected url ${url}`);
+      },
+      async text() {
+        return "reply failed";
+      },
+      status: url === "/api/reply" ? 500 : 200
+    };
+  };
+
+  const ui = {
+    modelSelect: createStubElement(),
+    sourceSelect: createStubElement(),
+    targetSelect: createStubElement(),
+    terminologyToggle: createStubElement({ checked: true }),
+    toneToggle: createStubElement({ checked: false }),
+    detectedLabel: createStubElement(),
+    costHint: createStubElement(),
+    input: createStubElement({ value: "hello" }),
+    translation: createStubElement(),
+    previewButton: createStubElement(),
+    submitButton: createStubElement(),
+    errorBanner: createStubElement()
+  };
+
+  const teams = {
+    app: {
+      async initialize() {},
+      async getContext() {
+        return { tenant: { id: "tenant" }, user: { id: "user" }, channel: { id: "channel" }, app: { locale: "en-US" } };
+      }
+    },
+    dialog: {
+      submit() {
+        teams.dialog.closed = true;
+      }
+    }
+  };
+
+  await initMessageExtensionDialog({ ui, teams, fetcher: fakeFetch });
+  await ui.input.trigger("input");
+  await ui.previewButton.trigger("click");
+  await ui.submitButton.trigger("click");
+
+  assert.equal(Boolean(teams.dialog.closed), false);
+  assert.match(ui.errorBanner.textContent, /reply failed/);
 });

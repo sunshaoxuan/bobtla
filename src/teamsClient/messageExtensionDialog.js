@@ -1,11 +1,12 @@
 import { ensureTeamsContext } from "./teamsContext.js";
-import { fetchMetadata, detectLanguage, translateText, rewriteTranslation } from "./api.js";
+import { fetchMetadata, detectLanguage, translateText, rewriteTranslation, sendReply } from "./api.js";
 import {
   buildDialogState,
   calculateCostHint,
   buildTranslatePayload,
   buildDetectPayload,
   buildRewritePayload,
+  buildReplyPayload,
   updateStateWithResponse
 } from "./state.js";
 
@@ -242,6 +243,26 @@ export async function initMessageExtensionDialog({ ui = resolveDialogUi(), teams
         updateError(ui, error.message);
         return;
       }
+    }
+    if (finalText?.trim()) {
+      try {
+        const replyPayload = buildReplyPayload(state, context, finalText);
+        const replyResult = await sendReply(replyPayload, fetcher);
+        sdk.dialog?.submit?.({
+          translation: finalText,
+          targetLanguage: state.targetLanguage,
+          modelId: state.modelId,
+          useTerminology: state.useTerminology,
+          tone: state.tone,
+          detectedLanguage: state.detectedLanguage,
+          card: replyResult?.card,
+          replyStatus: replyResult?.status
+        });
+      } catch (error) {
+        updateError(ui, error.message);
+        return;
+      }
+      return;
     }
     sdk.dialog?.submit?.({
       translation: finalText,

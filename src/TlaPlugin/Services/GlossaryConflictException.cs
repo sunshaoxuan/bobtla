@@ -13,11 +13,7 @@ public class GlossaryConflictException : TranslationException
     public GlossaryConflictException(GlossaryApplicationResult result, TranslationRequest request)
         : base("Glossary conflicts require resolution.")
     {
-        Result = new GlossaryApplicationResult
-        {
-            Text = result.Text,
-            Matches = result.Matches.Select(match => match.Clone()).ToList()
-        };
+        Result = result.Clone();
 
         Request = new TranslationRequest
         {
