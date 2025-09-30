@@ -32,6 +32,17 @@
         <label class="toggle">
           <input type="checkbox" data-tone-toggle /> 正式语气
         </label>
+        <label class="toggle">
+          <input type="checkbox" data-rag-toggle /> 启用检索增强
+        </label>
+        <label>
+          上下文提示（每行一条）
+          <textarea
+            rows="3"
+            data-context-hints
+            placeholder="例如：预算审批；合同草案；团队代号"
+          ></textarea>
+        </label>
         <p class="dialog__cost" data-cost-hint></p>
       </section>
       <section class="dialog__editor">

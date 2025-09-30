@@ -10,6 +10,8 @@ function createDialogDom() {
       <select data-target-select></select>
       <label><input type="checkbox" data-terminology-toggle /></label>
       <label><input type="checkbox" data-tone-toggle /></label>
+      <label><input type="checkbox" data-rag-toggle /></label>
+      <label><textarea data-context-hints></textarea></label>
       <p data-cost-hint></p>
       <textarea data-source-text></textarea>
       <textarea data-translation-text></textarea>
@@ -166,5 +168,47 @@ describe("message extension dialog (jest)", () => {
     expect(teams.dialog.submit).toHaveBeenCalled();
     expect(teams.dialog.lastSubmit.translation).toBe("【润色】hola");
     expect(translation.value).toBe("【润色】hola");
+  });
+
+  test("enabling rag forwards context hints in translate payload", async () => {
+    await initMessageExtensionDialog({ teams, fetcher: fakeFetch });
+    const ragToggle = document.querySelector("[data-rag-toggle]");
+    const hints = document.querySelector("[data-context-hints]");
+    const input = document.querySelector("[data-source-text]");
+    const preview = document.querySelector("[data-preview-translation]");
+
+    ragToggle.checked = true;
+    ragToggle.dispatchEvent(new Event("change"));
+    hints.value = "budget meeting\ncontract";
+    hints.dispatchEvent(new Event("input"));
+    input.value = "hello";
+    input.dispatchEvent(new Event("input"));
+    await flushPromises();
+    preview.dispatchEvent(new Event("click"));
+    await flushPromises();
+
+    const translateCall = fetchCalls.find((call) => call.url === "/api/translate");
+    expect(translateCall.body.useRag).toBe(true);
+    expect(translateCall.body.contextHints).toEqual(["budget meeting", "contract"]);
+  });
+
+  test("disabling rag keeps payload without context", async () => {
+    await initMessageExtensionDialog({ teams, fetcher: fakeFetch });
+    const ragToggle = document.querySelector("[data-rag-toggle]");
+    const input = document.querySelector("[data-source-text]");
+    const preview = document.querySelector("[data-preview-translation]");
+
+    ragToggle.checked = false;
+    ragToggle.dispatchEvent(new Event("change"));
+    input.value = "hello";
+    input.dispatchEvent(new Event("input"));
+    await flushPromises();
+    preview.dispatchEvent(new Event("click"));
+    await flushPromises();
+
+    const translateCall = fetchCalls.find((call) => call.url === "/api/translate");
+    expect(translateCall.body.useRag).toBe(false);
+    expect(Array.isArray(translateCall.body.contextHints)).toBe(true);
+    expect(translateCall.body.contextHints).toHaveLength(0);
   });
 });

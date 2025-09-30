@@ -20,6 +20,8 @@ function resolveDialogUi(root = typeof document !== "undefined" ? document : und
     targetSelect: root.querySelector?.("[data-target-select]"),
     terminologyToggle: root.querySelector?.("[data-terminology-toggle]"),
     toneToggle: root.querySelector?.("[data-tone-toggle]"),
+    ragToggle: root.querySelector?.("[data-rag-toggle]"),
+    contextHintsInput: root.querySelector?.("[data-context-hints]"),
     costHint: root.querySelector?.("[data-cost-hint]"),
     detectedLabel: root.querySelector?.("[data-detected-language]"),
     input: root.querySelector?.("[data-source-text]"),
@@ -32,6 +34,16 @@ function resolveDialogUi(root = typeof document !== "undefined" ? document : und
     offlineList: root.querySelector?.("[data-offline-draft-list]"),
     offlineButton: root.querySelector?.("[data-save-offline-draft]")
   };
+}
+
+function parseContextHints(input) {
+  if (typeof input !== "string") {
+    return [];
+  }
+  return input
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function applySelectOptions(element, options, { valueKey, labelKey }) {
@@ -196,6 +208,19 @@ export async function initMessageExtensionDialog({ ui = resolveDialogUi(), teams
     ui.toneToggle.checked = state.tone === "formal";
     ui.toneToggle.addEventListener?.("change", (event) => {
       state.tone = event.target.checked ? "formal" : "neutral";
+    });
+  }
+  if (ui.ragToggle) {
+    ui.ragToggle.checked = Boolean(state.useRag);
+    ui.ragToggle.addEventListener?.("change", (event) => {
+      state.useRag = Boolean(event.target.checked);
+    });
+  }
+  if (ui.contextHintsInput) {
+    ui.contextHintsInput.value = (state.contextHints ?? []).join("\n");
+    ui.contextHintsInput.addEventListener?.("input", (event) => {
+      const value = event.target.value ?? "";
+      state.contextHints = parseContextHints(value);
     });
   }
 

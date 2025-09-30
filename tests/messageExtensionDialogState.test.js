@@ -1,6 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildDialogState, calculateCostHint, buildTranslatePayload, updateStateWithResponse } from "../src/teamsClient/state.js";
+import {
+  buildDialogState,
+  calculateCostHint,
+  buildTranslatePayload,
+  buildReplyPayload,
+  updateStateWithResponse
+} from "../src/teamsClient/state.js";
 
 test("buildDialogState chooses default language from context locale", () => {
   const models = [
@@ -15,6 +21,8 @@ test("buildDialogState chooses default language from context locale", () => {
   const state = buildDialogState({ models, languages, context: { app: { locale: "ja-JP" } } });
   assert.equal(state.targetLanguage, "ja");
   assert.equal(state.modelId, "model-a");
+  assert.equal(state.useRag, false);
+  assert.deepEqual(state.contextHints, []);
 });
 
 test("calculateCostHint multiplies characters and cost", () => {
@@ -37,12 +45,49 @@ test("buildTranslatePayload forwards metadata and context", () => {
   const payload = buildTranslatePayload(state, context);
   assert.equal(payload.targetLanguage, "zh-Hans");
   assert.equal(payload.sourceLanguage, undefined);
+  assert.equal(payload.useRag, false);
+  assert.deepEqual(payload.contextHints, []);
   assert.deepEqual(payload.metadata, {
     origin: "messageExtension",
     modelId: "model-a",
     useTerminology: false,
     tone: "formal"
   });
+});
+
+test("buildTranslatePayload sanitizes rag preferences", () => {
+  const state = {
+    text: "Hello",
+    sourceLanguage: "en",
+    targetLanguage: "ja",
+    modelId: "model-b",
+    useTerminology: true,
+    tone: "neutral",
+    useRag: true,
+    contextHints: ["  budget ", "", "contract"]
+  };
+  const context = { tenant: { id: "tenant" }, user: { id: "user" } };
+  const payload = buildTranslatePayload(state, context);
+  assert.equal(payload.useRag, true);
+  assert.deepEqual(payload.contextHints, ["budget", "contract"]);
+});
+
+test("buildReplyPayload reuses rag preferences", () => {
+  const state = {
+    text: "Hello",
+    sourceLanguage: "auto",
+    detectedLanguage: "en",
+    targetLanguage: "ja",
+    modelId: "model-b",
+    useTerminology: true,
+    tone: "neutral",
+    useRag: true,
+    contextHints: ["pricing"]
+  };
+  const context = { tenant: { id: "tenant" }, user: { id: "user" }, channel: { id: "channel" } };
+  const payload = buildReplyPayload(state, context, "こんにちは");
+  assert.equal(payload.useRag, true);
+  assert.deepEqual(payload.contextHints, ["pricing"]);
 });
 
 test("updateStateWithResponse stores translation text", () => {
