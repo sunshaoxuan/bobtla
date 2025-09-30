@@ -30,9 +30,12 @@ public class LocalizationCatalogService
                     ["tla.ui.action.insertLocale"] = "{0} を挿入",
                     ["tla.ui.action.showOriginal"] = "原文を表示",
                     ["tla.ui.action.changeLanguage"] = "別の言語を選択",
+                    ["tla.error.detection.title"] = "言語を選択",
+                    ["tla.error.detection.body"] = "自動検出の信頼度が低いため、候補から源言語を選択してください。",
                     ["tla.error.budget.title"] = "予算制限",
                     ["tla.error.rate.title"] = "レート制限",
-                    ["tla.error.translation.title"] = "翻訳エラー"
+                    ["tla.error.translation.title"] = "翻訳エラー",
+                    ["tla.ui.reply.success"] = "返信を送信しました"
                 }),
             ["zh-CN"] = new CatalogDefinition(
                 "简体中文 (中国)",
@@ -46,9 +49,12 @@ public class LocalizationCatalogService
                     ["tla.ui.action.insertLocale"] = "插入 {0}",
                     ["tla.ui.action.showOriginal"] = "查看原文",
                     ["tla.ui.action.changeLanguage"] = "选择其他语言",
+                    ["tla.error.detection.title"] = "请选择语言",
+                    ["tla.error.detection.body"] = "自动检测置信度不足，请从候选项中选择源语言。",
                     ["tla.error.budget.title"] = "预算限制",
                     ["tla.error.rate.title"] = "速率限制",
-                    ["tla.error.translation.title"] = "翻译失败"
+                    ["tla.error.translation.title"] = "翻译失败",
+                    ["tla.ui.reply.success"] = "回复已发送"
                 })
         };
 
