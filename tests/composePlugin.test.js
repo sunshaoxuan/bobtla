@@ -83,11 +83,13 @@ test("compose plugin translates and posts reply payload", async () => {
     fetcher: fakeFetch
   });
 
+  assert.equal(state.sourceLanguage, "auto");
   toneToggle.checked = true;
   await toneToggle.trigger("change");
   await suggestButton.trigger("click");
   assert.equal(fetchCalls[0].url, "/api/translate");
   assert.equal(fetchCalls[0].options.text, "hello");
+  assert.equal(state.detectedLanguage, "en");
   await applyButton.trigger("click");
   assert.equal(preview.value || preview.textContent, "hola");
   assert.equal(fetchCalls[1].url, "/api/reply");
