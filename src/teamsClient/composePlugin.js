@@ -131,21 +131,34 @@ export async function initComposePlugin({ ui = resolveComposeUi(), teams, fetche
       return;
     }
     const replyPayload = buildReplyPayload(state, context, finalText);
+    let replyResult;
     try {
-      await sendReply(replyPayload, fetcher);
+      replyResult = await sendReply(replyPayload, fetcher);
     } catch (error) {
       setPreview(ui.preview, `发送失败：${error.message}`);
       return;
     }
     if (sdk.conversations?.sendMessageToConversation) {
-      await sdk.conversations.sendMessageToConversation({
-        conversationId: context?.channel?.id,
-        content: finalText,
-        type: "text"
-      });
+      const message = {
+        conversationId: context?.channel?.id
+      };
+      if (replyResult?.card) {
+        message.attachments = [
+          {
+            contentType: "application/vnd.microsoft.card.adaptive",
+            content: replyResult.card
+          }
+        ];
+        message.type = "card";
+      } else {
+        message.content = finalText;
+        message.type = "text";
+      }
+      await sdk.conversations.sendMessageToConversation(message);
     } else if (ui.input) {
       ui.input.value = finalText;
     }
+    setPreview(ui.preview, replyResult?.card ? "已发送 Adaptive Card 回贴" : finalText);
   });
 
   return { state, metadata, context };
