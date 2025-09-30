@@ -36,6 +36,26 @@ public class ApiEndpointsTests : IClassFixture<WebApplicationFactory<Program>>
         Assert.Equal("ja", detection!.Language);
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task DetectEndpointReturnsBadRequestForMissingText(string? text)
+    {
+        var client = _factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/api/detect", new
+        {
+            Text = text,
+            TenantId = "contoso"
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var payload = await response.Content.ReadFromJsonAsync<Dictionary<string, string>>();
+        Assert.NotNull(payload);
+        Assert.Equal("Text is required.", payload!["error"]);
+    }
+
     [Fact]
     public async Task ApplyGlossaryReturnsMatches()
     {
