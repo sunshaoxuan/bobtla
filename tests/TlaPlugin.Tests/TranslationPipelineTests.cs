@@ -319,7 +319,7 @@ public class TranslationPipelineTests
     }
 
     [Fact]
-    public async Task ThrowsGlossaryConflictWhenDecisionMissing()
+    public async Task ReturnsGlossaryConflictWhenDecisionMissing()
     {
         var options = Options.Create(new PluginOptions
         {
@@ -343,15 +343,23 @@ public class TranslationPipelineTests
 
         var pipeline = BuildPipeline(options, glossary);
 
-        await Assert.ThrowsAsync<GlossaryConflictException>(() => pipeline.ExecuteAsync(new TranslationRequest
+        var execution = await pipeline.ExecuteAsync(new TranslationRequest
         {
-            Text = "GPU", 
+            Text = "GPU",
             TenantId = "contoso",
             UserId = "user",
             TargetLanguage = "ja",
             SourceLanguage = "en",
-            ChannelId = "finance"
-        }, CancellationToken.None));
+            ChannelId = "finance",
+            UseGlossary = true
+        }, CancellationToken.None);
+
+        Assert.True(execution.RequiresGlossaryResolution);
+        var conflicts = Assert.NotNull(execution.GlossaryConflicts);
+        Assert.True(conflicts.HasConflicts);
+        var match = Assert.Single(conflicts.Matches);
+        Assert.True(match.HasConflict);
+        Assert.Equal("GPU", match.Source);
     }
 
     [Fact]

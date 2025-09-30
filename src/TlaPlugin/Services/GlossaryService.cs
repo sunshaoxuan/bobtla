@@ -31,7 +31,38 @@ public class GlossaryService
         string userId,
         IDictionary<string, GlossaryDecision>? decisions = null)
     {
-        return ApplyInternal(text, tenantId, channelId, userId, GlossaryPolicy.Fallback, null, decisions);
+        return ApplyInternal(
+            text,
+            tenantId,
+            channelId,
+            userId,
+            GlossaryPolicy.Fallback,
+            null,
+            decisions,
+            applyReplacements: true);
+    }
+
+    /// <summary>
+    /// 预览将要命中的术语及其冲突信息，但不会修改文本。
+    /// </summary>
+    public GlossaryApplicationResult Preview(
+        string text,
+        string tenantId,
+        string? channelId,
+        string userId,
+        GlossaryPolicy policy = GlossaryPolicy.Fallback,
+        IEnumerable<string>? glossaryIds = null,
+        IDictionary<string, GlossaryDecision>? decisions = null)
+    {
+        return ApplyInternal(
+            text,
+            tenantId,
+            channelId,
+            userId,
+            policy,
+            glossaryIds,
+            decisions,
+            applyReplacements: false);
     }
 
     /// <summary>
@@ -46,7 +77,15 @@ public class GlossaryService
         IEnumerable<string>? glossaryIds = null,
         IDictionary<string, GlossaryDecision>? decisions = null)
     {
-        return ApplyInternal(text, tenantId, channelId, userId, policy, glossaryIds, decisions);
+        return ApplyInternal(
+            text,
+            tenantId,
+            channelId,
+            userId,
+            policy,
+            glossaryIds,
+            decisions,
+            applyReplacements: true);
     }
 
     /// <summary>
@@ -64,7 +103,8 @@ public class GlossaryService
         string userId,
         GlossaryPolicy policy,
         IEnumerable<string>? glossaryIds,
-        IDictionary<string, GlossaryDecision>? decisions)
+        IDictionary<string, GlossaryDecision>? decisions,
+        bool applyReplacements)
     {
         var scopedEntries = _entries
             .Select(entry => new
@@ -133,7 +173,10 @@ public class GlossaryService
             }
             else if (selected is not null)
             {
-                currentText = regex.Replace(currentText, selected.Target);
+                if (applyReplacements)
+                {
+                    currentText = regex.Replace(currentText, selected.Target);
+                }
                 match.AppliedTarget = selected.Target;
                 match.Replaced = true;
                 match.Resolution = decision?.Kind switch
@@ -159,7 +202,7 @@ public class GlossaryService
 
         var result = new GlossaryApplicationResult
         {
-            Text = currentText,
+            Text = applyReplacements ? currentText : text,
             Matches = matches
         };
 
