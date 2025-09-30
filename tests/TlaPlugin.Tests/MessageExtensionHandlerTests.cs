@@ -296,7 +296,9 @@ public class MessageExtensionHandlerTests
         var router = new TranslationRouter(new ModelProviderFactory(options), compliance, new BudgetGuard(options.Value), new AuditLogger(), new ToneTemplateService(), new TokenBroker(resolver, options), new UsageMetricsService(), localization, options);
         var cache = new TranslationCache(options);
         var throttle = new TranslationThrottle(options);
-        var pipeline = new TranslationPipeline(router, glossary, new OfflineDraftStore(options), new LanguageDetector(), cache, throttle, options);
+        var rewrite = new RewriteService(router, throttle);
+        var reply = new ReplyService(rewrite, options);
+        var pipeline = new TranslationPipeline(router, glossary, new OfflineDraftStore(options), new LanguageDetector(), cache, throttle, rewrite, reply, options);
         return new MessageExtensionHandler(pipeline, localization, options);
     }
 }

@@ -114,8 +114,11 @@ public class MessageExtensionHandler
             return new JsonObject
             {
                 ["type"] = "rewriteResult",
-                ["text"] = rewritten,
-                ["tone"] = request.Tone
+                ["text"] = rewritten.RewrittenText,
+                ["tone"] = request.Tone,
+                ["modelId"] = rewritten.ModelId,
+                ["cost"] = rewritten.CostUsd,
+                ["latencyMs"] = rewritten.LatencyMs
             };
         }
         catch (BudgetExceededException ex)
@@ -146,6 +149,8 @@ public class MessageExtensionHandler
                 ["messageId"] = result.MessageId,
                 ["language"] = result.Language,
                 ["postedAt"] = result.PostedAt.ToString("O"),
+                ["finalText"] = result.FinalText,
+                ["toneApplied"] = result.ToneApplied,
                 ["title"] = catalog.Strings.TryGetValue("tla.ui.reply.success", out var title) ? title : "Reply sent"
             };
         }
