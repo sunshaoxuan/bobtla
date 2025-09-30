@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BOBTLA 消息扩展对话框</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="dialog" data-dialog-root>
+    <header class="dialog__header">
+      <h1>翻译助手</h1>
+      <p>选择模型、语言与术语策略，生成可编辑译文。</p>
+    </header>
+    <main class="dialog__main">
+      <section class="dialog__controls">
+        <label>
+          模型
+          <select data-model-select aria-label="模型选择"></select>
+        </label>
+        <label>
+          源语言
+          <select data-source-select aria-label="源语言选择"></select>
+        </label>
+        <label>
+          目标语言
+          <select data-target-select aria-label="目标语言选择"></select>
+        </label>
+        <label class="toggle">
+          <input type="checkbox" data-terminology-toggle checked /> 使用术语表
+        </label>
+        <p class="dialog__cost" data-cost-hint></p>
+      </section>
+      <section class="dialog__editor">
+        <label class="editor__label">
+          原文
+          <textarea rows="6" data-source-text placeholder="请输入要翻译的文本"></textarea>
+        </label>
+        <label class="editor__label">
+          译文（可编辑）
+          <textarea rows="6" data-translation-text placeholder="点击生成译文后可编辑"></textarea>
+        </label>
+      </section>
+      <p class="dialog__error" data-error-banner hidden></p>
+    </main>
+    <footer class="dialog__footer">
+      <button type="button" class="btn" data-preview-translation>生成译文</button>
+      <button type="button" class="btn btn--primary" data-submit-translation>插入消息</button>
+    </footer>
+    <script type="module" src="./dialog.js"></script>
+  </body>
+</html>
