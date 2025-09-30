@@ -51,9 +51,37 @@ public class TranslationRouterTests
         Assert.Equal("backup", result.ModelId);
         Assert.Equal("ja", result.TargetLanguage);
         Assert.True(result.AdditionalTranslations.ContainsKey("fr"));
-        Assert.EndsWith("※敬体に調整済み", result.AdditionalTranslations["fr"]);
+        Assert.EndsWith("※已调整为敬语", result.AdditionalTranslations["fr"]);
+        Assert.StartsWith("[Backup]", result.RawTranslatedText);
         var expectedCost = request.Text.Length * 0.00002m * 2;
         Assert.Equal(expectedCost, result.CostUsd);
+    }
+
+    [Fact]
+    public async Task RewriteThrowsWhenNoProviderCompliant()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            Providers = new List<ModelProviderOptions>
+            {
+                new() { Id = "primary", Regions = new List<string>{"japan"}, Certifications = new List<string>{"iso27001"} }
+            },
+            Compliance = new CompliancePolicyOptions
+            {
+                RequiredRegionTags = new List<string> { "emea" },
+                RequiredCertifications = new List<string> { "iso27001" }
+            }
+        });
+
+        var router = new TranslationRouter(new ModelProviderFactory(options), new ComplianceGateway(options), new BudgetGuard(options.Value), new AuditLogger(), new ToneTemplateService(), new RecordingTokenBroker(), new UsageMetricsService(), new LocalizationCatalogService(), options);
+
+        await Assert.ThrowsAsync<TranslationException>(() => router.RewriteAsync(new RewriteRequest
+        {
+            Text = "blocked content",
+            TenantId = "contoso",
+            UserId = "user",
+            Tone = ToneTemplateService.Business
+        }, CancellationToken.None));
     }
 
     [Fact]

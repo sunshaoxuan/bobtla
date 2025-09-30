@@ -68,6 +68,7 @@ public class TranslationCache : IDisposable
     {
         return new TranslationResult
         {
+            RawTranslatedText = source.RawTranslatedText,
             TranslatedText = source.TranslatedText,
             SourceLanguage = source.SourceLanguage,
             TargetLanguage = source.TargetLanguage,

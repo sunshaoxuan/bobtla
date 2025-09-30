@@ -9,6 +9,11 @@ namespace TlaPlugin.Models;
 /// </summary>
 public class TranslationResult
 {
+    /// <summary>
+    /// 未经语气调整的原始翻译文本。
+    /// </summary>
+    public string RawTranslatedText { get; set; } = string.Empty;
+
     public string TranslatedText { get; set; } = string.Empty;
     public string SourceLanguage { get; set; } = string.Empty;
     public string TargetLanguage { get; set; } = string.Empty;

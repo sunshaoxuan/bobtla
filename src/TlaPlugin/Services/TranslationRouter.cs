@@ -137,6 +137,7 @@ public class TranslationRouter
 
                 return new TranslationResult
                 {
+                    RawTranslatedText = result.Text,
                     TranslatedText = rewritten,
                     SourceLanguage = sourceLanguage!,
                     TargetLanguage = request.TargetLanguage,
