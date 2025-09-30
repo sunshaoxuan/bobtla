@@ -23,7 +23,7 @@ public class ComplianceGatewayTests
         var report = gateway.Evaluate("this contains forbidden term", new ModelProviderOptions { Regions = new List<string> { "global" } });
 
         Assert.False(report.Allowed);
-        Assert.Contains(report.Violations, v => v.Contains("禁則語"));
+        Assert.Contains(report.Violations, v => v.Contains("禁用词条"));
     }
 
     [Fact]

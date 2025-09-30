@@ -82,7 +82,7 @@ public class MessageExtensionHandlerTests
 
         var card = response["attachments"]!.AsArray().First()["content"]!.AsObject();
         var texts = card["body"]!.AsArray().Select(node => node!.AsObject()["text"]?.GetValue<string>()).ToList();
-        Assert.Contains("追加翻訳", texts);
+        Assert.Contains("追加の翻訳", texts);
         Assert.Contains(texts, text => text?.StartsWith("fr:") == true);
         var actions = card["actions"]!.AsArray();
         Assert.Contains(actions.Select(a => a!.AsObject()["data"]!.AsObject()["language"]!.GetValue<string>()), value => value == "fr");
@@ -119,6 +119,39 @@ public class MessageExtensionHandlerTests
         var body = response["attachments"]!.AsArray().First()["content"]!.AsObject();
         var title = body["body"]!.AsArray().First().AsObject();
         Assert.Contains("予算", title["text"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task ReturnsLocalizedErrorCardWhenLocaleProvided()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            DailyBudgetUsd = 0.00001m,
+            Providers = new List<ModelProviderOptions>
+            {
+                new() { Id = "primary", CostPerCharUsd = 0.1m, Regions = new List<string>{"japan"}, Certifications = new List<string>{"iso"} }
+            },
+            Compliance = new CompliancePolicyOptions
+            {
+                RequiredRegionTags = new List<string> { "japan" },
+                RequiredCertifications = new List<string> { "iso" }
+            }
+        });
+
+        var handler = BuildHandler(options);
+        var response = await handler.HandleTranslateAsync(new TranslationRequest
+        {
+            Text = new string('a', 200),
+            TenantId = "contoso",
+            UserId = "user",
+            TargetLanguage = "ja",
+            SourceLanguage = "en",
+            UiLocale = "zh-CN"
+        });
+
+        var body = response["attachments"]!.AsArray().First()["content"]!.AsObject();
+        var title = body["body"]!.AsArray().First().AsObject();
+        Assert.Contains("预算", title["text"]!.GetValue<string>());
     }
 
     [Fact]
@@ -167,13 +200,14 @@ public class MessageExtensionHandlerTests
     private static MessageExtensionHandler BuildHandler(IOptions<PluginOptions> options)
     {
         var glossary = new GlossaryService();
-        glossary.LoadEntries(new[] { new GlossaryEntry("hello", "こんにちは", "tenant:contoso") });
+        glossary.LoadEntries(new[] { new GlossaryEntry("hello", "你好", "tenant:contoso") });
         var compliance = new ComplianceGateway(options);
         var resolver = new KeyVaultSecretResolver(options);
-        var router = new TranslationRouter(new ModelProviderFactory(options), compliance, new BudgetGuard(options.Value), new AuditLogger(), new ToneTemplateService(), new TokenBroker(resolver, options), options);
+        var localization = new LocalizationCatalogService();
+        var router = new TranslationRouter(new ModelProviderFactory(options), compliance, new BudgetGuard(options.Value), new AuditLogger(), new ToneTemplateService(), new TokenBroker(resolver, options), new UsageMetricsService(), localization, options);
         var cache = new TranslationCache(options);
         var throttle = new TranslationThrottle(options);
         var pipeline = new TranslationPipeline(router, glossary, new OfflineDraftStore(options), new LanguageDetector(), cache, throttle, options);
-        return new MessageExtensionHandler(pipeline);
+        return new MessageExtensionHandler(pipeline, localization, options);
     }
 }

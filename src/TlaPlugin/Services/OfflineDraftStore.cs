@@ -8,11 +8,7 @@ using TlaPlugin.Models;
 namespace TlaPlugin.Services;
 
 /// <summary>
-<<<<<<< HEAD
 /// 基于 SQLite 的草稿存储。
-=======
-/// SQLite を用いた草稿保管庫。
->>>>>>> origin/main
 /// </summary>
 public class OfflineDraftStore
 {

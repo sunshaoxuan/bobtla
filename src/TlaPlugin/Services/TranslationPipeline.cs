@@ -8,7 +8,7 @@ using TlaPlugin.Models;
 namespace TlaPlugin.Services;
 
 /// <summary>
-/// 翻訳指揮を行い Teams への応答形を整えるパイプライン。
+/// 翻訳フローを編成し Teams 応答を生成するパイプライン。
 /// </summary>
 public class TranslationPipeline
 {
@@ -35,12 +35,12 @@ public class TranslationPipeline
     {
         if (string.IsNullOrWhiteSpace(request.Text))
         {
-            throw new TranslationException("翻訳対象テキストが空です。");
+            throw new TranslationException("翻訳する本文は必須です。");
         }
 
         if (request.Text.Length > _options.MaxCharactersPerRequest)
         {
-            throw new TranslationException("文字数が上限を超えています。");
+            throw new TranslationException("許容される文字数を超えています。");
         }
 
         var resolvedRequest = new TranslationRequest
@@ -53,7 +53,8 @@ public class TranslationPipeline
             ChannelId = request.ChannelId,
             Tone = request.Tone,
             AdditionalTargetLanguages = new List<string>(request.AdditionalTargetLanguages),
-            UseGlossary = request.UseGlossary
+            UseGlossary = request.UseGlossary,
+            UiLocale = request.UiLocale
         };
 
         if (string.IsNullOrEmpty(resolvedRequest.SourceLanguage))
@@ -61,7 +62,7 @@ public class TranslationPipeline
             var detection = _detector.Detect(resolvedRequest.Text);
             if (detection.Confidence < 0.7)
             {
-                throw new TranslationException("言語を特定できませんでした。手動で指定してください。");
+                throw new TranslationException("言語を自動判定できません。手動で選択してください。");
             }
             resolvedRequest.SourceLanguage = detection.Language;
         }

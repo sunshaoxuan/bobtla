@@ -33,7 +33,8 @@ public class TranslationRouterTests
 
         var tokenBroker = new RecordingTokenBroker();
         var metrics = new UsageMetricsService();
-        var router = new TranslationRouter(new ModelProviderFactory(options), new ComplianceGateway(options), new BudgetGuard(options.Value), new AuditLogger(), new ToneTemplateService(), tokenBroker, metrics, options);
+        var localization = new LocalizationCatalogService();
+        var router = new TranslationRouter(new ModelProviderFactory(options), new ComplianceGateway(options), new BudgetGuard(options.Value), new AuditLogger(), new ToneTemplateService(), tokenBroker, metrics, localization, options);
         var request = new TranslationRequest
         {
             Text = "hello world",
@@ -50,7 +51,7 @@ public class TranslationRouterTests
         Assert.Equal("backup", result.ModelId);
         Assert.Equal("ja", result.TargetLanguage);
         Assert.True(result.AdditionalTranslations.ContainsKey("fr"));
-        Assert.EndsWith("※已调整为敬语", result.AdditionalTranslations["fr"]);
+        Assert.EndsWith("※敬体に調整済み", result.AdditionalTranslations["fr"]);
         var expectedCost = request.Text.Length * 0.00002m * 2;
         Assert.Equal(expectedCost, result.CostUsd);
     }
@@ -73,7 +74,7 @@ public class TranslationRouterTests
         });
 
         var metrics = new UsageMetricsService();
-        var router = new TranslationRouter(new ModelProviderFactory(options), new ComplianceGateway(options), new BudgetGuard(options.Value), new AuditLogger(), new ToneTemplateService(), new RecordingTokenBroker(), metrics, options);
+        var router = new TranslationRouter(new ModelProviderFactory(options), new ComplianceGateway(options), new BudgetGuard(options.Value), new AuditLogger(), new ToneTemplateService(), new RecordingTokenBroker(), metrics, new LocalizationCatalogService(), options);
         var request = new TranslationRequest
         {
             Text = new string('a', 200),
@@ -109,12 +110,8 @@ public class TranslationRouterTests
         });
 
         var broker = new RecordingTokenBroker { ShouldThrow = true };
-<<<<<<< HEAD
         var metrics = new UsageMetricsService();
-        var router = new TranslationRouter(new ModelProviderFactory(options), new ComplianceGateway(options), new BudgetGuard(options.Value), new AuditLogger(), new ToneTemplateService(), broker, metrics, options);
-=======
-        var router = new TranslationRouter(new ModelProviderFactory(options), new ComplianceGateway(options), new BudgetGuard(options.Value), new AuditLogger(), new ToneTemplateService(), broker, options);
->>>>>>> origin/main
+        var router = new TranslationRouter(new ModelProviderFactory(options), new ComplianceGateway(options), new BudgetGuard(options.Value), new AuditLogger(), new ToneTemplateService(), broker, metrics, new LocalizationCatalogService(), options);
 
         await Assert.ThrowsAsync<AuthenticationException>(() => router.TranslateAsync(new TranslationRequest
         {
@@ -124,15 +121,12 @@ public class TranslationRouterTests
             TargetLanguage = "ja",
             SourceLanguage = "en"
         }, CancellationToken.None));
-<<<<<<< HEAD
 
         var report = metrics.GetReport();
         var tenant = Assert.Single(report.Tenants);
         var failure = Assert.Single(tenant.Failures);
         Assert.Equal(UsageMetricsService.FailureReasons.Authentication, failure.Reason);
         Assert.Equal(1, failure.Count);
-=======
->>>>>>> origin/main
     }
 
     [Fact]
@@ -151,12 +145,8 @@ public class TranslationRouterTests
             }
         });
 
-<<<<<<< HEAD
         var metrics = new UsageMetricsService();
-        var router = new TranslationRouter(new ModelProviderFactory(options), new ComplianceGateway(options), new BudgetGuard(options.Value), new AuditLogger(), new ToneTemplateService(), new RecordingTokenBroker(), metrics, options);
-=======
-        var router = new TranslationRouter(new ModelProviderFactory(options), new ComplianceGateway(options), new BudgetGuard(options.Value), new AuditLogger(), new ToneTemplateService(), new RecordingTokenBroker(), options);
->>>>>>> origin/main
+        var router = new TranslationRouter(new ModelProviderFactory(options), new ComplianceGateway(options), new BudgetGuard(options.Value), new AuditLogger(), new ToneTemplateService(), new RecordingTokenBroker(), metrics, new LocalizationCatalogService(), options);
 
         await Assert.ThrowsAsync<AuthenticationException>(() => router.TranslateAsync(new TranslationRequest
         {
@@ -166,15 +156,12 @@ public class TranslationRouterTests
             TargetLanguage = "ja",
             SourceLanguage = "en"
         }, CancellationToken.None));
-<<<<<<< HEAD
 
         var report = metrics.GetReport();
         var tenant = Assert.Single(report.Tenants);
         var failure = Assert.Single(tenant.Failures);
         Assert.Equal(UsageMetricsService.FailureReasons.Authentication, failure.Reason);
         Assert.Equal(1, failure.Count);
-=======
->>>>>>> origin/main
     }
 
     [Fact]
@@ -194,12 +181,8 @@ public class TranslationRouterTests
         });
 
         var audit = new AuditLogger();
-<<<<<<< HEAD
         var metrics = new UsageMetricsService();
-        var router = new TranslationRouter(new ModelProviderFactory(options), new ComplianceGateway(options), new BudgetGuard(options.Value), audit, new ToneTemplateService(), new RecordingTokenBroker(), metrics, options);
-=======
-        var router = new TranslationRouter(new ModelProviderFactory(options), new ComplianceGateway(options), new BudgetGuard(options.Value), audit, new ToneTemplateService(), new RecordingTokenBroker(), options);
->>>>>>> origin/main
+        var router = new TranslationRouter(new ModelProviderFactory(options), new ComplianceGateway(options), new BudgetGuard(options.Value), audit, new ToneTemplateService(), new RecordingTokenBroker(), metrics, new LocalizationCatalogService(), options);
         var request = new TranslationRequest
         {
             Text = "hello world",
@@ -213,11 +196,7 @@ public class TranslationRouterTests
         var result = await router.TranslateAsync(request, CancellationToken.None);
 
         var body = result.AdaptiveCard["body"]!.AsArray().Select(node => node!.AsObject()).ToList();
-<<<<<<< HEAD
-        Assert.Contains(body, block => block["text"]?.GetValue<string>() == "额外翻译");
-=======
-        Assert.Contains(body, block => block["text"]?.GetValue<string>() == "追加翻訳");
->>>>>>> origin/main
+        Assert.Contains(body, block => block["text"]?.GetValue<string>() == "追加の翻訳");
         Assert.Contains(body, block => block["text"]?.GetValue<string>()?.StartsWith("fr:") == true);
         Assert.Contains(body, block => block["text"]?.GetValue<string>()?.StartsWith("de:") == true);
         var actions = result.AdaptiveCard["actions"]!.AsArray();
@@ -229,7 +208,6 @@ public class TranslationRouterTests
         Assert.Equal(2, extras.Count);
         Assert.True(extras.ContainsKey("fr"));
         Assert.True(extras.ContainsKey("de"));
-<<<<<<< HEAD
 
         var report = metrics.GetReport();
         var tenant = Assert.Single(report.Tenants, snapshot => snapshot.TenantId == "contoso");
@@ -256,7 +234,7 @@ public class TranslationRouterTests
         });
 
         var metrics = new UsageMetricsService();
-        var router = new TranslationRouter(new ModelProviderFactory(options), new ComplianceGateway(options), new BudgetGuard(options.Value), new AuditLogger(), new ToneTemplateService(), new RecordingTokenBroker(), metrics, options);
+        var router = new TranslationRouter(new ModelProviderFactory(options), new ComplianceGateway(options), new BudgetGuard(options.Value), new AuditLogger(), new ToneTemplateService(), new RecordingTokenBroker(), metrics, new LocalizationCatalogService(), options);
 
         var first = await router.TranslateAsync(new TranslationRequest
         {
@@ -303,7 +281,7 @@ public class TranslationRouterTests
         });
 
         var metrics = new UsageMetricsService();
-        var router = new TranslationRouter(new ModelProviderFactory(options), new ComplianceGateway(options), new BudgetGuard(options.Value), new AuditLogger(), new ToneTemplateService(), new RecordingTokenBroker(), metrics, options);
+        var router = new TranslationRouter(new ModelProviderFactory(options), new ComplianceGateway(options), new BudgetGuard(options.Value), new AuditLogger(), new ToneTemplateService(), new RecordingTokenBroker(), metrics, new LocalizationCatalogService(), options);
 
         await Assert.ThrowsAsync<TranslationException>(() => router.TranslateAsync(new TranslationRequest
         {
@@ -319,8 +297,39 @@ public class TranslationRouterTests
         var failure = Assert.Single(tenant.Failures);
         Assert.Equal(UsageMetricsService.FailureReasons.Compliance, failure.Reason);
         Assert.Equal(1, failure.Count);
-=======
->>>>>>> origin/main
+    }
+
+    [Fact]
+    public async Task BuildsAdaptiveCardWithRequestedLocale()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            Providers = new List<ModelProviderOptions>
+            {
+                new() { Id = "primary", Regions = new List<string>{"japan"}, Certifications = new List<string>{"iso"} }
+            },
+            Compliance = new CompliancePolicyOptions
+            {
+                RequiredRegionTags = new List<string> { "japan" },
+                RequiredCertifications = new List<string> { "iso" }
+            }
+        });
+
+        var router = new TranslationRouter(new ModelProviderFactory(options), new ComplianceGateway(options), new BudgetGuard(options.Value), new AuditLogger(), new ToneTemplateService(), new RecordingTokenBroker(), new UsageMetricsService(), new LocalizationCatalogService(), options);
+
+        var result = await router.TranslateAsync(new TranslationRequest
+        {
+            Text = "hello",
+            TenantId = "contoso",
+            UserId = "user",
+            TargetLanguage = "ja",
+            SourceLanguage = "en",
+            UiLocale = "zh-CN"
+        }, CancellationToken.None);
+
+        Assert.Equal("zh-CN", result.UiLocale);
+        var title = result.AdaptiveCard!["body"]!.AsArray()[0]!.AsObject()["text"]!.GetValue<string>();
+        Assert.Equal("翻译结果", title);
     }
 
     private sealed class RecordingTokenBroker : ITokenBroker
@@ -333,11 +342,7 @@ public class TranslationRouterTests
             Calls++;
             if (ShouldThrow)
             {
-<<<<<<< HEAD
-                throw new AuthenticationException("OBO 流程失败");
-=======
-                throw new AuthenticationException("OBO フローの失敗");
->>>>>>> origin/main
+                throw new AuthenticationException("OBO フローが失敗しました");
             }
 
             return Task.FromResult(new AccessToken("token", DateTimeOffset.UtcNow.AddMinutes(5), "api://audience"));
