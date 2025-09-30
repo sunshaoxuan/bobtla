@@ -20,9 +20,20 @@ public class TranslationPipeline
     private readonly LanguageDetector _detector;
     private readonly TranslationCache _cache;
     private readonly TranslationThrottle _throttle;
+    private readonly RewriteService _rewrite;
+    private readonly ReplyService _replyService;
     private readonly PluginOptions _options;
 
-    public TranslationPipeline(TranslationRouter router, GlossaryService glossary, OfflineDraftStore drafts, LanguageDetector detector, TranslationCache cache, TranslationThrottle throttle, IOptions<PluginOptions>? options = null)
+    public TranslationPipeline(
+        TranslationRouter router,
+        GlossaryService glossary,
+        OfflineDraftStore drafts,
+        LanguageDetector detector,
+        TranslationCache cache,
+        TranslationThrottle throttle,
+        RewriteService rewrite,
+        ReplyService replyService,
+        IOptions<PluginOptions>? options = null)
     {
         _router = router;
         _glossary = glossary;
@@ -30,10 +41,37 @@ public class TranslationPipeline
         _detector = detector;
         _cache = cache;
         _throttle = throttle;
+        _rewrite = rewrite;
+        _replyService = replyService;
         _options = options?.Value ?? new PluginOptions();
     }
 
-    public async Task<PipelineExecutionResult> ExecuteAsync(TranslationRequest request, CancellationToken cancellationToken)
+    public Task<DetectionResult> DetectAsync(LanguageDetectionRequest request, CancellationToken cancellationToken)
+    {
+        if (request is null)
+        {
+            throw new ArgumentNullException(nameof(request));
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Text))
+        {
+            throw new TranslationException("検出対象のテキストは必須です。");
+        }
+
+        if (request.Text.Length > _options.MaxCharactersPerRequest)
+        {
+            throw new TranslationException("検出対象が許容される文字数を超えています。");
+        }
+
+        return Task.FromResult(_detector.Detect(request.Text));
+    }
+
+    public Task<TranslationResult> ExecuteAsync(TranslationRequest request, CancellationToken cancellationToken)
+    {
+        return TranslateAsync(request, cancellationToken);
+    }
+
+    public async Task<TranslationResult> TranslateAsync(TranslationRequest request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.Text))
         {
@@ -111,24 +149,13 @@ public class TranslationPipeline
         return _drafts.SaveDraft(request);
     }
 
-    public async Task<string> RewriteAsync(RewriteRequest request, CancellationToken cancellationToken)
+    public Task<RewriteResult> RewriteAsync(RewriteRequest request, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(request.Text))
-        {
-            throw new TranslationException("改写内容不能为空。");
-        }
-
-        using var lease = await _throttle.AcquireAsync(request.TenantId, cancellationToken);
-        return await _router.RewriteAsync(request, cancellationToken);
+        return _rewrite.RewriteAsync(request, cancellationToken);
     }
 
     public Task<ReplyResult> PostReplyAsync(ReplyRequest request, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(request.Text))
-        {
-            throw new TranslationException("回帖内容不能为空。");
-        }
-
-        return _router.PostReplyAsync(request, cancellationToken);
+        return _replyService.SendReplyAsync(request, cancellationToken);
     }
 }
