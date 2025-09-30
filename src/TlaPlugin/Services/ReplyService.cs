@@ -1,4 +1,5 @@
 using System;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Options;
@@ -13,15 +14,26 @@ namespace TlaPlugin.Services;
 public class ReplyService
 {
     private readonly RewriteService _rewriteService;
+    private readonly ITeamsReplyClient _teamsClient;
+    private readonly ITokenBroker _tokenBroker;
+    private readonly UsageMetricsService _metrics;
     private readonly PluginOptions _options;
 
-    public ReplyService(RewriteService rewriteService, IOptions<PluginOptions>? options = null)
+    public ReplyService(
+        RewriteService rewriteService,
+        ITeamsReplyClient teamsClient,
+        ITokenBroker tokenBroker,
+        UsageMetricsService metrics,
+        IOptions<PluginOptions>? options = null)
     {
         _rewriteService = rewriteService;
+        _teamsClient = teamsClient;
+        _tokenBroker = tokenBroker;
+        _metrics = metrics;
         _options = options?.Value ?? new PluginOptions();
     }
 
-    public Task<ReplyResult> SendReplyAsync(ReplyRequest request, string finalTextOverride, string? toneApplied, CancellationToken cancellationToken)
+    public async Task<ReplyResult> SendReplyAsync(ReplyRequest request, string finalTextOverride, string? toneApplied, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(finalTextOverride))
         {
@@ -29,7 +41,7 @@ public class ReplyService
         }
 
         var context = PrepareContext(request);
-        return Task.FromResult(CreateResult(context, finalTextOverride, toneApplied));
+        return await PostAsync(context, finalTextOverride, toneApplied, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<ReplyResult> SendReplyAsync(ReplyRequest request, CancellationToken cancellationToken)
@@ -56,7 +68,7 @@ public class ReplyService
             toneApplied = context.Tone;
         }
 
-        return CreateResult(context, finalText, toneApplied);
+        return await PostAsync(context, finalText, toneApplied, cancellationToken).ConfigureAwait(false);
     }
 
     private ReplyExecutionContext PrepareContext(ReplyRequest request)
@@ -111,14 +123,48 @@ public class ReplyService
             tone);
     }
 
-    private static ReplyResult CreateResult(ReplyExecutionContext context, string finalText, string? toneApplied)
+    private async Task<ReplyResult> PostAsync(ReplyExecutionContext context, string finalText, string? toneApplied, CancellationToken cancellationToken)
     {
-        var result = new ReplyResult(Guid.NewGuid().ToString(), "sent", finalText, toneApplied)
-        {
-            Language = context.TargetLanguage
-        };
+        var token = await _tokenBroker.ExchangeOnBehalfOfAsync(context.TenantId, context.UserId, cancellationToken).ConfigureAwait(false);
 
-        return result;
+        var metadataTone = toneApplied ?? context.Tone ?? TranslationRequest.DefaultTone;
+
+        try
+        {
+            var response = await _teamsClient.SendReplyAsync(new TeamsReplyRequest(
+                context.ThreadId,
+                context.ChannelId,
+                context.TenantId,
+                finalText,
+                context.TargetLanguage,
+                metadataTone,
+                token.Value), cancellationToken).ConfigureAwait(false);
+
+            return new ReplyResult(response.MessageId, response.Status, finalText, toneApplied)
+            {
+                Language = context.TargetLanguage,
+                PostedAt = response.SentAt
+            };
+        }
+        catch (TeamsReplyException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
+        {
+            _metrics.RecordFailure(context.TenantId, UsageMetricsService.FailureReasons.Authentication);
+            throw new ReplyAuthorizationException("指定されたチャネルでは返信権限がありません。");
+        }
+        catch (TeamsReplyException ex) when (ex.StatusCode == HttpStatusCode.PaymentRequired)
+        {
+            _metrics.RecordFailure(context.TenantId, UsageMetricsService.FailureReasons.Budget);
+            throw new BudgetExceededException(string.IsNullOrWhiteSpace(ex.Message)
+                ? "予算の上限を超えたため、返信を送信できません。"
+                : ex.Message);
+        }
+        catch (TeamsReplyException ex)
+        {
+            _metrics.RecordFailure(context.TenantId, UsageMetricsService.FailureReasons.Provider);
+            throw new TranslationException(string.IsNullOrWhiteSpace(ex.Message)
+                ? "返信の投稿に失敗しました。"
+                : ex.Message);
+        }
     }
 
     private sealed record ReplyExecutionContext(

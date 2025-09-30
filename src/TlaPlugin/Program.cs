@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
+using System;
 using System.Security.Authentication;
 using System.Collections.Generic;
 using System.IO;
@@ -23,6 +24,10 @@ builder.Services.Configure<PluginOptions>(builder.Configuration.GetSection("Plug
 
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient();
+builder.Services.AddHttpClient<ITeamsReplyClient, TeamsReplyClient>(client =>
+{
+    client.BaseAddress = new Uri("https://graph.microsoft.com/v1.0/");
+});
 builder.Services.AddSingleton(provider =>
 {
     var glossary = new GlossaryService();
