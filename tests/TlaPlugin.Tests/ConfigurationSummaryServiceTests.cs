@@ -20,6 +20,14 @@ public class ConfigurationSummaryServiceTests
             MaxConcurrentTranslations = 3,
             SupportedLanguages = new List<string> { "ja-JP", "en-US" },
             DefaultTargetLanguages = new List<string> { "ja-JP" },
+            TenantPolicies = new TenantPolicyOptions
+            {
+                TenantId = "contoso",
+                GlossaryFallbackPolicy = "Fallback",
+                EnforceTenantGlossary = true,
+                BannedTerms = new List<string> { "Do Not Translate" },
+                StyleTemplates = new List<string> { "corporate" }
+            },
             Providers =
             {
                 new ModelProviderOptions
@@ -56,6 +64,9 @@ public class ConfigurationSummaryServiceTests
         Assert.Equal(ModelProviderKind.OpenAi, summary.Providers[0].Kind);
         Assert.Equal(1, summary.GlossaryEntryCount);
         Assert.Contains(ToneTemplateService.Business, summary.ToneTemplates.Keys);
+        Assert.Equal("contoso", summary.TenantPolicies.TenantId);
+        Assert.True(summary.TenantPolicies.EnforceTenantGlossary);
+        Assert.Contains("Do Not Translate", summary.TenantPolicies.BannedTerms);
     }
 
     [Fact]
