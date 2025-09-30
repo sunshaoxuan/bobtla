@@ -7,14 +7,14 @@ namespace TlaPlugin.Tests;
 public class LanguageDetectorTests
 {
     [Fact]
-    public void Detect_DowngradesPlainAsciiConfidence()
+    public void Detect_PlainAsciiSentenceMaintainsConfidence()
     {
         var detector = new LanguageDetector();
 
         var result = detector.Detect("This is a simple test message written with plain ASCII letters only.");
 
         Assert.Equal("en", result.Language);
-        Assert.True(result.Confidence < 0.75);
+        Assert.True(result.Confidence >= 0.75);
     }
 
     [Fact]

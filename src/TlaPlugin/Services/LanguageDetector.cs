@@ -198,7 +198,13 @@ public class LanguageDetector
             scored.Add((definition, score));
         }
 
-        var featurePenalty = CalculateFeaturePenalty(primary.Key, hasSignatureMatch, uniqueLetters, primary.Value, usesBasicLatinOnly);
+        var featurePenalty = CalculateFeaturePenalty(
+            primary.Key,
+            hasSignatureMatch,
+            uniqueLetters,
+            primary.Value,
+            usesBasicLatinOnly,
+            trimmed);
         if (featurePenalty > 0)
         {
             for (var i = 0; i < scored.Count; i++)
@@ -272,7 +278,8 @@ public class LanguageDetector
         bool hasSignatureMatch,
         int uniqueLetters,
         int scriptLetterCount,
-        bool usesBasicLatinOnly)
+        bool usesBasicLatinOnly,
+        string text)
     {
         double penalty = 0;
 
@@ -280,7 +287,16 @@ public class LanguageDetector
         {
             if (!hasSignatureMatch && usesBasicLatinOnly)
             {
-                penalty = scriptLetterCount >= 12 ? 0.22 : 0.18;
+                var wordCount = CountWords(text);
+                var hasRepresentativeStructure =
+                    wordCount >= 4 &&
+                    scriptLetterCount >= 18 &&
+                    uniqueLetters >= 7;
+
+                if (!hasRepresentativeStructure)
+                {
+                    penalty = scriptLetterCount >= 12 ? 0.22 : 0.18;
+                }
             }
 
             if (scriptLetterCount >= 6 && uniqueLetters <= 4)
@@ -298,6 +314,30 @@ public class LanguageDetector
         }
 
         return penalty;
+    }
+
+    private static int CountWords(string text)
+    {
+        var count = 0;
+        var inWord = false;
+
+        foreach (var rune in text.EnumerateRunes())
+        {
+            if (Rune.IsLetter(rune))
+            {
+                if (!inWord)
+                {
+                    inWord = true;
+                    count++;
+                }
+            }
+            else
+            {
+                inWord = false;
+            }
+        }
+
+        return count;
     }
 
     private static int CountUniqueLetters(string text, WritingSystem script)
