@@ -47,6 +47,8 @@ public class TranslationPipelineTests
         var second = await pipeline.ExecuteAsync(request, CancellationToken.None);
 
         Assert.Equal(first.TranslatedText, second.TranslatedText);
+        Assert.Equal("ja-JP", first.UiLocale);
+        Assert.Equal("ja-JP", second.UiLocale);
     }
 
     [Fact]
@@ -86,6 +88,57 @@ public class TranslationPipelineTests
             TargetLanguage = "ja",
             SourceLanguage = "en"
         }, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task GeneratesLocaleSpecificAdaptiveCards()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            DailyBudgetUsd = 0.2m,
+            CacheTtl = TimeSpan.FromHours(1),
+            RequestsPerMinute = 10,
+            MaxConcurrentTranslations = 2,
+            Providers = new List<ModelProviderOptions>
+            {
+                new() { Id = "primary", CostPerCharUsd = 0.1m, Regions = new List<string>{"japan"}, Certifications = new List<string>{"iso"} }
+            },
+            Compliance = new CompliancePolicyOptions
+            {
+                RequiredRegionTags = new List<string> { "japan" },
+                RequiredCertifications = new List<string> { "iso" }
+            }
+        });
+
+        var pipeline = BuildPipeline(options);
+
+        var japanese = await pipeline.ExecuteAsync(new TranslationRequest
+        {
+            Text = "locale test",
+            TenantId = "contoso",
+            UserId = "user",
+            TargetLanguage = "ja",
+            SourceLanguage = "en",
+            UiLocale = "ja-JP"
+        }, CancellationToken.None);
+
+        var chinese = await pipeline.ExecuteAsync(new TranslationRequest
+        {
+            Text = "locale test",
+            TenantId = "contoso",
+            UserId = "user",
+            TargetLanguage = "ja",
+            SourceLanguage = "en",
+            UiLocale = "zh-CN"
+        }, CancellationToken.None);
+
+        Assert.Equal("ja-JP", japanese.UiLocale);
+        Assert.Equal("zh-CN", chinese.UiLocale);
+
+        var jaTitle = japanese.AdaptiveCard!["body"]!.AsArray()[0]!.AsObject()["text"]!.GetValue<string>();
+        var zhTitle = chinese.AdaptiveCard!["body"]!.AsArray()[0]!.AsObject()["text"]!.GetValue<string>();
+        Assert.Equal("翻訳結果", jaTitle);
+        Assert.Equal("翻译结果", zhTitle);
     }
 
     private static TranslationPipeline BuildPipeline(IOptions<PluginOptions> options)

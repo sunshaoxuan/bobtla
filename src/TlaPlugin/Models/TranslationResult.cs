@@ -17,6 +17,7 @@ public class TranslationResult
         = 0m;
     public int LatencyMs { get; set; }
         = 0;
+    public string UiLocale { get; set; } = string.Empty;
     public JsonObject? AdaptiveCard { get; set; }
         = new JsonObject();
     public IDictionary<string, string> AdditionalTranslations { get; set; }

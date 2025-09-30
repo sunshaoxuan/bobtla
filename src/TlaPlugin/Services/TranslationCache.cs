@@ -59,7 +59,8 @@ public class TranslationCache : IDisposable
             request.Tone,
             request.UseGlossary.ToString(),
             request.Text,
-            extras
+            extras,
+            request.UiLocale ?? string.Empty
         });
     }
 
@@ -74,6 +75,7 @@ public class TranslationCache : IDisposable
             Confidence = source.Confidence,
             CostUsd = source.CostUsd,
             LatencyMs = source.LatencyMs,
+            UiLocale = source.UiLocale,
             AdaptiveCard = (JsonObject?)(source.AdaptiveCard?.DeepClone()) ?? new JsonObject(),
             AdditionalTranslations = new Dictionary<string, string>(source.AdditionalTranslations)
         };

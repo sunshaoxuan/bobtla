@@ -53,7 +53,8 @@ public class TranslationPipeline
             ChannelId = request.ChannelId,
             Tone = request.Tone,
             AdditionalTargetLanguages = new List<string>(request.AdditionalTargetLanguages),
-            UseGlossary = request.UseGlossary
+            UseGlossary = request.UseGlossary,
+            UiLocale = request.UiLocale
         };
 
         if (string.IsNullOrEmpty(resolvedRequest.SourceLanguage))

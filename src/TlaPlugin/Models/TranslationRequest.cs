@@ -18,4 +18,6 @@ public class TranslationRequest
     public string Tone { get; set; } = DefaultTone;
     public bool UseGlossary { get; set; } = true;
     public IList<string> AdditionalTargetLanguages { get; set; } = new List<string>();
+    public string? UiLocale { get; set; }
+        = null;
 }

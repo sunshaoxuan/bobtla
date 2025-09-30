@@ -25,7 +25,8 @@ public class MessageExtensionHandler
 
     public async Task<JsonObject> HandleTranslateAsync(TranslationRequest request)
     {
-        var catalog = _localization.GetCatalog(_options.DefaultUiLocale);
+        var locale = request.UiLocale ?? _options.DefaultUiLocale;
+        var catalog = _localization.GetCatalog(locale);
         try
         {
             var result = await _pipeline.ExecuteAsync(request, CancellationToken.None);

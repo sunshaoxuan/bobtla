@@ -299,6 +299,39 @@ public class TranslationRouterTests
         Assert.Equal(1, failure.Count);
     }
 
+    [Fact]
+    public async Task BuildsAdaptiveCardWithRequestedLocale()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            Providers = new List<ModelProviderOptions>
+            {
+                new() { Id = "primary", Regions = new List<string>{"japan"}, Certifications = new List<string>{"iso"} }
+            },
+            Compliance = new CompliancePolicyOptions
+            {
+                RequiredRegionTags = new List<string> { "japan" },
+                RequiredCertifications = new List<string> { "iso" }
+            }
+        });
+
+        var router = new TranslationRouter(new ModelProviderFactory(options), new ComplianceGateway(options), new BudgetGuard(options.Value), new AuditLogger(), new ToneTemplateService(), new RecordingTokenBroker(), new UsageMetricsService(), new LocalizationCatalogService(), options);
+
+        var result = await router.TranslateAsync(new TranslationRequest
+        {
+            Text = "hello",
+            TenantId = "contoso",
+            UserId = "user",
+            TargetLanguage = "ja",
+            SourceLanguage = "en",
+            UiLocale = "zh-CN"
+        }, CancellationToken.None);
+
+        Assert.Equal("zh-CN", result.UiLocale);
+        var title = result.AdaptiveCard!["body"]!.AsArray()[0]!.AsObject()["text"]!.GetValue<string>();
+        Assert.Equal("翻译结果", title);
+    }
+
     private sealed class RecordingTokenBroker : ITokenBroker
     {
         public bool ShouldThrow { get; set; }

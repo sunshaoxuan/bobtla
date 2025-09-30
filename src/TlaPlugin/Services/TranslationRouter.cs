@@ -120,7 +120,8 @@ public class TranslationRouter
                 _audit.Record(request.TenantId, request.UserId, result.ModelId, request.Text, rewritten, estimatedCost, result.LatencyMs, token.Audience, additional);
                 _metrics.RecordSuccess(request.TenantId, result.ModelId, estimatedCost, result.LatencyMs, translationCount);
 
-                var catalog = _localization.GetCatalog(Options.DefaultUiLocale);
+                var resolvedLocale = request.UiLocale ?? Options.DefaultUiLocale;
+                var catalog = _localization.GetCatalog(resolvedLocale);
 
                 return new TranslationResult
                 {
@@ -131,6 +132,7 @@ public class TranslationRouter
                     Confidence = result.Confidence,
                     LatencyMs = result.LatencyMs,
                     CostUsd = estimatedCost,
+                    UiLocale = catalog.Locale,
                     AdditionalTranslations = additional,
                     AdaptiveCard = BuildAdaptiveCard(catalog, rewritten, sourceLanguage!, request.TargetLanguage, result.ModelId, estimatedCost, result.LatencyMs, additional)
                 };
