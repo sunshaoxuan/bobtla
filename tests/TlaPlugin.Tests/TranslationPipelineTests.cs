@@ -538,7 +538,7 @@ public class TranslationPipelineTests
 
         var result = await pipeline.ExecuteAsync(new TranslationRequest
         {
-            Text = "漢字表記のみ、句読点。",
+            Text = "漢字語彙句読点、標準。",
             TenantId = "contoso",
             UserId = "user",
             TargetLanguage = "en"
