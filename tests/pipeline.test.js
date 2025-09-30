@@ -51,3 +51,17 @@ test("offline drafts respect retention and limits", () => {
   assert.ok(second.id);
   assert.ok(third.id);
 });
+
+test("listOfflineDrafts returns saved drafts", () => {
+  const store = new OfflineDraftStore({ maxEntriesPerUser: 5, retentionHours: 1 });
+  const pipeline = new TranslationPipeline({
+    router: { translate: async () => ({ text: "test" }) },
+    offlineDraftStore: store
+  });
+  pipeline.saveOfflineDraft({ userId: "userA", tenantId: "tenantA", originalText: "hello", targetLanguage: "es" });
+  const drafts = pipeline.listOfflineDrafts("userA");
+  assert.equal(Array.isArray(drafts), true);
+  assert.equal(drafts.length, 1);
+  assert.equal(drafts[0].status, "PENDING");
+  assert.equal(drafts[0].targetLanguage, "es");
+});

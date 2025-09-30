@@ -83,10 +83,39 @@ app.MapPost("/api/translate", async (TranslationRequest request, MessageExtensio
     return Results.Json(result, options: jsonOptions);
 });
 
-app.MapPost("/api/offline-draft", async (OfflineDraftRequest request, MessageExtensionHandler handler) =>
+app.MapPost("/api/offline-draft", async (HttpRequest httpRequest, OfflineDraftRequest request, MessageExtensionHandler handler) =>
 {
+    if (!TryAuthorize(httpRequest, out var unauthorized))
+    {
+        return unauthorized!;
+    }
+
+    if (request is null
+        || string.IsNullOrWhiteSpace(request.OriginalText)
+        || string.IsNullOrWhiteSpace(request.UserId)
+        || string.IsNullOrWhiteSpace(request.TenantId))
+    {
+        return Results.BadRequest(new { error = "OriginalText, UserId and TenantId are required." });
+    }
+
     var result = await handler.HandleOfflineDraftAsync(request);
-    return Results.Json(result, options: jsonOptions);
+    return Results.Json(result, options: jsonOptions, statusCode: StatusCodes.Status201Created);
+});
+
+app.MapGet("/api/offline-draft", (HttpRequest httpRequest, OfflineDraftStore store) =>
+{
+    if (!TryAuthorize(httpRequest, out var unauthorized))
+    {
+        return unauthorized!;
+    }
+
+    if (!httpRequest.Query.TryGetValue("userId", out var userId) || string.IsNullOrWhiteSpace(userId))
+    {
+        return Results.BadRequest(new { error = "userId is required." });
+    }
+
+    var drafts = store.ListDrafts(userId!);
+    return Results.Json(new { drafts }, options: jsonOptions);
 });
 
 app.MapPost("/api/detect", (LanguageDetectionRequest request, LanguageDetector detector, IOptions<PluginOptions> options) =>

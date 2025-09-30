@@ -16,6 +16,11 @@ function createDialogDom() {
       <button data-preview-translation></button>
       <button data-submit-translation></button>
       <p data-error-banner></p>
+      <section data-offline-draft-section hidden>
+        <p data-offline-draft-status></p>
+        <ul data-offline-draft-list></ul>
+      </section>
+      <button data-save-offline-draft hidden></button>
     </main>
   `;
 }

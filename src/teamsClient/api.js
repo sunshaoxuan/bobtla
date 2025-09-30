@@ -76,13 +76,47 @@ export async function sendReply(payload, fetchImpl = fetch) {
   return await parseJsonResponse(response, "发送回帖失败");
 }
 
-export async function saveOfflineDraft(payload, fetchImpl = fetch) {
-  const response = await fetchImpl("/api/draft", {
+function buildAuthorizationHeader(authorization) {
+  if (!authorization) {
+    return undefined;
+  }
+  if (authorization.startsWith("Bearer ")) {
+    return authorization;
+  }
+  return `Bearer ${authorization}`;
+}
+
+export async function saveOfflineDraft(payload, fetchImpl = fetch, { authorization } = {}) {
+  const headers = {
+    "Content-Type": "application/json"
+  };
+  const headerValue = buildAuthorizationHeader(authorization);
+  if (headerValue) {
+    headers.Authorization = headerValue;
+  }
+  const response = await fetchImpl("/api/offline-draft", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(payload)
   });
   return await parseJsonResponse(response, "保存离线草稿失败");
+}
+
+export async function listOfflineDrafts({ userId }, fetchImpl = fetch, { authorization } = {}) {
+  if (!userId) {
+    throw new Error("缺少用户标识，无法获取离线草稿");
+  }
+  const headers = {};
+  const headerValue = buildAuthorizationHeader(authorization);
+  if (headerValue) {
+    headers.Authorization = headerValue;
+  }
+  const url = `/api/offline-draft?userId=${encodeURIComponent(userId)}`;
+  const response = await fetchImpl(url, {
+    method: "GET",
+    headers
+  });
+  return await parseJsonResponse(response, "获取离线草稿失败");
 }
 
 export { FALLBACK_METADATA };
@@ -94,5 +128,6 @@ export default {
   rewriteTranslation,
   sendReply,
   saveOfflineDraft,
+  listOfflineDrafts,
   FALLBACK_METADATA
 };
