@@ -191,7 +191,7 @@ public class PluginOptions
     public IList<ModelProviderOptions> Providers { get; set; } = new List<ModelProviderOptions>();
     public CompliancePolicyOptions Compliance { get; set; } = new();
     public SecurityOptions Security { get; set; } = new();
-    public TenantPolicyOptions TenantPolicies { get; set; } = new();
+    public RagOptions Rag { get; set; } = new();
 }
 
 /// <summary>
@@ -266,23 +266,12 @@ public class SecurityOptions
 }
 
 /// <summary>
-/// 定义租户在术语与禁译方面的策略。
+/// RAG コンテキスト取得に関する構成値。
 /// </summary>
-public class TenantPolicyOptions
+public class RagOptions
 {
-    public string TenantId { get; set; } = "contoso";
-    public string GlossaryFallbackPolicy { get; set; } = "Fallback";
-    public bool EnforceTenantGlossary { get; set; } = true;
-    public IList<string> BannedTerms { get; set; } = new List<string>
-    {
-        "Do Not Translate",
-        "Confidential",
-        "NDA"
-    };
-    public IList<string> StyleTemplates { get; set; } = new List<string>
-    {
-        "corporate",
-        "legal",
-        "marketing"
-    };
+    public bool Enabled { get; set; } = false;
+    public int MaxMessages { get; set; } = 8;
+    public int SummaryThreshold { get; set; } = 1200;
+    public int SummaryTargetLength { get; set; } = 480;
 }

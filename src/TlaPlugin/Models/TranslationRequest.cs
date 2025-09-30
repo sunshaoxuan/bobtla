@@ -22,7 +22,11 @@ public class TranslationRequest
         = null;
     public string Tone { get; set; } = DefaultTone;
     public bool UseGlossary { get; set; } = true;
+    public bool UseRag { get; set; } = false;
     public IList<string> AdditionalTargetLanguages { get; set; } = new List<string>();
+    public IList<string> ContextHints { get; set; } = new List<string>();
+    public string? ContextSummary { get; set; }
+        = null;
     public string? UiLocale { get; set; }
         = null;
     public IDictionary<string, GlossaryDecision> GlossaryDecisions { get; set; }

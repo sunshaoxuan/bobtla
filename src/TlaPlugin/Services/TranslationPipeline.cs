@@ -20,6 +20,7 @@ public class TranslationPipeline
     private readonly LanguageDetector _detector;
     private readonly TranslationCache _cache;
     private readonly TranslationThrottle _throttle;
+    private readonly ContextRetrievalService _contextRetrieval;
     private readonly RewriteService _rewrite;
     private readonly ReplyService _replyService;
     private readonly PluginOptions _options;
@@ -31,6 +32,7 @@ public class TranslationPipeline
         LanguageDetector detector,
         TranslationCache cache,
         TranslationThrottle throttle,
+        ContextRetrievalService contextRetrieval,
         RewriteService rewrite,
         ReplyService replyService,
         IOptions<PluginOptions>? options = null)
@@ -41,6 +43,7 @@ public class TranslationPipeline
         _detector = detector;
         _cache = cache;
         _throttle = throttle;
+        _contextRetrieval = contextRetrieval;
         _rewrite = rewrite;
         _replyService = replyService;
         _options = options?.Value ?? new PluginOptions();
@@ -100,6 +103,8 @@ public class TranslationPipeline
         {
             return PipelineExecutionResult.FromDetection(pendingSelection);
         }
+
+        await ApplyContextAsync(normalizedRequest, cancellationToken);
 
         if (_cache.TryGet(normalizedRequest, out var cached))
         {
@@ -173,6 +178,9 @@ public class TranslationPipeline
 
     private TranslationRequest NormalizeRequestForTranslation(TranslationRequest request, string resolvedText)
     {
+        var additionalTargets = request.AdditionalTargetLanguages ?? new List<string>();
+        var contextHints = request.ContextHints ?? new List<string>();
+
         return new TranslationRequest
         {
             Text = resolvedText,
@@ -182,14 +190,86 @@ public class TranslationPipeline
             UserId = request.UserId,
             ChannelId = request.ChannelId,
             Tone = request.Tone,
-            AdditionalTargetLanguages = new List<string>(request.AdditionalTargetLanguages),
+            AdditionalTargetLanguages = new List<string>(additionalTargets),
             UseGlossary = request.UseGlossary,
+            UseRag = request.UseRag,
+            ContextHints = new List<string>(contextHints),
+            ContextSummary = request.ContextSummary,
             UiLocale = request.UiLocale,
             GlossaryDecisions = request.GlossaryDecisions.ToDictionary(
                 pair => pair.Key,
                 pair => pair.Value.Clone(),
                 StringComparer.OrdinalIgnoreCase)
         };
+    }
+
+    private async Task ApplyContextAsync(TranslationRequest request, CancellationToken cancellationToken)
+    {
+        if (!ShouldUseRag(request))
+        {
+            request.ContextSummary = null;
+            return;
+        }
+
+        var retrieval = await _contextRetrieval.GetContextAsync(new ContextRetrievalRequest
+        {
+            TenantId = request.TenantId,
+            ChannelId = request.ChannelId,
+            ThreadId = request.ChannelId,
+            MaxMessages = _options.Rag.MaxMessages,
+            ContextHints = new List<string>(request.ContextHints)
+        }, cancellationToken);
+
+        if (!retrieval.HasContext)
+        {
+            request.ContextSummary = null;
+            return;
+        }
+
+        var ordered = retrieval.Messages
+            .OrderBy(message => message.Timestamp)
+            .Select(message => $"{message.Author}: {message.Text}");
+        var combined = string.Join(Environment.NewLine, ordered);
+
+        var summary = combined;
+        if (_options.Rag.SummaryThreshold > 0 && combined.Length > _options.Rag.SummaryThreshold && !string.IsNullOrEmpty(request.UserId))
+        {
+            var summarize = await _router.SummarizeAsync(new SummarizeRequest
+            {
+                Context = combined,
+                TenantId = request.TenantId,
+                UserId = request.UserId
+            }, cancellationToken);
+
+            summary = summarize.Summary;
+            if (_options.Rag.SummaryTargetLength > 0 && summary.Length > _options.Rag.SummaryTargetLength)
+            {
+                summary = summary[.._options.Rag.SummaryTargetLength];
+            }
+        }
+
+        request.ContextSummary = summary;
+        request.Text = BuildContextPrompt(summary, request.Text);
+    }
+
+    private bool ShouldUseRag(TranslationRequest request)
+    {
+        if (!request.UseRag && !_options.Rag.Enabled)
+        {
+            return false;
+        }
+
+        return !string.IsNullOrWhiteSpace(request.ChannelId) || request.ContextHints.Count > 0;
+    }
+
+    private static string BuildContextPrompt(string context, string text)
+    {
+        if (string.IsNullOrWhiteSpace(context))
+        {
+            return text;
+        }
+
+        return $"[Context]\n{context}\n\n[Message]\n{text}";
     }
 
     private DetectionResult? DetectLanguageIfNeeded(TranslationRequest request, DetectionResult? providedDetection)
