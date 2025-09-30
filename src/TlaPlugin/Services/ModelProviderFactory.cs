@@ -8,11 +8,7 @@ using TlaPlugin.Providers;
 namespace TlaPlugin.Services;
 
 /// <summary>
-<<<<<<< HEAD
 /// 根据配置组装模型提供方的工厂。
-=======
-/// 構成からモデル提供者を組み立てるファクトリ。
->>>>>>> origin/main
 /// </summary>
 public class ModelProviderFactory
 {

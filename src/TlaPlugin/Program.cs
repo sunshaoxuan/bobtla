@@ -41,12 +41,13 @@ builder.Services.AddSingleton<KeyVaultSecretResolver>();
 builder.Services.AddSingleton<ITokenBroker, TokenBroker>();
 builder.Services.AddSingleton<ModelProviderFactory>();
 builder.Services.AddSingleton<UsageMetricsService>();
+builder.Services.AddSingleton<LocalizationCatalogService>();
 builder.Services.AddSingleton<TranslationRouter>();
 builder.Services.AddSingleton<TranslationPipeline>();
 builder.Services.AddSingleton<MessageExtensionHandler>();
 builder.Services.AddSingleton<ConfigurationSummaryService>();
 builder.Services.AddSingleton<ProjectStatusService>();
-builder.Services.AddSingleton<UsageMetricsService>();
+builder.Services.AddSingleton<DevelopmentRoadmapService>();
 
 var app = builder.Build();
 
@@ -88,6 +89,24 @@ app.MapGet("/api/metrics", (UsageMetricsService metrics) =>
 {
     var report = metrics.GetReport();
     return Results.Json(report, options: new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+});
+
+app.MapGet("/api/localization/locales", (LocalizationCatalogService localization) =>
+{
+    var locales = localization.GetAvailableLocales();
+    return Results.Json(locales, options: new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+});
+
+app.MapGet("/api/localization/catalog/{locale?}", (string? locale, LocalizationCatalogService localization) =>
+{
+    var catalog = localization.GetCatalog(locale);
+    return Results.Json(catalog, options: new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+});
+
+app.MapGet("/api/roadmap", (DevelopmentRoadmapService roadmapService) =>
+{
+    var roadmap = roadmapService.GetRoadmap();
+    return Results.Json(roadmap, options: new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
 });
 
 app.Run();

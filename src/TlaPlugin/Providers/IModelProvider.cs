@@ -7,7 +7,7 @@ using TlaPlugin.Services;
 namespace TlaPlugin.Providers;
 
 /// <summary>
-/// 翻訳モデル提供者の共通インターフェース。
+/// 翻译模型提供方的通用接口。
 /// </summary>
 public interface IModelProvider
 {
@@ -18,6 +18,6 @@ public interface IModelProvider
 }
 
 /// <summary>
-/// モデル呼び出しの結果を内部的に保持する。
+/// 表示模型调用结果的内部结构。
 /// </summary>
 public record ModelTranslationResult(string Text, string ModelId, double Confidence, int LatencyMs);
