@@ -41,6 +41,17 @@ public class LanguageDetectorTests
     }
 
     [Fact]
+    public void Detect_KanjiOnlyTextWithSharedPunctuationRemainsUncertain()
+    {
+        var detector = new LanguageDetector();
+
+        var result = detector.Detect("東京都大阪府。");
+
+        Assert.True(result.Confidence < 0.75);
+        Assert.Contains(result.Candidates, candidate => string.Equals(candidate.Language, "ja", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void Detect_DiacriticFreeForeignSentenceRemainsUncertain()
     {
         var detector = new LanguageDetector();
