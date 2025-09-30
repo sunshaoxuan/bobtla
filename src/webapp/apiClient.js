@@ -5,7 +5,8 @@ export {
   translateText,
   rewriteTranslation,
   sendReply,
-  saveOfflineDraft
+  saveOfflineDraft,
+  listOfflineDrafts
 } from "../teamsClient/api.js";
 
 export { default } from "../teamsClient/api.js";

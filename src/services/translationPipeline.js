@@ -99,6 +99,13 @@ export class TranslationPipeline {
     return draft;
   }
 
+  listOfflineDrafts(userId) {
+    if (!userId) {
+      return [];
+    }
+    return this.offlineDraftStore.listDrafts(userId) ?? [];
+  }
+
   buildAdaptiveCard({ translatedText, sourceLanguage, targetLanguage, metadata = {} }) {
     return {
       type: "AdaptiveCard",

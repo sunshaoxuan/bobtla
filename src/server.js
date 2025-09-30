@@ -77,7 +77,7 @@ export function createServer({ handler = buildHandler(), metadata = buildMetadat
       res.end(JSON.stringify(metadata));
       return;
     }
-    if (req.method === "POST" && url.pathname === "/api/draft") {
+    if (req.method === "POST" && url.pathname === "/api/offline-draft") {
       let body = "";
       for await (const chunk of req) {
         body += chunk;
@@ -85,7 +85,21 @@ export function createServer({ handler = buildHandler(), metadata = buildMetadat
       const payload = JSON.parse(body || "{}");
       const result = await handler.handleOfflineDraft(payload);
       res.setHeader("Content-Type", "application/json");
+      res.statusCode = 201;
       res.end(JSON.stringify(result));
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/api/offline-draft") {
+      const userId = url.searchParams.get("userId");
+      if (!userId) {
+        res.statusCode = 400;
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify({ error: "userId is required" }));
+        return;
+      }
+      const drafts = handler.pipeline?.listOfflineDrafts?.(userId) ?? [];
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify({ drafts }));
       return;
     }
     if (req.method !== "POST") {

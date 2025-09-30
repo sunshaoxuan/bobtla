@@ -45,9 +45,15 @@
         </label>
       </section>
       <p class="dialog__error" data-error-banner hidden></p>
+      <section class="dialog__offline" data-offline-draft-section hidden>
+        <h2>离线草稿</h2>
+        <p class="dialog__status" data-offline-draft-status hidden></p>
+        <ul class="dialog__drafts" data-offline-draft-list></ul>
+      </section>
     </main>
     <footer class="dialog__footer">
       <button type="button" class="btn" data-preview-translation>生成译文</button>
+      <button type="button" class="btn" data-save-offline-draft hidden>保存离线草稿</button>
       <button type="button" class="btn btn--primary" data-submit-translation>插入消息</button>
     </footer>
     <script type="module" src="./dialog.js"></script>

@@ -1,5 +1,5 @@
 import { ensureTeamsContext } from "./teamsContext.js";
-import { fetchMetadata, detectLanguage, translateText, rewriteTranslation, sendReply } from "./api.js";
+import { fetchMetadata, detectLanguage, translateText, rewriteTranslation, sendReply, saveOfflineDraft, listOfflineDrafts } from "./api.js";
 import {
   buildDialogState,
   calculateCostHint,
@@ -26,7 +26,11 @@ function resolveDialogUi(root = typeof document !== "undefined" ? document : und
     translation: root.querySelector?.("[data-translation-text]"),
     previewButton: root.querySelector?.("[data-preview-translation]"),
     submitButton: root.querySelector?.("[data-submit-translation]"),
-    errorBanner: root.querySelector?.("[data-error-banner]")
+    errorBanner: root.querySelector?.("[data-error-banner]"),
+    offlineSection: root.querySelector?.("[data-offline-draft-section]"),
+    offlineStatus: root.querySelector?.("[data-offline-draft-status]"),
+    offlineList: root.querySelector?.("[data-offline-draft-list]"),
+    offlineButton: root.querySelector?.("[data-save-offline-draft]")
   };
 }
 
@@ -86,6 +90,53 @@ function updateDetectedLanguageLabel(ui, state, languages) {
   const confidence = confidenceValue ? `（置信度 ${(confidenceValue * 100).toFixed(0)}%）` : "";
   ui.detectedLabel.textContent = `自动检测：${display}${confidence}`;
   ui.detectedLabel.hidden = false;
+}
+
+function updateOfflineStatus(ui, message, { isError = false } = {}) {
+  if (!ui.offlineStatus) {
+    return;
+  }
+  if (!message) {
+    ui.offlineStatus.textContent = "";
+    ui.offlineStatus.hidden = true;
+    if (ui.offlineStatus.dataset) {
+      ui.offlineStatus.dataset.variant = "";
+    }
+    return;
+  }
+  ui.offlineStatus.hidden = false;
+  ui.offlineStatus.textContent = message;
+  if (!ui.offlineStatus.dataset) {
+    ui.offlineStatus.dataset = {};
+  }
+  ui.offlineStatus.dataset.variant = isError ? "error" : "";
+}
+
+function renderOfflineDrafts(ui, drafts) {
+  if (!ui.offlineList) {
+    return;
+  }
+  if (!Array.isArray(drafts) || drafts.length === 0) {
+    if (typeof ui.offlineList.replaceChildren === "function" && typeof document !== "undefined" && document?.createElement) {
+      ui.offlineList.replaceChildren();
+    }
+    ui.offlineList.items = [];
+    return;
+  }
+  const entries = drafts.map((draft) => {
+    const label = `#${draft.id ?? draft.Id ?? "--"} · ${draft.status ?? draft.Status ?? "未知"} · ${draft.targetLanguage ?? draft.TargetLanguage ?? "--"}`;
+    if (typeof document !== "undefined" && typeof document?.createElement === "function") {
+      const item = document.createElement("li");
+      item.textContent = label;
+      return item;
+    }
+    return { textContent: label, draft };
+  });
+  if (typeof ui.offlineList.replaceChildren === "function" && typeof document !== "undefined" && document?.createElement) {
+    ui.offlineList.replaceChildren(...entries);
+  } else {
+    ui.offlineList.items = entries;
+  }
 }
 
 export async function initMessageExtensionDialog({ ui = resolveDialogUi(), teams, fetcher } = {}) {
@@ -213,6 +264,87 @@ export async function initMessageExtensionDialog({ ui = resolveDialogUi(), teams
   }
 
   ui.previewButton?.addEventListener?.("click", () => requestTranslation());
+
+  const supportsOfflineDraft = Boolean(metadata.features?.offlineDraft);
+  if (ui.offlineSection) {
+    ui.offlineSection.hidden = !supportsOfflineDraft;
+  }
+  if (ui.offlineButton) {
+    ui.offlineButton.hidden = !supportsOfflineDraft;
+  }
+
+  let cachedAuthorization;
+  async function resolveAuthorization() {
+    if (cachedAuthorization !== undefined) {
+      return cachedAuthorization;
+    }
+    if (sdk?.authentication?.getAuthToken) {
+      try {
+        const token = await sdk.authentication.getAuthToken();
+        if (token) {
+          cachedAuthorization = `Bearer ${token}`;
+          return cachedAuthorization;
+        }
+      } catch (error) {
+        console.warn("获取 Teams OAuth 令牌失败", error);
+      }
+    }
+    const fallback = context?.user?.id ?? context?.user?.aadObjectId;
+    cachedAuthorization = fallback ? `Bearer ${fallback}` : undefined;
+    return cachedAuthorization;
+  }
+
+  async function refreshOfflineDrafts() {
+    if (!supportsOfflineDraft || !context?.user?.id) {
+      return;
+    }
+    try {
+      const authorization = await resolveAuthorization();
+      const response = await listOfflineDrafts({ userId: context.user.id }, fetcher, { authorization });
+      const draftsPayload = response?.drafts ?? response?.Drafts;
+      const drafts = Array.isArray(draftsPayload) ? draftsPayload : [];
+      renderOfflineDrafts(ui, drafts);
+    } catch (error) {
+      console.warn("获取离线草稿失败", error);
+      updateOfflineStatus(ui, `草稿列表更新失败：${error.message ?? error}`, { isError: true });
+    }
+  }
+
+  if (supportsOfflineDraft) {
+    await refreshOfflineDrafts();
+  }
+
+  ui.offlineButton?.addEventListener?.("click", async () => {
+    if (!supportsOfflineDraft) {
+      return;
+    }
+    const originalText = ui.input?.value ?? state.text ?? "";
+    if (!originalText.trim()) {
+      updateOfflineStatus(ui, "请输入要保存的原文", { isError: true });
+      return;
+    }
+    const payload = {
+      originalText,
+      targetLanguage: state.targetLanguage,
+      tenantId: context?.tenant?.id,
+      userId: context?.user?.id
+    };
+    updateOfflineStatus(ui, "正在保存离线草稿…");
+    try {
+      const authorization = await resolveAuthorization();
+      const response = await saveOfflineDraft(payload, fetcher, { authorization });
+      if (response?.type === "offlineDraftSaved") {
+        const draftId = response.draftId ?? response.id ?? "--";
+        const status = response.status ?? "PENDING";
+        updateOfflineStatus(ui, `草稿 #${draftId} 状态：${status}`);
+        await refreshOfflineDrafts();
+      } else {
+        updateOfflineStatus(ui, "草稿保存结果未知", { isError: true });
+      }
+    } catch (error) {
+      updateOfflineStatus(ui, `保存草稿失败：${error.message ?? error}`, { isError: true });
+    }
+  });
 
   ui.submitButton?.addEventListener?.("click", async () => {
     if (!state.translation && state.text) {

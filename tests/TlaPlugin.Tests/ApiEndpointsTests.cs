@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
+using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
@@ -17,6 +18,10 @@ namespace TlaPlugin.Tests;
 public class ApiEndpointsTests : IClassFixture<WebApplicationFactory<Program>>
 {
     private readonly WebApplicationFactory<Program> _factory;
+
+    private sealed record OfflineDraftSavedResponse(string Type, long DraftId, string Status, string CreatedAt);
+
+    private sealed record OfflineDraftListResponse(List<OfflineDraftRecord> Drafts);
 
     public ApiEndpointsTests(WebApplicationFactory<Program> factory)
     {
@@ -227,6 +232,55 @@ public class ApiEndpointsTests : IClassFixture<WebApplicationFactory<Program>>
         Assert.NotNull(payload);
         Assert.Equal("sent", payload!.Status);
         Assert.Contains("手动编辑", payload.FinalText);
+    }
+
+    [Fact]
+    public async Task OfflineDraftEndpointsRequireAuthorization()
+    {
+        var client = _factory.CreateClient();
+        var response = await client.PostAsJsonAsync("/api/offline-draft", new OfflineDraftRequest
+        {
+            OriginalText = "hello",
+            TargetLanguage = "ja",
+            TenantId = "contoso",
+            UserId = "user"
+        });
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task OfflineDraftEndpointsReturnDraftList()
+    {
+        var client = _factory.CreateClient();
+        var request = new HttpRequestMessage(HttpMethod.Post, "/api/offline-draft")
+        {
+            Content = JsonContent.Create(new OfflineDraftRequest
+            {
+                OriginalText = "需要审核的文本",
+                TargetLanguage = "zh-Hans",
+                TenantId = "contoso",
+                UserId = "user"
+            })
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", "token");
+
+        var postResponse = await client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.Created, postResponse.StatusCode);
+        var saved = await postResponse.Content.ReadFromJsonAsync<OfflineDraftSavedResponse>();
+        Assert.NotNull(saved);
+        Assert.Equal("offlineDraftSaved", saved!.Type);
+        Assert.True(saved.DraftId > 0);
+
+        var listRequest = new HttpRequestMessage(HttpMethod.Get, "/api/offline-draft?userId=user")
+        {
+            Headers = { Authorization = new AuthenticationHeaderValue("Bearer", "token") }
+        };
+        var listResponse = await client.SendAsync(listRequest);
+        listResponse.EnsureSuccessStatusCode();
+        var list = await listResponse.Content.ReadFromJsonAsync<OfflineDraftListResponse>();
+        Assert.NotNull(list);
+        Assert.Contains(list!.Drafts, draft => draft.Id == saved.DraftId);
     }
 
     private sealed class GlossaryResponse

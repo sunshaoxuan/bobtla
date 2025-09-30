@@ -8,6 +8,7 @@ function createStubElement(initial = {}) {
     checked: Boolean(initial.checked),
     textContent: initial.textContent ?? "",
     hidden: false,
+    dataset: initial.dataset ?? {},
     listeners: new Map(),
     replaceChildren() {},
     addEventListener(event, handler) {
@@ -418,4 +419,151 @@ test("dialog surfaces reply failures without closing dialog", async () => {
 
   assert.equal(Boolean(teams.dialog.closed), false);
   assert.match(ui.errorBanner.textContent, /reply failed/);
+});
+
+test("dialog saves offline drafts and refreshes list", async () => {
+  const fetchCalls = [];
+  const fakeFetch = async (url, options = {}) => {
+    const method = options.method ?? "GET";
+    const headers = options.headers ?? {};
+    const bodyText = options.body;
+    let body;
+    if (bodyText) {
+      body = JSON.parse(bodyText);
+    }
+    fetchCalls.push({ url, method, headers, body });
+    if (url === "/api/metadata") {
+      return {
+        ok: true,
+        async json() {
+          return {
+            models: [{ id: "model-a", displayName: "Model A", costPerCharUsd: 0.00002 }],
+            languages: [
+              { id: "auto", name: "Auto", isDefault: true },
+              { id: "es", name: "Español" }
+            ],
+            features: { terminologyToggle: true, toneToggle: true, offlineDraft: true },
+            pricing: { currency: "USD" }
+          };
+        }
+      };
+    }
+    if (url.startsWith("/api/offline-draft") && method === "POST") {
+      return {
+        ok: true,
+        status: 201,
+        async json() {
+          return { type: "offlineDraftSaved", draftId: 42, status: "PENDING" };
+        }
+      };
+    }
+    if (url.startsWith("/api/offline-draft") && method === "GET") {
+      return {
+        ok: true,
+        async json() {
+          return {
+            drafts: [
+              { id: 42, status: "PENDING", targetLanguage: "es", originalText: "hola" }
+            ]
+          };
+        }
+      };
+    }
+    if (url === "/api/detect") {
+      return {
+        ok: true,
+        async json() {
+          return { language: "en", confidence: 0.9 };
+        }
+      };
+    }
+    if (url === "/api/translate") {
+      return {
+        ok: true,
+        async json() {
+          return { text: "hola", detectedLanguage: "en", metadata: { modelId: "model-a" } };
+        }
+      };
+    }
+    if (url === "/api/rewrite") {
+      return {
+        ok: true,
+        async json() {
+          return { text: "hola", metadata: { tone: "neutral" } };
+        }
+      };
+    }
+    if (url === "/api/reply") {
+      return {
+        ok: true,
+        async json() {
+          return { status: "ok" };
+        }
+      };
+    }
+    throw new Error(`unexpected url ${url}`);
+  };
+
+  const offlineStatus = createStubElement();
+  const offlineList = Object.assign(createStubElement(), {
+    items: [],
+    replaceChildren(...nodes) {
+      this.items = nodes;
+    }
+  });
+  const offlineSection = createStubElement();
+  const offlineButton = createStubElement();
+
+  const ui = {
+    modelSelect: createStubElement(),
+    sourceSelect: createStubElement(),
+    targetSelect: createStubElement(),
+    terminologyToggle: createStubElement({ checked: true }),
+    toneToggle: createStubElement({ checked: false }),
+    detectedLabel: createStubElement(),
+    costHint: createStubElement(),
+    input: createStubElement({ value: "hello" }),
+    translation: createStubElement(),
+    previewButton: createStubElement(),
+    submitButton: createStubElement(),
+    errorBanner: createStubElement(),
+    offlineStatus,
+    offlineList,
+    offlineSection,
+    offlineButton
+  };
+
+  const teams = {
+    app: {
+      async initialize() {},
+      async getContext() {
+        return { tenant: { id: "tenant" }, user: { id: "user" }, channel: { id: "channel" }, app: { locale: "en-US" } };
+      }
+    },
+    authentication: {
+      async getAuthToken() {
+        return "test-token";
+      }
+    },
+    dialog: {
+      submit() {}
+    }
+  };
+
+  const { state } = await initMessageExtensionDialog({ ui, teams, fetcher: fakeFetch });
+  assert.equal(offlineSection.hidden, false);
+  assert.equal(offlineButton.hidden, false);
+
+  await ui.offlineButton.trigger("click");
+  assert.match(offlineStatus.textContent, /草稿 #42 状态：PENDING/);
+
+  const postCall = fetchCalls.find((call) => call.url === "/api/offline-draft" && call.method === "POST");
+  assert.ok(postCall, "expected offline draft POST call");
+  assert.equal(postCall.headers.Authorization, "Bearer test-token");
+  assert.equal(postCall.body.originalText, "hello");
+  assert.equal(postCall.body.targetLanguage, state.targetLanguage);
+
+  const listCall = fetchCalls.find((call) => call.url.startsWith("/api/offline-draft?") && call.method === "GET");
+  assert.ok(listCall, "expected offline draft GET call");
+  assert.equal(offlineList.items.length, 1);
 });
