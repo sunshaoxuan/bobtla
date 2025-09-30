@@ -110,10 +110,7 @@ export async function initComposePlugin({ ui = resolveComposeUi(), teams, fetche
     try {
       const response = await translateText(payload, fetcher);
       const nextState = updateStateWithResponse(state, response);
-      state.translation = nextState.translation;
-      state.modelId = nextState.modelId;
-      state.tone = nextState.tone;
-      state.detectedLanguage = nextState.detectedLanguage;
+      Object.assign(state, nextState);
       if (ui.toneToggle) {
         ui.toneToggle.checked = state.tone === "formal";
       }
