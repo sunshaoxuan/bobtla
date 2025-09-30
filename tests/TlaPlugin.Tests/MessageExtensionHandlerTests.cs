@@ -283,6 +283,105 @@ public class MessageExtensionHandlerTests
         Assert.Contains("速率", title["text"]!.GetValue<string>());
     }
 
+    [Fact]
+    public async Task HandleReplyAsyncReturnsLanguageSelectionWhenDetectionLow()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            Providers = new List<ModelProviderOptions>
+            {
+                new() { Id = "primary", Regions = new List<string>{"japan"}, Certifications = new List<string>{"iso"} }
+            },
+            Compliance = new CompliancePolicyOptions
+            {
+                RequiredRegionTags = new List<string> { "japan" },
+                RequiredCertifications = new List<string> { "iso" }
+            }
+        });
+
+        var handler = BuildHandler(options);
+        var response = await handler.HandleReplyAsync(new ReplyRequest
+        {
+            ThreadId = "thread",
+            Text = "12345",
+            TenantId = "contoso",
+            UserId = "user",
+            ChannelId = "general",
+            LanguagePolicy = new ReplyLanguagePolicy { TargetLang = "ja", Tone = ToneTemplateService.Business }
+        });
+
+        Assert.Equal("languageSelection", response["type"]?.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task HandleReplyAsyncUsesEditedTextDuringRewrite()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            Providers = new List<ModelProviderOptions>
+            {
+                new() { Id = "primary", Regions = new List<string>{"japan"}, Certifications = new List<string>{"iso"} }
+            },
+            Compliance = new CompliancePolicyOptions
+            {
+                RequiredRegionTags = new List<string> { "japan" },
+                RequiredCertifications = new List<string> { "iso" }
+            }
+        });
+
+        var handler = BuildHandler(options);
+        var response = await handler.HandleReplyAsync(new ReplyRequest
+        {
+            ThreadId = "thread",
+            Text = "Team update",
+            EditedText = "自定义编辑内容",
+            TenantId = "contoso",
+            UserId = "user",
+            ChannelId = "general",
+            LanguagePolicy = new ReplyLanguagePolicy { TargetLang = "ja", Tone = ToneTemplateService.Business }
+        });
+
+        Assert.Equal("replyPosted", response["type"]?.GetValue<string>());
+        Assert.Contains("自定义编辑内容", response["finalText"]!.GetValue<string>());
+        Assert.Equal(ToneTemplateService.Business, response["toneApplied"]?.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task HandleReplyAsyncReturnsErrorCardWhenUnauthorized()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            Providers = new List<ModelProviderOptions>
+            {
+                new() { Id = "primary", Regions = new List<string>{"japan"}, Certifications = new List<string>{"iso"} }
+            },
+            Compliance = new CompliancePolicyOptions
+            {
+                RequiredRegionTags = new List<string> { "japan" },
+                RequiredCertifications = new List<string> { "iso" }
+            },
+            Security = new SecurityOptions
+            {
+                AllowedReplyChannels = new List<string> { "allowed" }
+            }
+        });
+
+        var handler = BuildHandler(options);
+        var response = await handler.HandleReplyAsync(new ReplyRequest
+        {
+            ThreadId = "thread",
+            Text = "Hello team",
+            TenantId = "contoso",
+            UserId = "user",
+            ChannelId = "blocked",
+            LanguagePolicy = new ReplyLanguagePolicy { TargetLang = "ja", Tone = ToneTemplateService.Business }
+        });
+
+        Assert.Equal("message", response["type"]?.GetValue<string>());
+        var attachment = response["attachments"]!.AsArray().First().AsObject();
+        Assert.Equal("application/vnd.microsoft.card.adaptive", attachment["contentType"]!.GetValue<string>());
+    }
+
     private static MessageExtensionHandler BuildHandler(IOptions<PluginOptions> options, GlossaryService? glossaryOverride = null)
     {
         var glossary = glossaryOverride ?? new GlossaryService();

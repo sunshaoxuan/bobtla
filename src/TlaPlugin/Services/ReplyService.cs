@@ -21,18 +21,54 @@ public class ReplyService
         _options = options?.Value ?? new PluginOptions();
     }
 
+    public Task<ReplyResult> SendReplyAsync(ReplyRequest request, string finalTextOverride, string? toneApplied, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(finalTextOverride))
+        {
+            throw new ArgumentException("finalTextOverride は必須です。", nameof(finalTextOverride));
+        }
+
+        var context = PrepareContext(request);
+        return Task.FromResult(CreateResult(context, finalTextOverride, toneApplied));
+    }
+
     public async Task<ReplyResult> SendReplyAsync(ReplyRequest request, CancellationToken cancellationToken)
     {
+        var context = PrepareContext(request);
+
+        var finalText = context.InitialText;
+        string? toneApplied = null;
+
+        if (!string.IsNullOrWhiteSpace(context.Tone) && context.Tone != TranslationRequest.DefaultTone)
+        {
+            var rewrite = await _rewriteService.RewriteAsync(new RewriteRequest
+            {
+                Text = context.ReplyText,
+                EditedText = request.EditedText,
+                Tone = context.Tone!,
+                TenantId = context.TenantId,
+                UserId = context.UserId,
+                ChannelId = context.ChannelId,
+                UiLocale = context.UiLocale
+            }, cancellationToken);
+
+            finalText = rewrite.RewrittenText;
+            toneApplied = context.Tone;
+        }
+
+        return CreateResult(context, finalText, toneApplied);
+    }
+
+    private ReplyExecutionContext PrepareContext(ReplyRequest request)
+    {
+        if (request is null)
+        {
+            throw new ArgumentNullException(nameof(request));
+        }
+
         if (string.IsNullOrWhiteSpace(request.ThreadId))
         {
             throw new ArgumentException("threadId は必須です。", nameof(request));
-        }
-
-        var replyText = string.IsNullOrWhiteSpace(request.ReplyText) ? request.Text : request.ReplyText;
-        var initialText = string.IsNullOrWhiteSpace(request.EditedText) ? replyText : request.EditedText!;
-        if (string.IsNullOrWhiteSpace(initialText))
-        {
-            throw new ArgumentException("replyText は必須です。", nameof(request));
         }
 
         if (string.IsNullOrWhiteSpace(request.TenantId) || string.IsNullOrWhiteSpace(request.UserId))
@@ -48,27 +84,51 @@ public class ReplyService
             }
         }
 
-        string finalText = initialText;
-        string? toneApplied = null;
-        if (!string.IsNullOrWhiteSpace(request.LanguagePolicy?.Tone) && request.LanguagePolicy!.Tone != TranslationRequest.DefaultTone)
+        var replyText = string.IsNullOrWhiteSpace(request.ReplyText) ? request.Text : request.ReplyText;
+        if (string.IsNullOrWhiteSpace(replyText))
         {
-            var rewrite = await _rewriteService.RewriteAsync(new RewriteRequest
-            {
-                Text = replyText,
-                EditedText = request.EditedText,
-                Tone = request.LanguagePolicy.Tone,
-                TenantId = request.TenantId,
-                UserId = request.UserId,
-                ChannelId = request.ChannelId,
-                UiLocale = request.UiLocale
-            }, cancellationToken);
-            finalText = rewrite.RewrittenText;
-            toneApplied = request.LanguagePolicy.Tone;
+            throw new ArgumentException("replyText は必須です。", nameof(request));
         }
 
-        return new ReplyResult(Guid.NewGuid().ToString(), "sent", finalText, toneApplied)
+        var initialText = string.IsNullOrWhiteSpace(request.EditedText) ? replyText : request.EditedText!;
+        if (string.IsNullOrWhiteSpace(initialText))
         {
-            Language = request.LanguagePolicy?.TargetLang ?? string.Empty
-        };
+            throw new ArgumentException("replyText は必須です。", nameof(request));
+        }
+
+        var tone = request.LanguagePolicy?.Tone;
+        var targetLanguage = request.LanguagePolicy?.TargetLang ?? request.Language ?? string.Empty;
+
+        return new ReplyExecutionContext(
+            request.ThreadId,
+            request.TenantId,
+            request.UserId,
+            request.ChannelId,
+            replyText,
+            initialText,
+            request.UiLocale,
+            targetLanguage,
+            tone);
     }
+
+    private static ReplyResult CreateResult(ReplyExecutionContext context, string finalText, string? toneApplied)
+    {
+        var result = new ReplyResult(Guid.NewGuid().ToString(), "sent", finalText, toneApplied)
+        {
+            Language = context.TargetLanguage
+        };
+
+        return result;
+    }
+
+    private sealed record ReplyExecutionContext(
+        string ThreadId,
+        string TenantId,
+        string UserId,
+        string? ChannelId,
+        string ReplyText,
+        string InitialText,
+        string? UiLocale,
+        string TargetLanguage,
+        string? Tone);
 }

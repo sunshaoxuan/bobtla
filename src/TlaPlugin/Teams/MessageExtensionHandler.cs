@@ -29,6 +29,8 @@ public class MessageExtensionHandler
         _options = options?.Value ?? new PluginOptions();
     }
 
+    private const double MinimumDetectionConfidence = 0.75;
+
     public async Task<JsonObject> HandleTranslateAsync(TranslationRequest request)
     {
         ApplyGlossarySelections(request);
@@ -37,10 +39,25 @@ public class MessageExtensionHandler
         var catalog = _localization.GetCatalog(locale);
         try
         {
-            var execution = await _pipeline.ExecuteAsync(request, CancellationToken.None);
-            if (execution.RequiresLanguageSelection && execution.Detection is { } detection)
+            DetectionResult? detection = null;
+            if (string.IsNullOrWhiteSpace(request.SourceLanguage))
             {
-                return BuildLanguageSelectionResponse(catalog, detection);
+                detection = await _pipeline.DetectAsync(new LanguageDetectionRequest
+                {
+                    Text = request.Text,
+                    TenantId = request.TenantId
+                }, CancellationToken.None);
+
+                if (detection.Confidence < MinimumDetectionConfidence)
+                {
+                    return BuildLanguageSelectionResponse(catalog, detection);
+                }
+            }
+
+            var execution = await _pipeline.TranslateAsync(request, detection, CancellationToken.None);
+            if (execution.RequiresLanguageSelection && execution.Detection is { } detectionResult)
+            {
+                return BuildLanguageSelectionResponse(catalog, detectionResult);
             }
 
             var result = execution.Translation ?? throw new TranslationException("翻訳結果を取得できませんでした。");
@@ -124,7 +141,85 @@ public class MessageExtensionHandler
         var catalog = _localization.GetCatalog(locale);
         try
         {
-            var result = await _pipeline.PostReplyAsync(request, CancellationToken.None);
+            if (string.IsNullOrWhiteSpace(request.Text))
+            {
+                throw new ArgumentException("text は必須です。", nameof(request));
+            }
+
+            var detection = await _pipeline.DetectAsync(new LanguageDetectionRequest
+            {
+                Text = request.Text,
+                TenantId = request.TenantId
+            }, CancellationToken.None);
+
+            if (detection.Confidence < MinimumDetectionConfidence)
+            {
+                return BuildLanguageSelectionResponse(catalog, detection);
+            }
+
+            var targetLanguage = request.LanguagePolicy?.TargetLang
+                ?? request.Language
+                ?? _options.DefaultTargetLanguages.FirstOrDefault()
+                ?? "ja";
+
+            var translationRequest = new TranslationRequest
+            {
+                Text = request.Text,
+                SourceLanguage = detection.Language,
+                TargetLanguage = targetLanguage,
+                TenantId = request.TenantId,
+                UserId = request.UserId,
+                ChannelId = request.ChannelId,
+                Tone = TranslationRequest.DefaultTone,
+                UiLocale = request.UiLocale,
+                UseGlossary = false
+            };
+
+            var translationStep = await _pipeline.TranslateAsync(translationRequest, detection, CancellationToken.None);
+            if (translationStep.RequiresLanguageSelection && translationStep.Detection is { } pendingDetection)
+            {
+                return BuildLanguageSelectionResponse(catalog, pendingDetection);
+            }
+
+            var translation = translationStep.Translation ?? throw new TranslationException("翻訳結果を取得できませんでした。");
+
+            var tone = request.LanguagePolicy?.Tone ?? TranslationRequest.DefaultTone;
+
+            var rewrite = await _pipeline.RewriteAsync(new RewriteRequest
+            {
+                Text = translation.TranslatedText,
+                EditedText = request.EditedText,
+                Tone = tone,
+                TenantId = request.TenantId,
+                UserId = request.UserId,
+                ChannelId = request.ChannelId,
+                UiLocale = request.UiLocale
+            }, CancellationToken.None);
+
+            var languagePolicy = new ReplyLanguagePolicy
+            {
+                TargetLang = string.IsNullOrWhiteSpace(request.LanguagePolicy?.TargetLang)
+                    ? translation.TargetLanguage
+                    : request.LanguagePolicy!.TargetLang,
+                Tone = request.LanguagePolicy?.Tone ?? tone
+            };
+
+            var replyPayload = new ReplyRequest
+            {
+                ThreadId = request.ThreadId,
+                ReplyText = translation.TranslatedText,
+                Text = request.Text,
+                EditedText = request.EditedText,
+                TenantId = request.TenantId,
+                UserId = request.UserId,
+                ChannelId = request.ChannelId,
+                Language = request.Language,
+                UiLocale = request.UiLocale,
+                LanguagePolicy = languagePolicy
+            };
+
+            var replyTone = tone != TranslationRequest.DefaultTone ? tone : null;
+            var result = await _pipeline.PostReplyAsync(replyPayload, rewrite.RewrittenText, replyTone, CancellationToken.None);
             return new JsonObject
             {
                 ["type"] = "replyPosted",
@@ -146,6 +241,14 @@ public class MessageExtensionHandler
             return BuildErrorCard(catalog, "tla.error.rate.title", ex.Message);
         }
         catch (TranslationException ex)
+        {
+            return BuildErrorCard(catalog, "tla.error.translation.title", ex.Message);
+        }
+        catch (ReplyAuthorizationException ex)
+        {
+            return BuildErrorCard(catalog, "tla.error.reply.title", ex.Message);
+        }
+        catch (ArgumentException ex)
         {
             return BuildErrorCard(catalog, "tla.error.translation.title", ex.Message);
         }

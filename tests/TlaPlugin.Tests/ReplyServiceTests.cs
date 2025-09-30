@@ -94,6 +94,57 @@ public class ReplyServiceTests
         }, CancellationToken.None));
     }
 
+    [Fact]
+    public async Task UsesFinalTextOverrideWhenProvided()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            Providers = new List<ModelProviderOptions> { new() { Id = "primary" } }
+        });
+
+        var router = new TranslationRouter(new ModelProviderFactory(options), new ComplianceGateway(options), new BudgetGuard(options.Value), new AuditLogger(), new ToneTemplateService(), new RecordingTokenBroker(), new UsageMetricsService(), new LocalizationCatalogService(), options);
+        var throttle = new TranslationThrottle(options);
+        var rewrite = new RewriteService(router, throttle);
+        var service = new ReplyService(rewrite, options);
+
+        var result = await service.SendReplyAsync(new ReplyRequest
+        {
+            ThreadId = "thread",
+            ReplyText = "ignored",
+            TenantId = "contoso",
+            UserId = "user",
+            ChannelId = "general",
+            LanguagePolicy = new ReplyLanguagePolicy { TargetLang = "ja", Tone = ToneTemplateService.Business }
+        }, "最终文本", ToneTemplateService.Business, CancellationToken.None);
+
+        Assert.Equal("最终文本", result.FinalText);
+        Assert.Equal(ToneTemplateService.Business, result.ToneApplied);
+    }
+
+    [Fact]
+    public async Task ThrowsWhenFinalTextOverrideMissing()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            Providers = new List<ModelProviderOptions> { new() { Id = "primary" } }
+        });
+
+        var router = new TranslationRouter(new ModelProviderFactory(options), new ComplianceGateway(options), new BudgetGuard(options.Value), new AuditLogger(), new ToneTemplateService(), new RecordingTokenBroker(), new UsageMetricsService(), new LocalizationCatalogService(), options);
+        var throttle = new TranslationThrottle(options);
+        var rewrite = new RewriteService(router, throttle);
+        var service = new ReplyService(rewrite, options);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => service.SendReplyAsync(new ReplyRequest
+        {
+            ThreadId = "thread",
+            ReplyText = "ignored",
+            TenantId = "contoso",
+            UserId = "user",
+            ChannelId = "general",
+            LanguagePolicy = new ReplyLanguagePolicy { TargetLang = "ja" }
+        }, string.Empty, null, CancellationToken.None));
+    }
+
     private sealed class RecordingTokenBroker : ITokenBroker
     {
         public Task<AccessToken> ExchangeOnBehalfOfAsync(string tenantId, string userId, CancellationToken cancellationToken)
