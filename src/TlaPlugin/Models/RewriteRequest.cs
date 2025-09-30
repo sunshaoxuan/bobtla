@@ -13,6 +13,8 @@ public class RewriteRequest
     public string UserId { get; set; } = string.Empty;
     public string? ChannelId { get; set; }
         = null;
+    public string? UiLocale { get; set; }
+        = null;
 }
 
 /// <summary>

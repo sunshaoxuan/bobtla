@@ -48,7 +48,8 @@ public class RewriteService
             Tone = request.Tone,
             TenantId = request.TenantId,
             UserId = request.UserId,
-            ChannelId = request.ChannelId
+            ChannelId = request.ChannelId,
+            UiLocale = request.UiLocale
         };
 
         return await _router.RewriteAsync(normalizedRequest, cancellationToken);
