@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Options;
@@ -59,6 +60,12 @@ public class MessageExtensionHandler
             if (execution.RequiresLanguageSelection && execution.Detection is { } detectionResult)
             {
                 return BuildLanguageSelectionResponse(catalog, detectionResult);
+            }
+
+            if (execution.RequiresGlossaryResolution && execution.GlossaryConflicts is { } conflicts)
+            {
+                var pendingRequest = execution.PendingRequest ?? request;
+                return BuildGlossaryConflictCard(catalog, conflicts, pendingRequest);
             }
 
             var result = execution.Translation ?? throw new TranslationException("翻訳結果を取得できませんでした。");
@@ -438,6 +445,12 @@ public class MessageExtensionHandler
             });
         }
 
+        var serializerOptions = new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+        };
+
         var data = new JsonObject
         {
             ["action"] = "resolveGlossary",
@@ -450,7 +463,8 @@ public class MessageExtensionHandler
             ["useGlossary"] = request.UseGlossary,
             ["uiLocale"] = request.UiLocale ?? string.Empty,
             ["text"] = request.Text,
-            ["additionalTargetLanguages"] = new JsonArray(request.AdditionalTargetLanguages.Select(language => (JsonNode)language).ToArray())
+            ["additionalTargetLanguages"] = new JsonArray(request.AdditionalTargetLanguages.Select(language => (JsonNode)language).ToArray()),
+            ["pendingRequest"] = JsonSerializer.SerializeToNode(request, serializerOptions) ?? new JsonObject()
         };
 
         var actions = new JsonArray
@@ -474,7 +488,7 @@ public class MessageExtensionHandler
 
         return new JsonObject
         {
-            ["type"] = "message",
+            ["type"] = "glossaryConflict",
             ["attachments"] = new JsonArray
             {
                 new JsonObject

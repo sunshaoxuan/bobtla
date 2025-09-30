@@ -107,6 +107,101 @@ test("dialog runs detect → translate → rewrite and submits rewritten text", 
   assert.equal(ui.translation.value, "【正式】hola");
 });
 
+test("dialog forwards glossary conflict card to Teams host", async () => {
+  const fetchCalls = [];
+  const conflictCard = {
+    type: "AdaptiveCard",
+    version: "1.5",
+    actions: [
+      {
+        type: "Action.Submit",
+        data: {
+          action: "resolveGlossary",
+          pendingRequest: { text: "GPU", targetLanguage: "ja" }
+        }
+      }
+    ],
+    body: []
+  };
+  const fakeFetch = async (url, options = {}) => {
+    if (options.body) {
+      fetchCalls.push({ url, body: JSON.parse(options.body) });
+    }
+    return {
+      ok: true,
+      async json() {
+        if (url === "/api/metadata") {
+          return {
+            models: [{ id: "model-a", displayName: "Model A", costPerCharUsd: 0.00002 }],
+            languages: [
+              { id: "auto", name: "Auto", isDefault: true },
+              { id: "ja", name: "日本語" }
+            ],
+            features: { terminologyToggle: true, toneToggle: true },
+            pricing: { currency: "USD" }
+          };
+        }
+        if (url === "/api/detect") {
+          return { language: "en", confidence: 0.9 };
+        }
+        if (url === "/api/translate") {
+          return {
+            type: "glossaryConflict",
+            attachments: [
+              {
+                contentType: "application/vnd.microsoft.card.adaptive",
+                content: conflictCard
+              }
+            ]
+          };
+        }
+        throw new Error(`unexpected url ${url}`);
+      }
+    };
+  };
+
+  const ui = {
+    modelSelect: createStubElement(),
+    sourceSelect: createStubElement(),
+    targetSelect: createStubElement(),
+    terminologyToggle: createStubElement({ checked: true }),
+    toneToggle: createStubElement({ checked: false }),
+    detectedLabel: createStubElement(),
+    costHint: createStubElement(),
+    input: createStubElement({ value: "GPU" }),
+    translation: createStubElement(),
+    previewButton: createStubElement(),
+    submitButton: createStubElement(),
+    errorBanner: createStubElement()
+  };
+
+  const teams = {
+    app: {
+      async initialize() {},
+      async getContext() {
+        return { tenant: { id: "tenant" }, user: { id: "user" }, channel: { id: "channel" }, app: { locale: "ja-JP" } };
+      }
+    },
+    dialog: {
+      submit(payload) {
+        teams.dialog.lastSubmit = payload;
+      }
+    }
+  };
+
+  await initMessageExtensionDialog({ ui, teams, fetcher: fakeFetch });
+  await ui.input.trigger("input");
+  await ui.previewButton.trigger("click");
+
+  assert.equal(fetchCalls[0].url, "/api/detect");
+  assert.equal(fetchCalls[1].url, "/api/translate");
+  assert.equal(teams.dialog.lastSubmit.type, "glossaryConflict");
+  assert.deepEqual(teams.dialog.lastSubmit.card, conflictCard);
+  assert.deepEqual(teams.dialog.lastSubmit.attachments, [
+    { contentType: "application/vnd.microsoft.card.adaptive", content: conflictCard }
+  ]);
+});
+
 test("dialog defaults to first non-auto target and preserves detection label", async () => {
   const fetchCalls = [];
   const fakeFetch = async (url, options = {}) => {
