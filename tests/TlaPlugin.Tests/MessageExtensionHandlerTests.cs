@@ -56,6 +56,39 @@ public class MessageExtensionHandlerTests
     }
 
     [Fact]
+    public async Task ReturnsLanguageSelectionWhenDetectionLow()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            Providers = new List<ModelProviderOptions>
+            {
+                new() { Id = "primary", Regions = new List<string>{"japan"}, Certifications = new List<string>{"iso"} }
+            },
+            Compliance = new CompliancePolicyOptions
+            {
+                RequiredRegionTags = new List<string> { "japan" },
+                RequiredCertifications = new List<string> { "iso" }
+            }
+        });
+
+        var handler = BuildHandler(options);
+        var response = await handler.HandleTranslateAsync(new TranslationRequest
+        {
+            Text = "Hello team",
+            TenantId = "contoso",
+            UserId = "user",
+            TargetLanguage = "ja"
+        });
+
+        Assert.Equal("languageSelection", response["type"]?.GetValue<string>());
+        var candidates = response["candidates"]!.AsArray();
+        Assert.NotEmpty(candidates);
+        var first = candidates[0]!.AsObject();
+        Assert.True(first.ContainsKey("language"));
+        Assert.True(first.ContainsKey("confidence"));
+    }
+
+    [Fact]
     public async Task RendersAdditionalTranslationsInAdaptiveCard()
     {
         var options = Options.Create(new PluginOptions
