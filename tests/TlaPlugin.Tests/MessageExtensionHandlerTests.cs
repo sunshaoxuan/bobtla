@@ -296,6 +296,98 @@ public class MessageExtensionHandlerTests
         Assert.Contains("速率", title["text"]!.GetValue<string>());
     }
 
+    [Fact]
+    public async Task ReturnsLanguageSelectionWhenDetectionLow()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            Providers = new List<ModelProviderOptions>
+            {
+                new() { Id = "primary", Regions = new List<string>{"japan"}, Certifications = new List<string>{"iso"} }
+            },
+            Compliance = new CompliancePolicyOptions
+            {
+                RequiredRegionTags = new List<string> { "japan" },
+                RequiredCertifications = new List<string> { "iso" }
+            }
+        });
+
+        var handler = BuildHandler(options);
+        var response = await handler.HandleTranslateAsync(new TranslationRequest
+        {
+            Text = "plain ascii text without hints",
+            TenantId = "contoso",
+            UserId = "user",
+            TargetLanguage = "ja"
+        });
+
+        Assert.Equal("languageSelection", response["type"]!.GetValue<string>());
+        var candidates = response["candidates"]!.AsArray();
+        Assert.True(candidates.Count >= 2);
+        var languages = candidates.Select(node => node!.AsObject()["language"]!.GetValue<string>()).ToList();
+        Assert.Contains("en", languages);
+    }
+
+    [Fact]
+    public async Task HandlesUserRewriteSubmission()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            Providers = new List<ModelProviderOptions>
+            {
+                new() { Id = "primary", Regions = new List<string>{"japan"}, Certifications = new List<string>{"iso"} }
+            },
+            Compliance = new CompliancePolicyOptions
+            {
+                RequiredRegionTags = new List<string> { "japan" },
+                RequiredCertifications = new List<string> { "iso" }
+            }
+        });
+
+        var handler = BuildHandler(options);
+        var response = await handler.HandleRewriteAsync(new RewriteRequest
+        {
+            Text = "custom translation",
+            TenantId = "contoso",
+            UserId = "user",
+            Tone = ToneTemplateService.Casual
+        });
+
+        Assert.Equal("rewriteResult", response["type"]!.GetValue<string>());
+        var rewritten = response["text"]!.GetValue<string>();
+        Assert.Contains("轻松语气", rewritten);
+    }
+
+    [Fact]
+    public async Task PostsReplySuccessfully()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            Providers = new List<ModelProviderOptions>
+            {
+                new() { Id = "primary", Regions = new List<string>{"japan"}, Certifications = new List<string>{"iso"} }
+            },
+            Compliance = new CompliancePolicyOptions
+            {
+                RequiredRegionTags = new List<string> { "japan" },
+                RequiredCertifications = new List<string> { "iso" }
+            }
+        });
+
+        var handler = BuildHandler(options);
+        var response = await handler.HandleReplyAsync(new ReplyRequest
+        {
+            Text = "ありがとうございます",
+            TenantId = "contoso",
+            UserId = "user",
+            Language = "ja"
+        });
+
+        Assert.Equal("replyPosted", response["type"]!.GetValue<string>());
+        Assert.Equal("ja", response["language"]!.GetValue<string>());
+        Assert.False(string.IsNullOrWhiteSpace(response["messageId"]!.GetValue<string>()));
+    }
+
     private static MessageExtensionHandler BuildHandler(IOptions<PluginOptions> options)
     {
         var glossary = new GlossaryService();

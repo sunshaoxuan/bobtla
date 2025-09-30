@@ -60,9 +60,9 @@ public class TranslationPipeline
         if (string.IsNullOrEmpty(resolvedRequest.SourceLanguage))
         {
             var detection = _detector.Detect(resolvedRequest.Text);
-            if (detection.Confidence < 0.7)
+            if (detection.Confidence < 0.75)
             {
-                throw new TranslationException("言語を自動判定できません。手動で選択してください。");
+                throw new LanguageDetectionLowConfidenceException(detection);
             }
             resolvedRequest.SourceLanguage = detection.Language;
         }
@@ -81,5 +81,26 @@ public class TranslationPipeline
     public OfflineDraftRecord SaveDraft(OfflineDraftRequest request)
     {
         return _drafts.SaveDraft(request);
+    }
+
+    public async Task<string> RewriteAsync(RewriteRequest request, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.Text))
+        {
+            throw new TranslationException("改写内容不能为空。");
+        }
+
+        using var lease = await _throttle.AcquireAsync(request.TenantId, cancellationToken);
+        return await _router.RewriteAsync(request, cancellationToken);
+    }
+
+    public Task<ReplyResult> PostReplyAsync(ReplyRequest request, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.Text))
+        {
+            throw new TranslationException("回帖内容不能为空。");
+        }
+
+        return _router.PostReplyAsync(request, cancellationToken);
     }
 }
