@@ -6,22 +6,22 @@ using TlaPlugin.Models;
 namespace TlaPlugin.Services;
 
 /// <summary>
-/// 開発進捗を提供し前端計画を加速するためのサービス。
+/// 開発進捗スナップショットを提供するサービス。
 /// </summary>
 public class ProjectStatusService
 {
     private static readonly IReadOnlyList<StageStatus> Stages = new List<StageStatus>
     {
-        new("stage0", "阶段 0：需求吸收", "需求说明书の読解と技術選定を完了。", true),
-        new("stage1", "阶段 1：服务编排", "多模型路由・预算守卫・术语合并を実装。", true),
-        new("stage2", "阶段 2：Teams 适配", "消息扩展と Adaptive Card 応答を提供。", true),
-        new("stage3", "阶段 3：持久化与测试", "SQLite 草稿保存と xUnit カバレッジを確立。", true),
-        new("stage4", "阶段 4：合规加固", "区域・认证・禁译语チェックを導入。", true),
-        new("stage5", "阶段 5：性能护栏", "翻訳キャッシュと速率制御を導入。", true),
-        new("stage6", "阶段 6：密钥与 OBO", "Key Vault 秘密キャッシュと OBO 代理を完了。", true),
-        new("stage7", "阶段 7：多语广播", "追加言語の一括翻訳と卡片呈现を完了。", true),
-        new("stage8", "阶段 8：多模型互联", "ConfigurableChatModelProvider で外部 API を統合。", true),
-        new("stage9", "阶段 9：前端体验", "Teams Tab・设置画面・联调テストを実装。", false)
+        new("stage0", "阶段 0：需求吸收", "完成需求说明书解读与技术选型。", true),
+        new("stage1", "阶段 1：服务编排", "实现多模型路由、预算守卫和术语合并。", true),
+        new("stage2", "阶段 2：Teams 适配", "交付消息扩展与 Adaptive Card 响应。", true),
+        new("stage3", "阶段 3：持久化与测试", "完成 SQLite 草稿存储并建立 xUnit 覆盖。", true),
+        new("stage4", "阶段 4：合规加固", "引入区域、认证与禁译词校验。", true),
+        new("stage5", "阶段 5：性能护栏", "上线翻译缓存与速率控制。", true),
+        new("stage6", "阶段 6：密钥与 OBO", "完成 Key Vault 密钥缓存与 OBO 代理。", true),
+        new("stage7", "阶段 7：多语广播", "完成多语种广播翻译与卡片呈现。", true),
+        new("stage8", "阶段 8：多模型互联", "通过 ConfigurableChatModelProvider 整合外部 API。", true),
+        new("stage9", "阶段 9：前端体验", "实现 Teams Tab、设置界面与联调测试。", false)
     };
 
     private static readonly IReadOnlyList<string> NextSteps = new List<string>
@@ -33,14 +33,14 @@ public class ProjectStatusService
     };
 
     /// <summary>
-    /// 現在の進捗スナップショットを返却する。
+    /// 返回当前的进度快照。
     /// </summary>
     public ProjectStatusSnapshot GetSnapshot()
     {
-        var current = Stages.Last(s => s.Completed);
+        var current = Stages.FirstOrDefault(s => !s.Completed) ?? Stages.Last();
         var overallPercent = CalculateOverallPercent();
         var frontend = new FrontendProgress(
-            CompletionPercent: 0,
+            CompletionPercent: 25,
             DataPlaneReady: true,
             UiImplemented: false,
             IntegrationReady: false);

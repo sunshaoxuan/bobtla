@@ -3,7 +3,7 @@ using TlaPlugin.Configuration;
 namespace TlaPlugin.Models;
 
 /// <summary>
-/// フロントエンドに提供する構成サマリー。
+/// 提供给前端的配置摘要模型。
 /// </summary>
 public record ConfigurationSummary(
     int MaxCharactersPerRequest,
@@ -17,7 +17,7 @@ public record ConfigurationSummary(
     int GlossaryEntryCount);
 
 /// <summary>
-/// モデル提供者情報のフロントエンド向け要約。
+/// 面向前端的模型提供方摘要。
 /// </summary>
 public record ModelProviderSummary(
     string Id,

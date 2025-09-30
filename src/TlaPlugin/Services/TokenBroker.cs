@@ -11,11 +11,7 @@ using TlaPlugin.Configuration;
 namespace TlaPlugin.Services;
 
 /// <summary>
-<<<<<<< HEAD
 /// 模拟 OBO 流程并颁发访问令牌的代理。
-=======
-/// OBO フローを模倣しアクセストークンを提供するブローカー。
->>>>>>> origin/main
 /// </summary>
 public class TokenBroker : ITokenBroker
 {
@@ -40,11 +36,7 @@ public class TokenBroker : ITokenBroker
         var clientSecret = await _resolver.GetSecretAsync(_options.Security.ClientSecretName, cancellationToken);
         if (string.IsNullOrEmpty(clientSecret))
         {
-<<<<<<< HEAD
             throw new AuthenticationException("无法获取客户端机密。");
-=======
-            throw new AuthenticationException("クライアントシークレットが取得できませんでした。");
->>>>>>> origin/main
         }
 
         var lifetime = _options.Security.AccessTokenLifetime <= TimeSpan.Zero
