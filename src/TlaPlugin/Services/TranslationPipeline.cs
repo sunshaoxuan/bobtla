@@ -66,14 +66,36 @@ public class TranslationPipeline
         return Task.FromResult(_detector.Detect(request.Text));
     }
 
-    private const double MinimumDetectionConfidence = 0.75;
-
     public Task<PipelineExecutionResult> ExecuteAsync(TranslationRequest request, CancellationToken cancellationToken)
     {
         return TranslateAsync(request, cancellationToken);
     }
 
     public async Task<PipelineExecutionResult> TranslateAsync(TranslationRequest request, CancellationToken cancellationToken)
+    {
+        ValidateTranslationRequest(request);
+
+        var glossaryResult = ResolveGlossary(request);
+        var matchSnapshots = glossaryResult.Matches.Select(match => match.Clone()).ToList();
+        var normalizedRequest = NormalizeRequestForTranslation(request, glossaryResult.Text);
+
+        var detectionOutcome = DetectLanguageIfNeeded(normalizedRequest);
+        if (detectionOutcome is DetectionResult pendingSelection)
+        {
+            return PipelineExecutionResult.FromDetection(pendingSelection);
+        }
+
+        if (_cache.TryGet(normalizedRequest, out var cached))
+        {
+            cached.SetGlossaryMatches(matchSnapshots.Select(match => match.Clone()));
+            return PipelineExecutionResult.FromTranslation(cached);
+        }
+
+        var translation = await TranslateWithRouterAsync(normalizedRequest, matchSnapshots, cancellationToken);
+        return PipelineExecutionResult.FromTranslation(translation);
+    }
+
+    private void ValidateTranslationRequest(TranslationRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Text))
         {
@@ -84,30 +106,33 @@ public class TranslationPipeline
         {
             throw new TranslationException("許容される文字数を超えています。");
         }
+    }
 
-        GlossaryApplicationResult glossaryResult;
-        if (request.UseGlossary)
+    private GlossaryApplicationResult ResolveGlossary(TranslationRequest request)
+    {
+        if (!request.UseGlossary)
         {
-            glossaryResult = _glossary.Apply(request.Text, request.TenantId, request.ChannelId, request.UserId, request.GlossaryDecisions);
-            if (glossaryResult.RequiresResolution)
-            {
-                throw new GlossaryConflictException(glossaryResult, request);
-            }
-        }
-        else
-        {
-            glossaryResult = new GlossaryApplicationResult
+            return new GlossaryApplicationResult
             {
                 Text = request.Text,
                 Matches = Array.Empty<GlossaryMatchDetail>()
             };
         }
 
-        var matchSnapshots = glossaryResult.Matches.Select(match => match.Clone()).ToList();
-
-        var resolvedRequest = new TranslationRequest
+        var result = _glossary.Apply(request.Text, request.TenantId, request.ChannelId, request.UserId, request.GlossaryDecisions);
+        if (result.RequiresResolution)
         {
-            Text = glossaryResult.Text,
+            throw new GlossaryConflictException(result, request);
+        }
+
+        return result;
+    }
+
+    private TranslationRequest NormalizeRequestForTranslation(TranslationRequest request, string resolvedText)
+    {
+        return new TranslationRequest
+        {
+            Text = resolvedText,
             SourceLanguage = request.SourceLanguage,
             TargetLanguage = request.TargetLanguage,
             TenantId = request.TenantId,
@@ -122,58 +147,35 @@ public class TranslationPipeline
                 pair => pair.Value.Clone(),
                 StringComparer.OrdinalIgnoreCase)
         };
+    }
 
-        DetectionResult? detection = null;
-
-        if (string.IsNullOrEmpty(resolvedRequest.SourceLanguage))
+    private DetectionResult? DetectLanguageIfNeeded(TranslationRequest request)
+    {
+        if (!string.IsNullOrEmpty(request.SourceLanguage))
         {
-            detection = _detector.Detect(resolvedRequest.Text);
-            if (detection.Confidence < MinimumDetectionConfidence)
-            {
-                try
-                {
-                    var providerDetection = await _router.DetectAsync(new LanguageDetectionRequest
-                    {
-                        Text = resolvedRequest.Text,
-                        TenantId = resolvedRequest.TenantId
-                    }, cancellationToken);
-
-                    detection = DetectionResultExtensions.Merge(detection, providerDetection);
-                }
-                catch (TranslationException)
-                {
-                    // 如果路由器检测失败，则保留启发式检测结果以供兜底。
-                }
-            }
-
-            if (detection.Confidence < MinimumDetectionConfidence)
-            {
-                return PipelineExecutionResult.FromDetection(detection);
-            }
-            resolvedRequest.SourceLanguage = detection.Language;
+            return null;
         }
 
-        if (_cache.TryGet(resolvedRequest, out var cached))
+        var detection = _detector.Detect(request.Text);
+        if (detection.Confidence < 0.75)
         {
-            cached.SetGlossaryMatches(matchSnapshots.Select(match => match.Clone()));
-            return PipelineExecutionResult.FromTranslation(cached);
+            return detection;
         }
 
-        using var lease = await _throttle.AcquireAsync(resolvedRequest.TenantId, cancellationToken);
-        try
-        {
-            var result = await _router.TranslateAsync(resolvedRequest, cancellationToken);
-            result.SetGlossaryMatches(matchSnapshots);
-            _cache.Set(resolvedRequest, result);
-            return PipelineExecutionResult.FromTranslation(result);
-        }
-        catch (LowConfidenceDetectionException ex)
-        {
-            var merged = detection is null
-                ? ex.Detection
-                : DetectionResultExtensions.Merge(detection, ex.Detection);
-            return PipelineExecutionResult.FromDetection(merged);
-        }
+        request.SourceLanguage = detection.Language;
+        return null;
+    }
+
+    private async Task<TranslationResult> TranslateWithRouterAsync(
+        TranslationRequest normalizedRequest,
+        IReadOnlyList<GlossaryMatchDetail> matchSnapshots,
+        CancellationToken cancellationToken)
+    {
+        using var lease = await _throttle.AcquireAsync(normalizedRequest.TenantId, cancellationToken);
+        var result = await _router.TranslateAsync(normalizedRequest, cancellationToken);
+        result.SetGlossaryMatches(matchSnapshots);
+        _cache.Set(normalizedRequest, result);
+        return result;
     }
 
     public OfflineDraftRecord SaveDraft(OfflineDraftRequest request)

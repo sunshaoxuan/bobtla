@@ -13,6 +13,34 @@ namespace TlaPlugin.Tests;
 
 public class TranslationPipelineTests
 {
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task DetectAsyncThrowsForMissingText(string? text)
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            Providers = new List<ModelProviderOptions>
+            {
+                new() { Id = "primary", Regions = new List<string>{"japan"}, Certifications = new List<string>{"iso"} }
+            },
+            Compliance = new CompliancePolicyOptions
+            {
+                RequiredRegionTags = new List<string> { "japan" },
+                RequiredCertifications = new List<string> { "iso" }
+            }
+        });
+
+        var pipeline = BuildPipeline(options);
+
+        await Assert.ThrowsAsync<TranslationException>(() => pipeline.DetectAsync(new LanguageDetectionRequest
+        {
+            Text = text!,
+            TenantId = "contoso"
+        }, CancellationToken.None));
+    }
+
     [Fact]
     public async Task ReturnsCachedResultForDuplicateRequest()
     {
@@ -53,6 +81,10 @@ public class TranslationPipelineTests
         var firstTranslation = Assert.NotNull(first.Translation);
         var secondTranslation = Assert.NotNull(second.Translation);
 
+        Assert.Equal(firstTranslation.RawTranslatedText, secondTranslation.RawTranslatedText);
+        Assert.EndsWith("※已调整为敬语", firstTranslation.TranslatedText);
+        Assert.StartsWith("[primary]", firstTranslation.RawTranslatedText);
+        Assert.Contains("hi", firstTranslation.RawTranslatedText);
         Assert.Equal(firstTranslation.TranslatedText, secondTranslation.TranslatedText);
         Assert.Equal("ja-JP", firstTranslation.UiLocale);
         Assert.Equal("ja-JP", secondTranslation.UiLocale);
@@ -88,7 +120,7 @@ public class TranslationPipelineTests
 
         Assert.True(detection.Confidence < 0.75);
 
-        var execution = await pipeline.ExecuteAsync(new TranslationRequest
+        var execution = await pipeline.TranslateAsync(new TranslationRequest
         {
             Text = "12345",
             TenantId = "contoso",
@@ -100,6 +132,7 @@ public class TranslationPipelineTests
         var translation = Assert.NotNull(execution.Translation);
         Assert.Equal("ja", translation.TargetLanguage);
         Assert.Contains("12345", translation.TranslatedText);
+        Assert.Equal("12345", translation.RawTranslatedText);
     }
 
     [Fact]
@@ -195,6 +228,63 @@ public class TranslationPipelineTests
         var zhTitle = chineseResult.AdaptiveCard!["body"]!.AsArray()[0]!.AsObject()["text"]!.GetValue<string>();
         Assert.Equal("翻訳結果", jaTitle);
         Assert.Equal("翻译结果", zhTitle);
+    }
+
+    [Fact]
+    public async Task EndToEndFlowAllowsEditedRewriteBeforeReply()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            Providers = new List<ModelProviderOptions>
+            {
+                new() { Id = "primary", Regions = new List<string>{"japan"}, Certifications = new List<string>{"iso"} }
+            },
+            Compliance = new CompliancePolicyOptions
+            {
+                RequiredRegionTags = new List<string> { "japan" },
+                RequiredCertifications = new List<string> { "iso" }
+            }
+        });
+
+        var pipeline = BuildPipeline(options);
+
+        var execution = await pipeline.TranslateAsync(new TranslationRequest
+        {
+            Text = "Team update",
+            TenantId = "contoso",
+            UserId = "user",
+            TargetLanguage = "ja",
+            ChannelId = "general"
+        }, CancellationToken.None);
+
+        var translation = Assert.NotNull(execution.Translation);
+
+        var rewrite = await pipeline.RewriteAsync(new RewriteRequest
+        {
+            Text = translation.TranslatedText,
+            EditedText = translation.RawTranslatedText + "（追加の説明）",
+            TenantId = "contoso",
+            UserId = "user",
+            ChannelId = "general",
+            Tone = ToneTemplateService.Business
+        }, CancellationToken.None);
+
+        Assert.Contains("商务语气", rewrite.RewrittenText);
+
+        var reply = await pipeline.PostReplyAsync(new ReplyRequest
+        {
+            ThreadId = "thread",
+            ReplyText = translation.TranslatedText,
+            EditedText = rewrite.RewrittenText,
+            TenantId = "contoso",
+            UserId = "user",
+            ChannelId = "general",
+            LanguagePolicy = new ReplyLanguagePolicy { Tone = ToneTemplateService.Business, TargetLang = "ja" }
+        }, CancellationToken.None);
+
+        Assert.Equal("sent", reply.Status);
+        Assert.Equal(rewrite.RewrittenText, reply.FinalText);
+        Assert.Equal(ToneTemplateService.Business, reply.ToneApplied);
     }
 
     [Fact]

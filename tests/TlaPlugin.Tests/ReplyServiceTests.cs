@@ -73,6 +73,27 @@ public class ReplyServiceTests
         Assert.Equal("ja", result.Language);
     }
 
+    [Fact]
+    public async Task ThrowsWhenThreadIdMissing()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            Providers = new List<ModelProviderOptions> { new() { Id = "primary" } }
+        });
+
+        var router = new TranslationRouter(new ModelProviderFactory(options), new ComplianceGateway(options), new BudgetGuard(options.Value), new AuditLogger(), new ToneTemplateService(), new RecordingTokenBroker(), new UsageMetricsService(), new LocalizationCatalogService(), options);
+        var throttle = new TranslationThrottle(options);
+        var rewrite = new RewriteService(router, throttle);
+        var service = new ReplyService(rewrite, options);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => service.SendReplyAsync(new ReplyRequest
+        {
+            ReplyText = "hi",
+            TenantId = "contoso",
+            UserId = "user"
+        }, CancellationToken.None));
+    }
+
     private sealed class RecordingTokenBroker : ITokenBroker
     {
         public Task<AccessToken> ExchangeOnBehalfOfAsync(string tenantId, string userId, CancellationToken cancellationToken)
