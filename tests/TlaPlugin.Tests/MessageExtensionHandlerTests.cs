@@ -191,7 +191,7 @@ public class MessageExtensionHandlerTests
             ChannelId = "finance"
         });
 
-        Assert.Equal("message", response["type"]?.GetValue<string>());
+        Assert.Equal("glossaryConflict", response["type"]?.GetValue<string>());
         var attachment = response["attachments"]!.AsArray().First().AsObject();
         var card = attachment["content"]!.AsObject();
         Assert.Equal("AdaptiveCard", card["type"]!.GetValue<string>());
@@ -204,7 +204,17 @@ public class MessageExtensionHandlerTests
         Assert.Equal("GPU", decoded["source"]!.GetValue<string>());
         Assert.Equal("UsePreferred", decoded["kind"]!.GetValue<string>());
         var actions = card["actions"]!.AsArray();
-        Assert.Contains(actions.Select(action => action!.AsObject()["data"]!.AsObject()["action"]?.GetValue<string>()), value => value == "resolveGlossary");
+        var submit = Assert.Single(actions
+            .Select(action => action!.AsObject())
+            .Where(node => node["data"]!.AsObject()["action"]!.GetValue<string>() == "resolveGlossary"));
+        var submitData = submit["data"]!.AsObject();
+        Assert.Equal("resolveGlossary", submitData["action"]!.GetValue<string>());
+        var pendingRequest = submitData["pendingRequest"]!.AsObject();
+        Assert.Equal("GPU", pendingRequest["text"]!.GetValue<string>());
+        Assert.Equal("ja", pendingRequest["targetLanguage"]!.GetValue<string>());
+        Assert.Equal("en", pendingRequest["sourceLanguage"]!.GetValue<string>());
+        Assert.Equal("contoso", pendingRequest["tenantId"]!.GetValue<string>());
+        Assert.True(pendingRequest["glossaryDecisions"]!.AsObject().Count == 0);
     }
 
     [Fact]

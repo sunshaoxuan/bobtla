@@ -239,6 +239,15 @@ export async function initMessageExtensionDialog({ ui = resolveDialogUi(), teams
       updateError(ui, "");
       const payload = buildTranslatePayload(state, context);
       const response = await translateText(payload, fetcher);
+      if (response?.type === "glossaryConflict") {
+        sdk.dialog?.submit?.({
+          type: "glossaryConflict",
+          card: response.attachments?.[0]?.content ?? null,
+          attachments: response.attachments ?? [],
+          metadata: response.metadata ?? {}
+        });
+        return state;
+      }
       const nextState = updateStateWithResponse(state, response);
       state.translation = nextState.translation;
       state.modelId = nextState.modelId;
