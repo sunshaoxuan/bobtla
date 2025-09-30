@@ -20,6 +20,6 @@ public class ProjectStatusServiceTests
         Assert.True(snapshot.Frontend.DataPlaneReady);
         Assert.False(snapshot.Frontend.UiImplemented);
         Assert.False(snapshot.Frontend.IntegrationReady);
-        Assert.Equal(0, snapshot.Frontend.CompletionPercent);
+        Assert.Equal(25, snapshot.Frontend.CompletionPercent);
     }
 }

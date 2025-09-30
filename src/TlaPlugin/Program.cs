@@ -90,7 +90,13 @@ app.MapGet("/api/metrics", (UsageMetricsService metrics) =>
     return Results.Json(report, options: new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
 });
 
-app.MapGet("/api/localization/{locale?}", (string? locale, LocalizationCatalogService localization) =>
+app.MapGet("/api/localization/locales", (LocalizationCatalogService localization) =>
+{
+    var locales = localization.GetAvailableLocales();
+    return Results.Json(locales, options: new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+});
+
+app.MapGet("/api/localization/catalog/{locale?}", (string? locale, LocalizationCatalogService localization) =>
 {
     var catalog = localization.GetCatalog(locale);
     return Results.Json(catalog, options: new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });

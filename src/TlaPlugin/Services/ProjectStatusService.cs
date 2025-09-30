@@ -40,7 +40,7 @@ public class ProjectStatusService
         var current = Stages.FirstOrDefault(s => !s.Completed) ?? Stages.Last();
         var overallPercent = CalculateOverallPercent();
         var frontend = new FrontendProgress(
-            CompletionPercent: 0,
+            CompletionPercent: 25,
             DataPlaneReady: true,
             UiImplemented: false,
             IntegrationReady: false);
