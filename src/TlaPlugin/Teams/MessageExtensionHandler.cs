@@ -74,10 +74,6 @@ public class MessageExtensionHandler
                 }
             };
         }
-        catch (GlossaryConflictException ex)
-        {
-            return BuildGlossaryConflictCard(catalog, ex);
-        }
         catch (BudgetExceededException ex)
         {
             return BuildErrorCard(catalog, "tla.error.budget.title", ex.Message);
@@ -317,7 +313,10 @@ public class MessageExtensionHandler
         };
     }
 
-    private JsonObject BuildGlossaryConflictCard(LocalizationCatalog catalog, GlossaryConflictException exception)
+    private JsonObject BuildGlossaryConflictCard(
+        LocalizationCatalog catalog,
+        GlossaryApplicationResult conflicts,
+        TranslationRequest request)
     {
         static string Resolve(LocalizationCatalog catalog, string key) =>
             catalog.Strings.TryGetValue(key, out var value) ? value : key;
@@ -341,11 +340,11 @@ public class MessageExtensionHandler
             }
         };
 
-        var conflicts = exception.Result.Matches
+        var pendingConflicts = conflicts.Matches
             .Where(match => match.HasConflict)
             .ToList();
 
-        foreach (var conflict in conflicts)
+        foreach (var conflict in pendingConflicts)
         {
             body.Add(new JsonObject
             {
@@ -408,16 +407,16 @@ public class MessageExtensionHandler
         var data = new JsonObject
         {
             ["action"] = "resolveGlossary",
-            ["tenantId"] = exception.Request.TenantId,
-            ["userId"] = exception.Request.UserId,
-            ["channelId"] = exception.Request.ChannelId ?? string.Empty,
-            ["targetLanguage"] = exception.Request.TargetLanguage,
-            ["sourceLanguage"] = exception.Request.SourceLanguage ?? string.Empty,
-            ["tone"] = exception.Request.Tone,
-            ["useGlossary"] = exception.Request.UseGlossary,
-            ["uiLocale"] = exception.Request.UiLocale ?? string.Empty,
-            ["text"] = exception.Request.Text,
-            ["additionalTargetLanguages"] = new JsonArray(exception.Request.AdditionalTargetLanguages.Select(language => (JsonNode)language).ToArray())
+            ["tenantId"] = request.TenantId,
+            ["userId"] = request.UserId,
+            ["channelId"] = request.ChannelId ?? string.Empty,
+            ["targetLanguage"] = request.TargetLanguage,
+            ["sourceLanguage"] = request.SourceLanguage ?? string.Empty,
+            ["tone"] = request.Tone,
+            ["useGlossary"] = request.UseGlossary,
+            ["uiLocale"] = request.UiLocale ?? string.Empty,
+            ["text"] = request.Text,
+            ["additionalTargetLanguages"] = new JsonArray(request.AdditionalTargetLanguages.Select(language => (JsonNode)language).ToArray())
         };
 
         var actions = new JsonArray

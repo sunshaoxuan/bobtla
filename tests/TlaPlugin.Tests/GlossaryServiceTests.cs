@@ -9,7 +9,7 @@ namespace TlaPlugin.Tests;
 public class GlossaryServiceTests
 {
     [Fact]
-    public void Apply_DetectsConflict_AndHonorsAlternativeSelection()
+    public void Preview_DetectsConflict_AndHonorsAlternativeSelection()
     {
         var service = new GlossaryService();
         service.LoadEntries(new[]
@@ -18,15 +18,18 @@ public class GlossaryServiceTests
             new GlossaryEntry("GPU", "显卡", "channel:finance")
         });
 
-        var unresolved = service.Apply("GPU 加速", "contoso", "finance", "user");
+        var unresolved = service.Preview("GPU 加速", "contoso", "finance", "user");
 
         Assert.True(unresolved.HasConflicts);
         Assert.True(unresolved.RequiresResolution);
+        Assert.Equal("GPU 加速", unresolved.Text);
         var conflict = Assert.Single(unresolved.Matches);
         Assert.True(conflict.HasConflict);
         Assert.Equal(GlossaryDecisionKind.Unspecified, conflict.Resolution);
         Assert.Equal(2, conflict.Candidates.Count);
         Assert.False(conflict.Replaced);
+        Assert.Equal(0, conflict.Candidates[0].Priority);
+        Assert.Equal(1, conflict.Candidates[1].Priority);
 
         var decisions = new Dictionary<string, GlossaryDecision>(StringComparer.OrdinalIgnoreCase)
         {
@@ -86,10 +89,11 @@ public class GlossaryServiceTests
             new GlossaryEntry("CPU", "自定义翻译", "user:owner")
         });
 
-        var result = service.Apply("CPU upgrade", "contoso", "finance", "owner");
+        var result = service.Preview("CPU upgrade", "contoso", "finance", "owner");
 
         Assert.True(result.HasConflicts);
         Assert.True(result.RequiresResolution);
+        Assert.Equal("CPU upgrade", result.Text);
         var match = Assert.Single(result.Matches);
         Assert.Equal("CPU", match.Source);
         Assert.True(match.HasConflict);

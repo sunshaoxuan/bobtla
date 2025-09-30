@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Options;
 using TlaPlugin.Configuration;
 using TlaPlugin.Models;
+using TlaPlugin.Providers;
 using TlaPlugin.Services;
 using Xunit;
 
@@ -362,7 +363,7 @@ public class TranslationPipelineTests
     }
 
     [Fact]
-    public async Task ThrowsGlossaryConflictWhenDecisionMissing()
+    public async Task ReturnsGlossaryConflictWhenDecisionMissing()
     {
         var options = Options.Create(new PluginOptions
         {
@@ -388,13 +389,21 @@ public class TranslationPipelineTests
 
         await Assert.ThrowsAsync<GlossaryConflictException>(() => pipeline.TranslateAsync(new TranslationRequest
         {
-            Text = "GPU", 
+            Text = "GPU",
             TenantId = "contoso",
             UserId = "user",
             TargetLanguage = "ja",
             SourceLanguage = "en",
-            ChannelId = "finance"
-        }, CancellationToken.None));
+            ChannelId = "finance",
+            UseGlossary = true
+        }, CancellationToken.None);
+
+        Assert.True(execution.RequiresGlossaryResolution);
+        var conflicts = Assert.NotNull(execution.GlossaryConflicts);
+        Assert.True(conflicts.HasConflicts);
+        var match = Assert.Single(conflicts.Matches);
+        Assert.True(match.HasConflict);
+        Assert.Equal("GPU", match.Source);
     }
 
     [Fact]
@@ -717,6 +726,73 @@ public class TranslationPipelineTests
         Assert.Contains(detection.Candidates, candidate => string.Equals(candidate.Language, "zh", StringComparison.OrdinalIgnoreCase));
     }
 
+    [Fact]
+    public async Task ReturnsDetectionResultWhenRouterSignalsLowConfidence()
+    {
+        var providerOptions = new ModelProviderOptions
+        {
+            Id = "low-confidence",
+            CostPerCharUsd = 0.1m,
+            Regions = new List<string> { "japan" },
+            Certifications = new List<string> { "iso" }
+        };
+
+        var detection = new DetectionResult(
+            "fr",
+            0.6,
+            new List<DetectionCandidate>
+            {
+                new("fr", 0.6),
+                new("en", 0.52)
+            });
+
+        var options = Options.Create(new PluginOptions
+        {
+            Providers = new List<ModelProviderOptions> { providerOptions },
+            Compliance = new CompliancePolicyOptions
+            {
+                RequiredRegionTags = new List<string> { "japan" },
+                RequiredCertifications = new List<string> { "iso" }
+            }
+        });
+
+        var localization = new LocalizationCatalogService();
+        var router = new TranslationRouter(
+            new ModelProviderFactory(options),
+            new ComplianceGateway(options),
+            new BudgetGuard(options.Value),
+            new AuditLogger(),
+            new ToneTemplateService(),
+            new StaticTokenBroker(),
+            new UsageMetricsService(),
+            localization,
+            options,
+            new[] { new LowConfidenceModelProvider(providerOptions, detection) });
+
+        var throttle = new TranslationThrottle(options);
+        var glossary = new GlossaryService();
+        var cache = new TranslationCache(options);
+        var rewrite = new RewriteService(router, throttle);
+        var reply = new ReplyService(rewrite, options);
+
+        var pipeline = new TranslationPipeline(router, glossary, new OfflineDraftStore(options), new LanguageDetector(), cache, throttle, rewrite, reply, options);
+
+        var result = await pipeline.TranslateAsync(new TranslationRequest
+        {
+            Text = "Provider requires manual confirmation despite supplied source language.",
+            TenantId = "contoso",
+            UserId = "user",
+            TargetLanguage = "ja",
+            SourceLanguage = "en"
+        }, CancellationToken.None);
+
+        Assert.True(result.RequiresLanguageSelection);
+        var detectionResult = Assert.NotNull(result.Detection);
+        Assert.Equal(detection.Language, detectionResult.Language);
+        Assert.Contains(detectionResult.Candidates, candidate => candidate.Language == "fr");
+        Assert.Contains(detectionResult.Candidates, candidate => candidate.Language == "en");
+    }
+
     private static TranslationPipeline BuildPipeline(IOptions<PluginOptions> options, GlossaryService? glossaryOverride = null)
     {
         var glossary = glossaryOverride ?? new GlossaryService();
@@ -727,5 +803,36 @@ public class TranslationPipelineTests
         var rewrite = new RewriteService(router, throttle);
         var reply = new ReplyService(rewrite, options);
         return new TranslationPipeline(router, glossary, new OfflineDraftStore(options), new LanguageDetector(), cache, throttle, rewrite, reply, options);
+    }
+
+    private sealed class LowConfidenceModelProvider : IModelProvider
+    {
+        private readonly DetectionResult _detection;
+
+        public LowConfidenceModelProvider(ModelProviderOptions options, DetectionResult detection)
+        {
+            Options = options;
+            _detection = detection;
+        }
+
+        public ModelProviderOptions Options { get; }
+
+        public Task<DetectionResult> DetectAsync(string text, CancellationToken cancellationToken)
+            => Task.FromResult(_detection);
+
+        public Task<ModelTranslationResult> TranslateAsync(string text, string sourceLanguage, string targetLanguage, string promptPrefix, CancellationToken cancellationToken)
+            => Task.FromException<ModelTranslationResult>(new LowConfidenceDetectionException(_detection));
+
+        public Task<string> RewriteAsync(string translatedText, string tone, CancellationToken cancellationToken)
+            => Task.FromResult(translatedText);
+
+        public Task<string> SummarizeAsync(string text, CancellationToken cancellationToken)
+            => Task.FromResult(text);
+    }
+
+    private sealed class StaticTokenBroker : ITokenBroker
+    {
+        public Task<AccessToken> ExchangeOnBehalfOfAsync(string tenantId, string userId, CancellationToken cancellationToken)
+            => Task.FromResult(new AccessToken("token", DateTimeOffset.UtcNow.AddMinutes(5), "api://audience"));
     }
 }
