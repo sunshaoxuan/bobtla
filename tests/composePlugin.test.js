@@ -22,7 +22,7 @@ function createStubElement(initial = {}) {
   };
 }
 
-test("compose plugin sends translate request with compose text", async () => {
+test("compose plugin translates and posts reply payload", async () => {
   const fetchCalls = [];
   const fakeFetch = async (url, options = {}) => {
     if (options.body) {
@@ -38,11 +38,17 @@ test("compose plugin sends translate request with compose text", async () => {
               { id: "auto", name: "Auto", isDefault: true },
               { id: "es", name: "Español" }
             ],
-            features: { terminologyToggle: true },
+            features: { terminologyToggle: true, toneToggle: true },
             pricing: { currency: "USD" }
           };
         }
-        return { text: "hola" };
+        if (url === "/api/translate") {
+          return { text: "hola", metadata: { modelId: "model-a" } };
+        }
+        if (url === "/api/reply") {
+          return { status: "ok" };
+        }
+        throw new Error(`unexpected url ${url}`);
       }
     };
   };
@@ -52,6 +58,8 @@ test("compose plugin sends translate request with compose text", async () => {
   const preview = createStubElement();
   const targetSelect = createStubElement({ value: "es" });
   targetSelect.replaceChildren = () => {};
+  const toneToggle = createStubElement({ checked: true });
+  const costHint = createStubElement();
 
   const teams = {
     app: {
@@ -69,18 +77,23 @@ test("compose plugin sends translate request with compose text", async () => {
     }
   };
 
-  await initComposePlugin({
-    ui: { input, targetSelect, suggestButton, applyButton, preview },
+  const { state } = await initComposePlugin({
+    ui: { input, targetSelect, suggestButton, applyButton, preview, toneToggle, costHint },
     teams,
     fetcher: fakeFetch
   });
 
+  toneToggle.checked = true;
+  await toneToggle.trigger("change");
   await suggestButton.trigger("click");
-  assert.equal(fetchCalls.length, 1);
   assert.equal(fetchCalls[0].url, "/api/translate");
   assert.equal(fetchCalls[0].options.text, "hello");
   await applyButton.trigger("click");
   assert.equal(preview.value || preview.textContent, "hola");
+  assert.equal(fetchCalls[1].url, "/api/reply");
+  assert.equal(fetchCalls[1].options.translation, "hola");
+  assert.equal(fetchCalls[1].options.metadata.tone, "formal");
+  assert.equal(state.tone, "formal");
 });
 
 test("compose plugin falls back to first non-auto target", async () => {
@@ -100,7 +113,7 @@ test("compose plugin falls back to first non-auto target", async () => {
               { id: "fr", name: "Français" },
               { id: "de", name: "Deutsch" }
             ],
-            features: { terminologyToggle: true },
+            features: { terminologyToggle: true, toneToggle: true },
             pricing: { currency: "USD" }
           };
         }
