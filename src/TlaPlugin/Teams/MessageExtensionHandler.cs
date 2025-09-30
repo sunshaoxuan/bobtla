@@ -37,7 +37,13 @@ public class MessageExtensionHandler
         var catalog = _localization.GetCatalog(locale);
         try
         {
-            var result = await _pipeline.ExecuteAsync(request, CancellationToken.None);
+            var execution = await _pipeline.ExecuteAsync(request, CancellationToken.None);
+            if (execution.RequiresLanguageSelection && execution.Detection is { } detection)
+            {
+                return BuildLanguageSelectionResponse(catalog, detection);
+            }
+
+            var result = execution.Translation ?? throw new TranslationException("翻訳結果を取得できませんでした。");
             return new JsonObject
             {
                 ["type"] = "message",
@@ -62,29 +68,6 @@ public class MessageExtensionHandler
         catch (RateLimitExceededException ex)
         {
             return BuildErrorCard(catalog, "tla.error.rate.title", ex.Message);
-        }
-        catch (LanguageDetectionLowConfidenceException ex)
-        {
-            static string Resolve(LocalizationCatalog catalog, string key) =>
-                catalog.Strings.TryGetValue(key, out var value) ? value : key;
-
-            var candidates = new JsonArray();
-            foreach (var candidate in ex.Detection.Candidates)
-            {
-                candidates.Add(new JsonObject
-                {
-                    ["language"] = candidate.Language,
-                    ["confidence"] = candidate.Confidence
-                });
-            }
-
-            return new JsonObject
-            {
-                ["type"] = "languageSelection",
-                ["title"] = Resolve(catalog, "tla.error.detection.title"),
-                ["message"] = Resolve(catalog, "tla.error.detection.body"),
-                ["candidates"] = candidates
-            };
         }
         catch (TranslationException ex)
         {
@@ -199,6 +182,30 @@ public class MessageExtensionHandler
                     }
                 }
             }
+        };
+    }
+
+    private static JsonObject BuildLanguageSelectionResponse(LocalizationCatalog catalog, DetectionResult detection)
+    {
+        static string Resolve(LocalizationCatalog catalog, string key) =>
+            catalog.Strings.TryGetValue(key, out var value) ? value : key;
+
+        var candidates = new JsonArray();
+        foreach (var candidate in detection.Candidates)
+        {
+            candidates.Add(new JsonObject
+            {
+                ["language"] = candidate.Language,
+                ["confidence"] = candidate.Confidence
+            });
+        }
+
+        return new JsonObject
+        {
+            ["type"] = "languageSelection",
+            ["title"] = Resolve(catalog, "tla.error.detection.title"),
+            ["message"] = Resolve(catalog, "tla.error.detection.body"),
+            ["candidates"] = candidates
         };
     }
 

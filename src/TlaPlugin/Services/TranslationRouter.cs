@@ -432,17 +432,6 @@ public class TranslationRouter
     }
 }
 
-public class LanguageDetectionLowConfidenceException : TranslationException
-{
-    public LanguageDetectionLowConfidenceException(DetectionResult detection)
-        : base("言語を自動判定できません。候補から選択してください。")
-    {
-        Detection = detection;
-    }
-
-    public DetectionResult Detection { get; }
-}
-
 public class TranslationException : Exception
 {
     public TranslationException(string message) : base(message) { }
