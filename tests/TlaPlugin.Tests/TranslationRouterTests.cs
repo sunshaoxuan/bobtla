@@ -332,6 +332,74 @@ public class TranslationRouterTests
         Assert.Equal("翻译结果", title);
     }
 
+    [Fact]
+    public async Task DetectAsyncReturnsResult()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            Providers = new List<ModelProviderOptions>
+            {
+                new() { Id = "primary" }
+            }
+        });
+
+        var router = new TranslationRouter(new ModelProviderFactory(options), new ComplianceGateway(options), new BudgetGuard(options.Value), new AuditLogger(), new ToneTemplateService(), new RecordingTokenBroker(), new UsageMetricsService(), new LocalizationCatalogService(), options);
+
+        var result = await router.DetectAsync(new LanguageDetectionRequest { Text = "こんにちは", TenantId = "contoso" }, CancellationToken.None);
+
+        Assert.Equal("ja", result.Language);
+        Assert.True(result.Confidence > 0.5);
+    }
+
+    [Fact]
+    public async Task RewriteAsyncAdjustsTone()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            Providers = new List<ModelProviderOptions>
+            {
+                new() { Id = "primary" }
+            }
+        });
+
+        var router = new TranslationRouter(new ModelProviderFactory(options), new ComplianceGateway(options), new BudgetGuard(options.Value), new AuditLogger(), new ToneTemplateService(), new RecordingTokenBroker(), new UsageMetricsService(), new LocalizationCatalogService(), options);
+
+        var result = await router.RewriteAsync(new RewriteRequest
+        {
+            Text = "こんにちは",
+            TenantId = "contoso",
+            UserId = "user",
+            Tone = ToneTemplateService.Business
+        }, CancellationToken.None);
+
+        Assert.Equal("primary", result.ModelId);
+        Assert.Contains("商务语气", result.RewrittenText);
+    }
+
+    [Fact]
+    public async Task SummarizeAsyncProducesSummary()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            Providers = new List<ModelProviderOptions>
+            {
+                new() { Id = "primary" }
+            }
+        });
+
+        var router = new TranslationRouter(new ModelProviderFactory(options), new ComplianceGateway(options), new BudgetGuard(options.Value), new AuditLogger(), new ToneTemplateService(), new RecordingTokenBroker(), new UsageMetricsService(), new LocalizationCatalogService(), options);
+
+        var summary = await router.SummarizeAsync(new SummarizeRequest
+        {
+            Context = "This is a very long context that should be summarized for verification.",
+            TenantId = "contoso",
+            UserId = "user"
+        }, CancellationToken.None);
+
+        Assert.Equal("primary", summary.ModelId);
+        Assert.Contains("概要", summary.Summary);
+    }
+
     private sealed class RecordingTokenBroker : ITokenBroker
     {
         public bool ShouldThrow { get; set; }

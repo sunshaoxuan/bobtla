@@ -52,6 +52,38 @@ public class TranslationRouter
 
     public PluginOptions Options { get; }
 
+    public async Task<DetectionResult> DetectAsync(LanguageDetectionRequest request, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.Text))
+        {
+            throw new TranslationException("検出対象のテキストは必須です。");
+        }
+
+        if (request.Text.Length > Options.MaxCharactersPerRequest)
+        {
+            throw new TranslationException("検出対象が許容される文字数を超えています。");
+        }
+
+        foreach (var provider in _providers)
+        {
+            try
+            {
+                return await provider.DetectAsync(request.Text, cancellationToken);
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or TaskCanceledException)
+            {
+                continue;
+            }
+        }
+
+        if (!string.IsNullOrEmpty(request.TenantId))
+        {
+            _metrics.RecordFailure(request.TenantId, UsageMetricsService.FailureReasons.Provider);
+        }
+
+        throw new TranslationException("言語を検出できません。");
+    }
+
     public async Task<TranslationResult> TranslateAsync(TranslationRequest request, CancellationToken cancellationToken)
     {
         var sourceLanguage = request.SourceLanguage;
@@ -62,28 +94,7 @@ public class TranslationRouter
             sourceLanguage = detection.Language;
         }
 
-        if (string.IsNullOrEmpty(request.UserId))
-        {
-            _metrics.RecordFailure(request.TenantId, UsageMetricsService.FailureReasons.Authentication);
-            throw new AuthenticationException("ユーザー ID が空のため、トークンを取得できません。");
-        }
-
-        AccessToken token;
-        try
-        {
-            token = await _tokenBroker.ExchangeOnBehalfOfAsync(request.TenantId, request.UserId, cancellationToken);
-        }
-        catch (AuthenticationException)
-        {
-            _metrics.RecordFailure(request.TenantId, UsageMetricsService.FailureReasons.Authentication);
-            throw;
-        }
-
-        if (token.ExpiresOn <= DateTimeOffset.UtcNow)
-        {
-            _metrics.RecordFailure(request.TenantId, UsageMetricsService.FailureReasons.Authentication);
-            throw new AuthenticationException("取得したトークンの有効期限が切れています。");
-        }
+        var token = await AcquireTokenAsync(request.TenantId, request.UserId, cancellationToken);
 
         var promptPrefix = _tones.GetPromptPrefix(request.Tone);
 
@@ -156,25 +167,20 @@ public class TranslationRouter
         throw new TranslationException("利用可能なモデルが見つかりません。");
     }
 
-    public async Task<string> RewriteAsync(RewriteRequest request, CancellationToken cancellationToken)
+    public async Task<RewriteResult> RewriteAsync(RewriteRequest request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.Text))
         {
-            throw new TranslationException("改写内容不能为空。");
+            throw new TranslationException("改写する本文は必須です。");
         }
 
-        if (string.IsNullOrWhiteSpace(request.UserId))
+        if (string.IsNullOrWhiteSpace(request.TenantId) || string.IsNullOrWhiteSpace(request.UserId))
         {
-            _metrics.RecordFailure(request.TenantId, UsageMetricsService.FailureReasons.Authentication);
-            throw new AuthenticationException("用户 ID が空のため、トークンを取得できません。");
+            throw new AuthenticationException("tenantId と userId は必須です。");
         }
 
-        var token = await _tokenBroker.ExchangeOnBehalfOfAsync(request.TenantId, request.UserId, cancellationToken);
-        if (token.ExpiresOn <= DateTimeOffset.UtcNow)
-        {
-            _metrics.RecordFailure(request.TenantId, UsageMetricsService.FailureReasons.Authentication);
-            throw new AuthenticationException("取得したトークンの有効期限が切れています。");
-        }
+        var token = await AcquireTokenAsync(request.TenantId, request.UserId, cancellationToken);
+        _ = token; // トークン取得は成功の検証として使用する。
 
         var allowedProviders = 0;
         foreach (var provider in _providers)
@@ -186,26 +192,23 @@ public class TranslationRouter
             }
 
             allowedProviders++;
-            var estimatedCost = Math.Max(1, request.Text.Length) * provider.Options.CostPerCharUsd * 0.2m;
+            var estimatedCost = request.Text.Length * provider.Options.CostPerCharUsd;
             if (!_budget.TryReserve(request.TenantId, estimatedCost))
             {
                 _metrics.RecordFailure(request.TenantId, UsageMetricsService.FailureReasons.Budget);
-                throw new BudgetExceededException("本日の翻訳予算を使い切りました。");
+                throw new BudgetExceededException("本日の翻訳予算を超過しています。");
             }
 
             try
             {
-                var sw = Stopwatch.StartNew();
                 var rewritten = await provider.RewriteAsync(request.Text, request.Tone, cancellationToken);
-                sw.Stop();
-
-                _audit.Record(request.TenantId, request.UserId, provider.Options.Id, request.Text, rewritten, estimatedCost, (int)sw.ElapsedMilliseconds, token.Audience);
-                _metrics.RecordSuccess(request.TenantId, provider.Options.Id, estimatedCost, (int)sw.ElapsedMilliseconds, 1);
-                return rewritten;
+                var latency = provider.Options.LatencyTargetMs;
+                _metrics.RecordSuccess(request.TenantId, provider.Options.Id, estimatedCost, latency, 1);
+                return new RewriteResult(rewritten, provider.Options.Id, estimatedCost, latency);
             }
             catch (Exception ex) when (ex is InvalidOperationException or TaskCanceledException)
             {
-                // 尝试下一模型。
+                continue;
             }
         }
 
@@ -218,28 +221,90 @@ public class TranslationRouter
             _metrics.RecordFailure(request.TenantId, UsageMetricsService.FailureReasons.Provider);
         }
 
-        throw new TranslationException("改写流程未找到可用模型。");
+        throw new TranslationException("改写に使用できるモデルが見つかりません。");
     }
 
-    public Task<ReplyResult> PostReplyAsync(ReplyRequest request, CancellationToken cancellationToken)
+    public async Task<SummarizeResult> SummarizeAsync(SummarizeRequest request, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(request.UserId))
+        if (string.IsNullOrWhiteSpace(request.Context))
         {
-            _metrics.RecordFailure(request.TenantId, UsageMetricsService.FailureReasons.Authentication);
+            throw new TranslationException("要約対象のコンテキストは必須です。");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.TenantId) || string.IsNullOrWhiteSpace(request.UserId))
+        {
+            throw new AuthenticationException("tenantId と userId は必須です。");
+        }
+
+        var token = await AcquireTokenAsync(request.TenantId, request.UserId, cancellationToken);
+        _ = token;
+
+        var allowedProviders = 0;
+        foreach (var provider in _providers)
+        {
+            var report = _compliance.Evaluate(request.Context, provider.Options);
+            if (!report.Allowed)
+            {
+                continue;
+            }
+
+            allowedProviders++;
+            var estimatedCost = request.Context.Length * provider.Options.CostPerCharUsd;
+            if (!_budget.TryReserve(request.TenantId, estimatedCost))
+            {
+                _metrics.RecordFailure(request.TenantId, UsageMetricsService.FailureReasons.Budget);
+                throw new BudgetExceededException("本日の翻訳予算を超過しています。");
+            }
+
+            try
+            {
+                var summary = await provider.SummarizeAsync(request.Context, cancellationToken);
+                var latency = provider.Options.LatencyTargetMs;
+                _metrics.RecordSuccess(request.TenantId, provider.Options.Id, estimatedCost, latency, 1);
+                return new SummarizeResult(summary, provider.Options.Id, estimatedCost, latency);
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or TaskCanceledException)
+            {
+                continue;
+            }
+        }
+
+        if (allowedProviders == 0)
+        {
+            _metrics.RecordFailure(request.TenantId, UsageMetricsService.FailureReasons.Compliance);
+        }
+        else
+        {
+            _metrics.RecordFailure(request.TenantId, UsageMetricsService.FailureReasons.Provider);
+        }
+
+        throw new TranslationException("要約に使用できるモデルが見つかりません。");
+    }
+
+    private async Task<AccessToken> AcquireTokenAsync(string tenantId, string userId, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrEmpty(userId))
+        {
+            _metrics.RecordFailure(tenantId, UsageMetricsService.FailureReasons.Authentication);
             throw new AuthenticationException("ユーザー ID が空のため、トークンを取得できません。");
         }
 
-        var messageId = Guid.NewGuid().ToString("N");
-        _audit.Record(request.TenantId, request.UserId, "manual-reply", request.Text, request.Text, 0m, 0, null);
-        var result = new ReplyResult
+        try
         {
-            MessageId = messageId,
-            Status = "posted",
-            Language = request.Language ?? string.Empty,
-            PostedAt = DateTimeOffset.UtcNow
-        };
+            var token = await _tokenBroker.ExchangeOnBehalfOfAsync(tenantId, userId, cancellationToken);
+            if (token.ExpiresOn <= DateTimeOffset.UtcNow)
+            {
+                _metrics.RecordFailure(tenantId, UsageMetricsService.FailureReasons.Authentication);
+                throw new AuthenticationException("取得したトークンの有効期限が切れています。");
+            }
 
-        return Task.FromResult(result);
+            return token;
+        }
+        catch (AuthenticationException)
+        {
+            _metrics.RecordFailure(tenantId, UsageMetricsService.FailureReasons.Authentication);
+            throw;
+        }
     }
 
     private JsonObject BuildAdaptiveCard(

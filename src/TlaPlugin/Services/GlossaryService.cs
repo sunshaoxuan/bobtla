@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -31,143 +30,55 @@ public class GlossaryService
         string userId,
         IDictionary<string, GlossaryDecision>? decisions = null)
     {
-        var scopedEntries = _entries
-            .Select(entry => new
-            {
-                Entry = entry,
-                Priority = Priority(entry.Scope, tenantId, channelId, userId)
-            })
-            .Where(candidate => candidate.Entry.Scope == $"tenant:{tenantId}" ||
-                candidate.Entry.Scope == $"channel:{channelId}" ||
-                candidate.Entry.Scope == $"user:{userId}")
-            .OrderBy(candidate => candidate.Priority)
-            .ThenBy(candidate => candidate.Entry.Source, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(candidate => candidate.Entry.Target, StringComparer.OrdinalIgnoreCase)
+        var detailed = ApplyDetailed(text, tenantId, channelId, userId, GlossaryPolicy.Fallback);
+        return detailed.ProcessedText;
+    }
+
+    /// <summary>
+    /// 返回详细的术语命中信息。
+    /// </summary>
+    public GlossaryApplicationResult ApplyDetailed(
+        string text,
+        string tenantId,
+        string? channelId,
+        string userId,
+        GlossaryPolicy policy,
+        IEnumerable<string>? glossaryIds = null)
+    {
+        var candidates = _entries
+            .Where(e => e.Scope == $"tenant:{tenantId}" || e.Scope == $"channel:{channelId}" || e.Scope == $"user:{userId}")
+            .OrderBy(e => Priority(e.Scope, tenantId, channelId, userId))
             .ToList();
 
-        if (scopedEntries.Count == 0)
+        if (glossaryIds is not null && glossaryIds.Any())
         {
-            return new GlossaryApplicationResult
-            {
-                Text = text,
-                Matches = Array.Empty<GlossaryMatchDetail>()
-            };
+            candidates = candidates
+                .Where(entry => entry.Metadata != null && entry.Metadata.TryGetValue("id", out var id) && glossaryIds.Contains(id))
+                .ToList();
         }
 
-        var resolutionMap = decisions != null
-            ? new Dictionary<string, GlossaryDecision>(decisions, StringComparer.OrdinalIgnoreCase)
-            : new Dictionary<string, GlossaryDecision>(StringComparer.OrdinalIgnoreCase);
-
-        var workingText = text;
-        var matches = new List<GlossaryMatchDetail>();
-
-        var grouped = scopedEntries
-            .GroupBy(candidate => candidate.Entry.Source, StringComparer.OrdinalIgnoreCase)
-            .Select(group => new
-            {
-                Source = group.Key,
-                Items = group.ToList(),
-                MinPriority = group.Min(item => item.Priority)
-            })
-            .OrderBy(group => group.MinPriority)
-            .ThenBy(group => group.Source, StringComparer.OrdinalIgnoreCase);
-
-        foreach (var group in grouped)
+        var matches = new List<GlossaryMatch>();
+        var result = text;
+        foreach (var entry in candidates)
         {
-            var pattern = Regex.Escape(group.Source);
-            var occurrences = Regex.Matches(workingText, pattern, RegexOptions.IgnoreCase).Count;
-            if (occurrences == 0)
+            var pattern = Regex.Escape(entry.Source);
+            var regex = new Regex(pattern, RegexOptions.IgnoreCase);
+            var hitCount = regex.Matches(result).Count;
+            if (hitCount == 0)
             {
                 continue;
             }
 
-            var candidates = group.Items
-                .GroupBy(item => item.Entry.Target, StringComparer.OrdinalIgnoreCase)
-                .Select(targetGroup => targetGroup
-                    .OrderBy(item => item.Priority)
-                    .ThenBy(item => item.Entry.Scope, StringComparer.OrdinalIgnoreCase)
-                    .First())
-                .OrderBy(item => item.Priority)
-                .ThenBy(item => item.Entry.Target, StringComparer.OrdinalIgnoreCase)
-                .Select(item => new GlossaryCandidateDetail(item.Entry.Target, item.Entry.Scope, item.Priority))
-                .ToList();
-
-            var hasConflict = candidates
-                .Select(candidate => candidate.Target)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .Skip(1)
-                .Any();
-
-            var resolution = GlossaryDecisionKind.Unspecified;
-            GlossaryCandidateDetail? selectedCandidate = null;
-
-            if (resolutionMap.TryGetValue(group.Source, out var decision))
-            {
-                resolution = decision.Kind;
-                switch (decision.Kind)
-                {
-                    case GlossaryDecisionKind.UsePreferred:
-                        selectedCandidate = candidates.FirstOrDefault();
-                        break;
-                    case GlossaryDecisionKind.UseAlternative:
-                        if (!string.IsNullOrWhiteSpace(decision.Target))
-                        {
-                            selectedCandidate = candidates.FirstOrDefault(candidate =>
-                                string.Equals(candidate.Target, decision.Target, StringComparison.OrdinalIgnoreCase));
-                        }
-
-                        selectedCandidate ??= candidates.Skip(1).FirstOrDefault();
-                        break;
-                    case GlossaryDecisionKind.KeepOriginal:
-                        selectedCandidate = null;
-                        break;
-                }
-            }
-
-            if (!hasConflict && resolution == GlossaryDecisionKind.Unspecified)
-            {
-                resolution = GlossaryDecisionKind.UsePreferred;
-                selectedCandidate = candidates.FirstOrDefault();
-            }
-
-            var replaced = false;
-            string? appliedTarget = null;
-            if (selectedCandidate != null)
-            {
-                workingText = Regex.Replace(workingText, pattern, selectedCandidate.Target, RegexOptions.IgnoreCase);
-                replaced = true;
-                appliedTarget = selectedCandidate.Target;
-                if (resolution == GlossaryDecisionKind.Unspecified)
-                {
-                    resolution = GlossaryDecisionKind.UsePreferred;
-                }
-            }
-            else if (!hasConflict && candidates.Count > 0)
-            {
-                var fallback = candidates.First();
-                workingText = Regex.Replace(workingText, pattern, fallback.Target, RegexOptions.IgnoreCase);
-                replaced = true;
-                appliedTarget = fallback.Target;
-                resolution = GlossaryDecisionKind.UsePreferred;
-            }
-
-            matches.Add(new GlossaryMatchDetail
-            {
-                Source = group.Source,
-                AppliedTarget = appliedTarget,
-                Replaced = replaced,
-                HasConflict = hasConflict,
-                Resolution = resolution,
-                Occurrences = occurrences,
-                Candidates = candidates
-            });
+            result = regex.Replace(result, entry.Target);
+            matches.Add(new GlossaryMatch(entry.Source, entry.Target, entry.Scope, hitCount));
         }
 
-        return new GlossaryApplicationResult
+        if (policy == GlossaryPolicy.Strict && matches.Count == 0)
         {
-            Text = workingText,
-            Matches = matches
-        };
+            throw new GlossaryApplicationException("指定された用語が見つかりませんでした。");
+        }
+
+        return new GlossaryApplicationResult(result, matches);
     }
 
     /// <summary>

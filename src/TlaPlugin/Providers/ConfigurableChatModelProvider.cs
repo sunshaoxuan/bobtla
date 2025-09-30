@@ -98,6 +98,29 @@ public class ConfigurableChatModelProvider : IModelProvider
         }
     }
 
+    public async Task<string> SummarizeAsync(string text, CancellationToken cancellationToken)
+    {
+        if (!CanInvokeExternalEndpoint)
+        {
+            return await _fallback.SummarizeAsync(text, cancellationToken);
+        }
+
+        var instructions = "请对以下内容生成两句话以内的摘要。";
+        var messages = new List<(string role, string content)>
+        {
+            ("user", text)
+        };
+
+        try
+        {
+            return await InvokeChatCompletionAsync(instructions, messages, cancellationToken);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            throw new InvalidOperationException($"模型 {Options.Id} 的摘要流程失败。", ex);
+        }
+    }
+
     private bool CanInvokeExternalEndpoint =>
         _httpClientFactory != null && _secretResolver != null &&
         !string.IsNullOrWhiteSpace(Options.Endpoint) &&
