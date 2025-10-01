@@ -58,6 +58,125 @@ body {
   font-weight: 600;
 }
 
+.card--metrics {
+  gap: 16px;
+}
+
+.card--metrics.is-loading {
+  opacity: 0.75;
+}
+
+.metrics__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.metrics__refresh {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.metrics__refresh:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.metrics__refresh[disabled] {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.metrics__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.metrics__stat {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 12px;
+  padding: 12px;
+  display: grid;
+  gap: 6px;
+}
+
+.metrics__label {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.metrics__value {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.metrics__detail {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.metrics__failures {
+  display: grid;
+  gap: 8px;
+}
+
+.metrics__failures h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.metrics__failure-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.metrics__failure-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-secondary);
+}
+
+.metrics__reason {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.metrics__count {
+  font-variant-numeric: tabular-nums;
+}
+
+.metrics__empty {
+  justify-content: center;
+  font-style: italic;
+}
+
+.metrics__updated {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-align: right;
+}
+
 .progress {
   position: relative;
   height: 12px;
@@ -190,6 +309,40 @@ body {
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.06);
   color: var(--text-secondary);
+}
+
+.test-list li {
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 6px 12px;
+}
+
+.test-list li strong {
+  flex: 1 1 100%;
+}
+
+.test-list li > span {
+  flex: 1 1 100%;
+}
+
+.test-list li .tag {
+  flex: 0 0 auto;
+}
+
+.test-list li .test__reason {
+  flex: 1 1 100%;
+  color: rgba(255, 181, 181, 0.92);
+  font-size: 12px;
+}
+
+.test--failing {
+  border: 1px solid rgba(255, 136, 136, 0.35);
+  background: rgba(255, 94, 94, 0.08);
+}
+
+.tag--danger {
+  background: rgba(255, 94, 94, 0.2);
+  color: #ffb5b5;
 }
 
 .language-list {

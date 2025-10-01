@@ -42,6 +42,36 @@
             <p data-language-count>正在载入...</p>
             <ul class="language-list" data-language-list></ul>
           </article>
+          <article class="card card--metrics" data-metrics-card>
+            <header class="metrics__header">
+              <h2>使用指标</h2>
+              <button type="button" class="metrics__refresh" data-metrics-refresh>刷新</button>
+            </header>
+            <div class="metrics__grid">
+              <div class="metrics__stat" data-metric-usage>
+                <span class="metrics__label">24 小时调用</span>
+                <strong class="metrics__value" data-metric-usage-value>--</strong>
+                <span class="metrics__detail" data-metric-usage-detail>成功率 --</span>
+              </div>
+              <div class="metrics__stat" data-metric-cost>
+                <span class="metrics__label">月度成本</span>
+                <strong class="metrics__value" data-metric-cost-value>--</strong>
+                <span class="metrics__detail" data-metric-cost-detail>日均 --</span>
+              </div>
+              <div class="metrics__stat" data-metric-failure-summary>
+                <span class="metrics__label">失败次数</span>
+                <strong class="metrics__value" data-metric-failure-total>--</strong>
+                <span class="metrics__detail" data-metric-failure-detail>主要原因 --</span>
+              </div>
+            </div>
+            <div class="metrics__failures">
+              <h3>高频失败原因</h3>
+              <ul class="metrics__failure-list" data-failure-reasons>
+                <li class="metrics__empty">正在统计...</li>
+              </ul>
+            </div>
+            <p class="metrics__updated" data-metrics-updated>最近更新：--</p>
+          </article>
         </div>
       </section>
 
