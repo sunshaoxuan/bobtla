@@ -747,7 +747,6 @@ async function bootstrap() {
   renderTests(latestCards.tests, latestMetrics);
   renderLocales(formatLocaleOptions(locales ?? FALLBACK_LOCALES));
   renderLanguages(configuration?.supportedLanguages ?? FALLBACK_LANGUAGES);
-
   setupMetricsRefresh();
 }
 
