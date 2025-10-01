@@ -408,6 +408,235 @@ function renderLanguages(languages) {
   });
 }
 
+function toggleHidden(element, shouldHide) {
+  if (!element) return;
+  element.hidden = shouldHide;
+}
+
+function setText(element, text) {
+  if (!element) return;
+  element.textContent = text;
+}
+
+function setHtml(element, html) {
+  if (!element) return;
+  element.innerHTML = html;
+}
+
+function normalizeConflict(conflict) {
+  if (!conflict || typeof conflict !== "object") {
+    return null;
+  }
+  const source = conflict.source ?? conflict.Source ?? "";
+  const existingTarget = conflict.existingTarget ?? conflict.ExistingTarget ?? "";
+  const incomingTarget = conflict.incomingTarget ?? conflict.IncomingTarget ?? "";
+  const scope = conflict.scope ?? conflict.Scope ?? "未知作用域";
+  return { source, existingTarget, incomingTarget, scope };
+}
+
+export function renderGlossaryEntries(listElement, entries) {
+  if (!listElement) return;
+  const safeEntries = Array.isArray(entries) ? entries : [];
+  if (safeEntries.length === 0) {
+    listElement.innerHTML = "<li>暂无术语条目。</li>";
+    return;
+  }
+  const html = safeEntries
+    .map((entry) => {
+      const source = entry.source ?? entry.Source ?? "(未知源词)";
+      const target = entry.target ?? entry.Target ?? "(无译文)";
+      const scope = entry.scope ?? entry.Scope ?? "global";
+      return `<li><strong>${source}</strong><span>${target}</span><span>${scope}</span></li>`;
+    })
+    .join("");
+  listElement.innerHTML = html;
+}
+
+export function renderGlossaryUploadFeedback(elements, payload) {
+  if (!elements) return;
+  const result = payload ?? {};
+  const imported = Number.isFinite(result.imported) ? result.imported : 0;
+  const updated = Number.isFinite(result.updated) ? result.updated : 0;
+  const conflicts = Array.isArray(result.conflicts) ? result.conflicts.map(normalizeConflict).filter(Boolean) : [];
+  const errors = Array.isArray(result.errors) ? result.errors.filter((item) => typeof item === "string" && item.trim().length > 0) : [];
+
+  toggleHidden(elements.resultsContainer, false);
+  setText(elements.summaryLabel, `新增 ${imported} 条，更新 ${updated} 条。`);
+  setText(elements.importedCount, String(imported));
+  setText(elements.updatedCount, String(updated));
+  setText(elements.conflictCount, String(conflicts.length));
+  setText(elements.errorCount, String(errors.length));
+
+  if (conflicts.length > 0) {
+    const conflictHtml = conflicts
+      .map((conflict) => `<li><strong>${conflict.source}</strong>：现有译文「${conflict.existingTarget}」，上传译文「${conflict.incomingTarget}」（${conflict.scope}）</li>`)
+      .join("");
+    setHtml(elements.conflictList, conflictHtml);
+    toggleHidden(elements.conflictContainer, false);
+  } else {
+    setHtml(elements.conflictList, "<li>未检测到冲突。</li>");
+    toggleHidden(elements.conflictContainer, true);
+  }
+
+  if (errors.length > 0) {
+    const errorHtml = errors.map((error) => `<li>${error}</li>`).join("");
+    setHtml(elements.errorList, errorHtml);
+    toggleHidden(elements.errorContainer, false);
+  } else {
+    setHtml(elements.errorList, "<li>未报告错误。</li>");
+    toggleHidden(elements.errorContainer, true);
+  }
+}
+
+function showStatus(elements, message) {
+  if (!elements || !elements.statusLabel) return;
+  elements.statusLabel.textContent = message;
+}
+
+export async function refreshGlossaryList(elements, fetchImpl = fetch) {
+  if (!elements?.glossaryList) {
+    return;
+  }
+  try {
+    const response = await fetchImpl("/api/glossary");
+    if (!response?.ok) {
+      throw new Error(`获取术语失败：${response?.status ?? "未知错误"}`);
+    }
+    const entries = await response.json();
+    renderGlossaryEntries(elements.glossaryList, entries);
+  } catch (error) {
+    renderGlossaryEntries(elements.glossaryList, []);
+    showStatus(elements, error.message ?? "术语列表加载失败。");
+  }
+}
+
+function ensureUploadElements() {
+  if (typeof document === "undefined") {
+    return null;
+  }
+  const form = document.querySelector("[data-glossary-form]");
+  if (!form) {
+    return null;
+  }
+  return {
+    form,
+    scopeInput: form.querySelector("[data-glossary-scope]"),
+    fileInput: form.querySelector("[data-glossary-file]"),
+    overrideInput: form.querySelector("[data-glossary-override]"),
+    submitButton: form.querySelector('[type="submit"]'),
+    resultsContainer: document.querySelector("[data-glossary-results]") ?? null,
+    summaryLabel: document.querySelector("[data-glossary-summary]") ?? null,
+    importedCount: document.querySelector("[data-glossary-imported]") ?? null,
+    updatedCount: document.querySelector("[data-glossary-updated]") ?? null,
+    conflictCount: document.querySelector("[data-glossary-conflict-count]") ?? null,
+    errorCount: document.querySelector("[data-glossary-error-count]") ?? null,
+    conflictContainer: document.querySelector("[data-glossary-conflicts]") ?? null,
+    conflictList: document.querySelector("[data-glossary-conflict-list]") ?? null,
+    errorContainer: document.querySelector("[data-glossary-errors]") ?? null,
+    errorList: document.querySelector("[data-glossary-error-list]") ?? null,
+    statusLabel: document.querySelector("[data-glossary-status]") ?? null,
+    glossaryList: document.querySelector("[data-glossary-items]") ?? null
+  };
+}
+
+export async function handleGlossaryUpload({ elements, fetchImpl = fetch, formDataFactory } = {}) {
+  if (!elements?.form) {
+    return;
+  }
+
+  const file = elements.fileInput?.files?.[0];
+  if (!file) {
+    showStatus(elements, "请选择需要上传的术语文件。");
+    return;
+  }
+
+  const scope = elements.scopeInput?.value ?? "tenant";
+  const overwrite = elements.overrideInput?.checked ? "true" : "false";
+  const submitButton = elements.submitButton;
+
+  const formData = formDataFactory ? formDataFactory(elements.form) : new FormData();
+  if (typeof formData.set === "function") {
+    formData.set("scope", scope);
+    formData.set("overwrite", overwrite);
+    formData.set("file", file, file.name ?? "glossary.csv");
+  } else if (typeof formData.append === "function") {
+    formData.append("scope", scope);
+    formData.append("overwrite", overwrite);
+    formData.append("file", file, file.name ?? "glossary.csv");
+  }
+
+  if (submitButton) {
+    submitButton.disabled = true;
+  }
+
+  try {
+    const response = await fetchImpl("/api/glossary/upload", {
+      method: "POST",
+      body: formData
+    });
+
+    let payload = null;
+    try {
+      payload = await response.json();
+    } catch (error) {
+      payload = null;
+    }
+
+    if (!response.ok) {
+      const messages = [];
+      if (payload?.error && typeof payload.error === "string") {
+        messages.push(payload.error);
+      }
+      if (Array.isArray(payload?.errors)) {
+        messages.push(...payload.errors.filter((item) => typeof item === "string"));
+      }
+      if (messages.length === 0) {
+        messages.push(`上传失败：${response.status}`);
+      }
+      renderGlossaryUploadFeedback(elements, {
+        imported: payload?.imported ?? 0,
+        updated: payload?.updated ?? 0,
+        conflicts: payload?.conflicts ?? [],
+        errors: messages
+      });
+      showStatus(elements, messages[0]);
+      return;
+    }
+
+    renderGlossaryUploadFeedback(elements, payload ?? {});
+    showStatus(elements, `已导入 ${payload?.imported ?? 0} 条，更新 ${payload?.updated ?? 0} 条。`);
+    await refreshGlossaryList(elements, fetchImpl);
+  } catch (error) {
+    const message = error?.message ?? "上传术语失败。";
+    renderGlossaryUploadFeedback(elements, {
+      imported: 0,
+      updated: 0,
+      conflicts: [],
+      errors: [message]
+    });
+    showStatus(elements, message);
+  } finally {
+    if (submitButton) {
+      submitButton.disabled = false;
+    }
+  }
+}
+
+export async function initializeGlossaryUpload({ fetchImpl = fetch, formDataFactory } = {}) {
+  const elements = ensureUploadElements();
+  if (!elements) {
+    return null;
+  }
+
+  elements.form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    await handleGlossaryUpload({ elements, fetchImpl, formDataFactory });
+  });
+
+  await refreshGlossaryList(elements, fetchImpl);
+  return elements;
+}
+
 async function bootstrap() {
   const [status, roadmap, locales, configuration] = await Promise.all([
     fetchJson("/api/status"),
@@ -422,6 +651,13 @@ async function bootstrap() {
   renderTests(mergedCards.tests);
   renderLocales(formatLocaleOptions(locales ?? FALLBACK_LOCALES));
   renderLanguages(configuration?.supportedLanguages ?? FALLBACK_LANGUAGES);
+  await initializeGlossaryUpload();
 }
 
-document.addEventListener("DOMContentLoaded", bootstrap);
+if (typeof document !== "undefined") {
+  document.addEventListener("DOMContentLoaded", () => {
+    bootstrap().catch((error) => {
+      console.error("初始化仪表盘失败", error);
+    });
+  });
+}

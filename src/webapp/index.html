@@ -54,6 +54,72 @@
         <h2>测试覆盖</h2>
         <ul class="test-list" data-test-list></ul>
       </section>
+
+      <section class="section glossary">
+        <h2>术语表管理</h2>
+        <form class="glossary__form" data-glossary-form>
+          <label>
+            作用域
+            <select data-glossary-scope>
+              <option value="tenant">租户</option>
+              <option value="channel">团队频道</option>
+              <option value="user">个人</option>
+            </select>
+          </label>
+          <label>
+            术语文件（CSV/TBX）
+            <input
+              type="file"
+              accept=".csv,.tbx,text/csv,application/xml"
+              data-glossary-file
+              required
+            />
+          </label>
+          <label class="glossary__toggle">
+            <input type="checkbox" data-glossary-override />
+            覆盖现有术语
+          </label>
+          <button type="submit">上传术语</button>
+        </form>
+
+        <p class="glossary__status" data-glossary-status></p>
+
+        <div class="glossary__results" data-glossary-results hidden>
+          <h3>上传结果</h3>
+          <p data-glossary-summary>尚未上传术语。</p>
+          <dl class="glossary__metrics">
+            <div>
+              <dt>新增</dt>
+              <dd data-glossary-imported>0</dd>
+            </div>
+            <div>
+              <dt>更新</dt>
+              <dd data-glossary-updated>0</dd>
+            </div>
+            <div>
+              <dt>冲突</dt>
+              <dd data-glossary-conflict-count>0</dd>
+            </div>
+            <div>
+              <dt>错误</dt>
+              <dd data-glossary-error-count>0</dd>
+            </div>
+          </dl>
+          <div class="glossary__conflicts" data-glossary-conflicts hidden>
+            <h4>冲突条目</h4>
+            <ul data-glossary-conflict-list></ul>
+          </div>
+          <div class="glossary__errors" data-glossary-errors hidden>
+            <h4>解析/导入错误</h4>
+            <ul data-glossary-error-list></ul>
+          </div>
+        </div>
+
+        <div class="glossary__list">
+          <h3>当前术语</h3>
+          <ul data-glossary-items></ul>
+        </div>
+      </section>
     </main>
     <script type="module" src="./app.js"></script>
   </body>
