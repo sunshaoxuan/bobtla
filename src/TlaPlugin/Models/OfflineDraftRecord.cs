@@ -1,3 +1,5 @@
+using System;
+
 namespace TlaPlugin.Models;
 
 /// <summary>
@@ -14,4 +16,20 @@ public class OfflineDraftRecord
     public DateTimeOffset CreatedAt { get; set; }
         = DateTimeOffset.UtcNow;
     public string Status { get; set; } = "PENDING";
+    public string? ResultText { get; set; }
+        = null;
+    public string? ErrorReason { get; set; }
+        = null;
+    public int Attempts { get; set; }
+        = 0;
+    public DateTimeOffset? CompletedAt { get; set; }
+        = null;
+}
+
+public static class OfflineDraftStatus
+{
+    public const string Pending = "PENDING";
+    public const string Processing = "PROCESSING";
+    public const string Completed = "COMPLETED";
+    public const string Failed = "FAILED";
 }

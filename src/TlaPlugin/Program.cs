@@ -55,7 +55,7 @@ builder.Services.AddSingleton<UsageMetricsService>();
 builder.Services.AddSingleton<LocalizationCatalogService>();
 builder.Services.AddSingleton<ContextRetrievalService>();
 builder.Services.AddSingleton<TranslationRouter>();
-builder.Services.AddSingleton<TranslationPipeline>();
+builder.Services.AddSingleton<ITranslationPipeline, TranslationPipeline>();
 builder.Services.AddSingleton<MessageExtensionHandler>();
 builder.Services.AddSingleton<ConfigurationSummaryService>();
 builder.Services.AddSingleton<ProjectStatusService>();
@@ -65,6 +65,7 @@ builder.Services.AddSingleton<RewriteService>();
 builder.Services.AddSingleton<CostEstimatorService>();
 builder.Services.AddSingleton<McpToolRegistry>();
 builder.Services.AddSingleton<McpServer>();
+builder.Services.AddHostedService<DraftReplayService>();
 
 var app = builder.Build();
 

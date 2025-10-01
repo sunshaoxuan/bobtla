@@ -12,7 +12,7 @@ namespace TlaPlugin.Services;
 /// <summary>
 /// 翻訳フローを編成し Teams 応答を生成するパイプライン。
 /// </summary>
-public class TranslationPipeline
+public class TranslationPipeline : ITranslationPipeline
 {
     private readonly TranslationRouter _router;
     private readonly GlossaryService _glossary;
@@ -317,6 +317,11 @@ public class TranslationPipeline
     public OfflineDraftRecord SaveDraft(OfflineDraftRequest request)
     {
         return _drafts.SaveDraft(request);
+    }
+
+    public OfflineDraftRecord MarkDraftProcessing(long draftId)
+    {
+        return _drafts.MarkProcessing(draftId);
     }
 
     public Task<RewriteResult> RewriteAsync(RewriteRequest request, CancellationToken cancellationToken)

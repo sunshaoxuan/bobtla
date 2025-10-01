@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -271,6 +272,7 @@ public class ApiEndpointsTests : IClassFixture<WebApplicationFactory<Program>>
         Assert.NotNull(saved);
         Assert.Equal("offlineDraftSaved", saved!.Type);
         Assert.True(saved.DraftId > 0);
+        Assert.Equal(OfflineDraftStatus.Processing, saved.Status);
 
         var listRequest = new HttpRequestMessage(HttpMethod.Get, "/api/offline-draft?userId=user")
         {
@@ -281,6 +283,10 @@ public class ApiEndpointsTests : IClassFixture<WebApplicationFactory<Program>>
         var list = await listResponse.Content.ReadFromJsonAsync<OfflineDraftListResponse>();
         Assert.NotNull(list);
         Assert.Contains(list!.Drafts, draft => draft.Id == saved.DraftId);
+        var stored = list!.Drafts.Single(draft => draft.Id == saved.DraftId);
+        Assert.Equal(OfflineDraftStatus.Processing, stored.Status);
+        Assert.Equal(0, stored.Attempts);
+        Assert.Null(stored.CompletedAt);
     }
 
     private sealed class GlossaryResponse

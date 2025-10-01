@@ -21,14 +21,14 @@ public class McpServer
 
     private readonly McpToolRegistry _registry;
     private readonly MessageExtensionHandler _messageExtension;
-    private readonly TranslationPipeline _pipeline;
+    private readonly ITranslationPipeline _pipeline;
     private readonly GlossaryService _glossary;
     private readonly ReplyService _replyService;
 
     public McpServer(
         McpToolRegistry registry,
         MessageExtensionHandler messageExtension,
-        TranslationPipeline pipeline,
+        ITranslationPipeline pipeline,
         GlossaryService glossary,
         ReplyService replyService)
     {
