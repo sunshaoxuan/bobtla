@@ -257,6 +257,130 @@ const FALLBACK_LANGUAGES = [
   "af-ZA"
 ];
 
+const FALLBACK_METRICS = {
+  usage: { totalRequests: 15872, successRate: 0.982, window: "24h" },
+  cost: { monthlyUsd: 312.45, dailyUsd: 12.68 },
+  failures: [
+    { reason: "RateLimitExceeded", count: 12 },
+    { reason: "AuthenticationFailed", count: 5 },
+    { reason: "ModelTimeout", count: 3 }
+  ],
+  tests: {
+    failing: [
+      {
+        id: "translationRouter",
+        name: "TranslationRouterTests",
+        failures: 2,
+        reason: "限流策略回退路径未命中"
+      }
+    ]
+  },
+  updatedAt: "2024-03-15T08:00:00Z"
+};
+
+const NORMALIZED_METRICS_TOKEN = Symbol("normalizedMetrics");
+const METRICS_REFRESH_INTERVAL = 60_000;
+
+const numberFormatter = new Intl.NumberFormat("zh-CN");
+const currencyFormatter = new Intl.NumberFormat("zh-CN", {
+  style: "currency",
+  currency: "USD",
+  maximumFractionDigits: 2
+});
+const percentFormatter = new Intl.NumberFormat("zh-CN", {
+  style: "percent",
+  maximumFractionDigits: 1
+});
+const updatedFormatter = new Intl.DateTimeFormat("zh-CN", {
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false
+});
+
+let latestCards = null;
+let latestMetrics = null;
+let metricsTimer = null;
+let metricsRefreshBound = false;
+
+export function normalizeMetrics(metrics) {
+  if (metrics && metrics[NORMALIZED_METRICS_TOKEN]) {
+    return metrics;
+  }
+
+  const safe = metrics ?? {};
+  const usageSource = safe.usage ?? {};
+  const costSource = safe.cost ?? {};
+  const testsSource = safe.tests ?? {};
+
+  const totalRequestsRaw = Number(usageSource.totalRequests ?? usageSource.requests ?? usageSource.total ?? 0);
+  const totalRequests = Number.isFinite(totalRequestsRaw) ? Math.max(0, Math.round(totalRequestsRaw)) : 0;
+
+  const successRateRaw = Number(usageSource.successRate ?? usageSource.success_ratio ?? usageSource.successRatio ?? usageSource.successPercentage ?? usageSource.success_percent ?? NaN);
+  let successRate = Number.isFinite(successRateRaw) ? successRateRaw : null;
+  if (typeof successRate === "number") {
+    successRate = successRate > 1 ? successRate / 100 : successRate;
+    successRate = Math.max(0, Math.min(1, successRate));
+  }
+
+  const windowLabel = usageSource.window ?? usageSource.range ?? usageSource.period ?? null;
+
+  const monthlyRaw = Number(costSource.monthlyUsd ?? costSource.monthToDateUsd ?? costSource.monthly ?? 0);
+  const monthlyUsd = Number.isFinite(monthlyRaw) ? Math.max(0, monthlyRaw) : 0;
+  const dailyRaw = Number(costSource.dailyUsd ?? costSource.dailyAverageUsd ?? costSource.daily ?? NaN);
+  const dailyUsd = Number.isFinite(dailyRaw) ? Math.max(0, dailyRaw) : null;
+
+  const failures = (Array.isArray(safe.failures) ? safe.failures : [])
+    .filter((item) => item && typeof item === "object")
+    .map((item, index) => {
+      const countRaw = Number(item.count ?? item.total ?? item.times ?? 0);
+      const count = Number.isFinite(countRaw) ? Math.max(0, Math.round(countRaw)) : 0;
+      return {
+        reason: item.reason ?? item.code ?? item.message ?? `未知原因 ${index + 1}`,
+        count
+      };
+    })
+    .sort((a, b) => b.count - a.count);
+
+  const failing = Array.isArray(testsSource.failing) ? testsSource.failing : [];
+  const normalizedFailing = failing
+    .filter((item) => item && typeof item === "object" && item.id)
+    .map((item) => {
+      const failuresRaw = Number(item.failures ?? item.count ?? item.total ?? 1);
+      const failures = Number.isFinite(failuresRaw) ? Math.max(1, Math.round(failuresRaw)) : 1;
+      return {
+        id: item.id,
+        name: item.name ?? "",
+        failures,
+        reason: item.reason ?? item.lastFailureReason ?? ""
+      };
+    })
+    .sort((a, b) => b.failures - a.failures);
+
+  const normalized = {
+    usage: {
+      totalRequests,
+      successRate,
+      window: windowLabel
+    },
+    cost: {
+      monthlyUsd,
+      dailyUsd
+    },
+    failures,
+    tests: {
+      failing: normalizedFailing
+    },
+    updatedAt: safe.updatedAt ?? safe.timestamp ?? safe.generatedAt ?? null
+  };
+
+  normalized[NORMALIZED_METRICS_TOKEN] = true;
+  return normalized;
+}
+
+latestMetrics = normalizeMetrics(FALLBACK_METRICS);
+
 async function fetchJson(url) {
   try {
     const response = await fetch(url);
@@ -281,28 +405,38 @@ function updateProgress(element, percent) {
   }
 }
 
-function renderSummary(cards) {
-  const overall = document.querySelector("[data-overall-progress]");
-  const overallText = document.querySelector("[data-overall-text]");
-  updateProgress(overall, cards.overallPercent);
-  if (overallText) {
-    overallText.textContent = `整体完成度 ${cards.overallPercent}%`;
+export function renderSummary(cards, metricsInput = latestMetrics) {
+  const cardData = cards ?? {};
+  const metrics = metricsInput ? normalizeMetrics(metricsInput) : latestMetrics;
+
+  if (metrics && metrics !== latestMetrics) {
+    latestMetrics = metrics;
   }
 
+  const overallPercent = Number.isFinite(cardData.overallPercent) ? cardData.overallPercent : 0;
+  const overall = document.querySelector("[data-overall-progress]");
+  const overallText = document.querySelector("[data-overall-text]");
+  updateProgress(overall, overallPercent);
+  if (overallText) {
+    overallText.textContent = `整体完成度 ${overallPercent}%`;
+  }
+
+  const frontendData = cardData.frontend ?? {};
+  const frontendPercent = Number.isFinite(frontendData.completionPercent) ? frontendData.completionPercent : 0;
   const frontend = document.querySelector("[data-frontend-progress]");
   const frontendText = document.querySelector("[data-frontend-text]");
-  updateProgress(frontend, cards.frontend.completionPercent);
+  updateProgress(frontend, frontendPercent);
   if (frontendText) {
-    frontendText.textContent = `前端完成度 ${cards.frontend.completionPercent}%`;
+    frontendText.textContent = `前端完成度 ${frontendPercent}%`;
   }
 
   const readinessList = document.querySelector("[data-readiness]");
   if (readinessList) {
     readinessList.innerHTML = "";
     const items = [
-      { label: "数据面", ready: cards.frontend.dataPlaneReady },
-      { label: "界面实现", ready: cards.frontend.uiImplemented },
-      { label: "联调", ready: cards.frontend.integrationReady }
+      { label: "数据面", ready: Boolean(frontendData.dataPlaneReady) },
+      { label: "界面实现", ready: Boolean(frontendData.uiImplemented) },
+      { label: "联调", ready: Boolean(frontendData.integrationReady) }
     ];
     items.forEach((item) => {
       const li = document.createElement("li");
@@ -313,9 +447,10 @@ function renderSummary(cards) {
   }
 
   const nextSteps = document.querySelector("[data-next-steps]");
+  const steps = Array.isArray(cardData.nextSteps) ? cardData.nextSteps : [];
   if (nextSteps) {
     nextSteps.innerHTML = "";
-    cards.nextSteps.forEach((step) => {
+    steps.forEach((step) => {
       const li = document.createElement("li");
       li.textContent = step;
       nextSteps.appendChild(li);
@@ -324,9 +459,84 @@ function renderSummary(cards) {
 
   const activeStageHeading = document.querySelector("[data-active-stage-title]");
   const activeStageBody = document.querySelector("[data-active-stage-body]");
-  if (cards.activeStage && activeStageHeading && activeStageBody) {
-    activeStageHeading.textContent = `${cards.activeStage.name}`;
-    activeStageBody.textContent = cards.activeStage.objective;
+  const activeStage = cardData.activeStage ?? null;
+  if (activeStage && activeStageHeading && activeStageBody) {
+    activeStageHeading.textContent = `${activeStage.name}`;
+    activeStageBody.textContent = activeStage.objective ?? "";
+  }
+
+  if (!metrics) {
+    return;
+  }
+
+  const usageValue = document.querySelector("[data-metric-usage-value]");
+  if (usageValue) {
+    usageValue.textContent = numberFormatter.format(metrics.usage.totalRequests ?? 0);
+  }
+
+  const usageDetail = document.querySelector("[data-metric-usage-detail]");
+  if (usageDetail) {
+    const usageParts = [];
+    if (typeof metrics.usage.successRate === "number") {
+      usageParts.push(`成功率 ${percentFormatter.format(metrics.usage.successRate)}`);
+    }
+    if (metrics.usage.window) {
+      usageParts.push(`窗口 ${metrics.usage.window}`);
+    }
+    usageDetail.textContent = usageParts.length > 0 ? usageParts.join(" · ") : "暂无统计";
+  }
+
+  const costValue = document.querySelector("[data-metric-cost-value]");
+  if (costValue) {
+    costValue.textContent = currencyFormatter.format(metrics.cost.monthlyUsd ?? 0);
+  }
+
+  const costDetail = document.querySelector("[data-metric-cost-detail]");
+  if (costDetail) {
+    costDetail.textContent = typeof metrics.cost.dailyUsd === "number"
+      ? `日均 ${currencyFormatter.format(metrics.cost.dailyUsd)}`
+      : "日均 --";
+  }
+
+  const totalFailureCount = metrics.failures.reduce((sum, item) => sum + (Number.isFinite(item.count) ? item.count : 0), 0);
+  const failureTotal = document.querySelector("[data-metric-failure-total]");
+  if (failureTotal) {
+    failureTotal.textContent = numberFormatter.format(totalFailureCount);
+  }
+
+  const failureDetail = document.querySelector("[data-metric-failure-detail]");
+  if (failureDetail) {
+    const topFailure = metrics.failures[0];
+    failureDetail.textContent = topFailure ? `主要原因 ${topFailure.reason}` : "暂无失败记录";
+  }
+
+  const failureList = document.querySelector("[data-failure-reasons]");
+  if (failureList) {
+    failureList.innerHTML = "";
+    const topFailures = metrics.failures.slice(0, 5);
+    if (topFailures.length === 0) {
+      const empty = document.createElement("li");
+      empty.className = "metrics__empty";
+      empty.textContent = "最近窗口内没有失败记录";
+      failureList.appendChild(empty);
+    } else {
+      topFailures.forEach((failure) => {
+        const item = document.createElement("li");
+        const reason = document.createElement("span");
+        reason.className = "metrics__reason";
+        reason.textContent = failure.reason;
+        const count = document.createElement("span");
+        count.className = "metrics__count";
+        count.textContent = numberFormatter.format(failure.count);
+        item.append(reason, count);
+        failureList.appendChild(item);
+      });
+    }
+  }
+
+  const metricsUpdated = document.querySelector("[data-metrics-updated]");
+  if (metricsUpdated) {
+    metricsUpdated.textContent = `最近更新：${formatUpdatedLabel(metrics.updatedAt)}`;
   }
 }
 
@@ -368,13 +578,61 @@ function renderTimeline(timeline) {
   });
 }
 
-function renderTests(tests) {
+export function renderTests(tests, metricsInput = latestMetrics) {
   const list = document.querySelector("[data-test-list]");
   if (!list) return;
   list.innerHTML = "";
-  tests.forEach((test) => {
+
+  const metrics = metricsInput ? normalizeMetrics(metricsInput) : latestMetrics;
+  if (metrics && metrics !== latestMetrics) {
+    latestMetrics = metrics;
+  }
+
+  const failingMap = new Map();
+  if (metrics) {
+    metrics.tests.failing.forEach((item) => {
+      failingMap.set(item.id, item);
+    });
+  }
+
+  (Array.isArray(tests) ? tests : []).forEach((test) => {
+    if (!test) return;
+
     const li = document.createElement("li");
-    li.innerHTML = `<strong>${test.name}</strong><span>${test.description}</span>${test.automated ? "<span class=\"tag\">自动化</span>" : ""}`;
+    const failureInfo = test.id ? failingMap.get(test.id) : undefined;
+    if (failureInfo) {
+      li.classList.add("test--failing");
+    }
+
+    const nameEl = document.createElement("strong");
+    nameEl.textContent = test.name ?? test.id ?? "未命名测试";
+    li.appendChild(nameEl);
+
+    const descriptionEl = document.createElement("span");
+    descriptionEl.textContent = test.description ?? "暂无描述";
+    li.appendChild(descriptionEl);
+
+    if (test.automated) {
+      const automatedTag = document.createElement("span");
+      automatedTag.className = "tag";
+      automatedTag.textContent = "自动化";
+      li.appendChild(automatedTag);
+    }
+
+    if (failureInfo) {
+      const failureTag = document.createElement("span");
+      failureTag.className = "tag tag--danger";
+      failureTag.textContent = `失败 ${failureInfo.failures} 次`;
+      li.appendChild(failureTag);
+
+      if (failureInfo.reason) {
+        const reasonEl = document.createElement("span");
+        reasonEl.className = "test__reason";
+        reasonEl.textContent = failureInfo.reason;
+        li.appendChild(reasonEl);
+      }
+    }
+
     list.appendChild(li);
   });
 }
@@ -408,20 +666,91 @@ function renderLanguages(languages) {
   });
 }
 
+async function handleMetricsRefresh() {
+  if (typeof document === "undefined") {
+    return;
+  }
+
+  const refreshButton = document.querySelector("[data-metrics-refresh]");
+  const metricsCard = document.querySelector("[data-metrics-card]");
+
+  if (refreshButton) {
+    refreshButton.disabled = true;
+  }
+  if (metricsCard) {
+    metricsCard.classList.add("is-loading");
+  }
+
+  try {
+    const response = await fetchJson("/api/metrics");
+    const normalized = response ? normalizeMetrics(response) : normalizeMetrics(latestMetrics ?? FALLBACK_METRICS);
+    latestMetrics = normalized;
+    if (latestCards) {
+      renderSummary(latestCards, latestMetrics);
+      renderTests(latestCards.tests, latestMetrics);
+    }
+  } finally {
+    if (refreshButton) {
+      refreshButton.disabled = false;
+    }
+    if (metricsCard) {
+      metricsCard.classList.remove("is-loading");
+    }
+  }
+}
+
+function setupMetricsRefresh() {
+  if (typeof document === "undefined") {
+    return;
+  }
+
+  const refreshButton = document.querySelector("[data-metrics-refresh]");
+  if (refreshButton && !metricsRefreshBound) {
+    refreshButton.addEventListener("click", () => {
+      handleMetricsRefresh();
+    });
+    metricsRefreshBound = true;
+  }
+
+  if (metricsTimer) {
+    clearInterval(metricsTimer);
+  }
+
+  metricsTimer = setInterval(handleMetricsRefresh, METRICS_REFRESH_INTERVAL);
+}
+
+function formatUpdatedLabel(timestamp) {
+  if (!timestamp) {
+    return "--";
+  }
+  const date = typeof timestamp === "number" ? new Date(timestamp) : new Date(String(timestamp));
+  if (Number.isNaN(date.getTime())) {
+    return "--";
+  }
+  return updatedFormatter.format(date);
+}
+
 async function bootstrap() {
-  const [status, roadmap, locales, configuration] = await Promise.all([
+  const [status, roadmap, locales, configuration, metrics] = await Promise.all([
     fetchJson("/api/status"),
     fetchJson("/api/roadmap"),
     fetchJson("/api/localization/locales"),
-    fetchJson("/api/configuration")
+    fetchJson("/api/configuration"),
+    fetchJson("/api/metrics")
   ]);
 
-  const mergedCards = buildStatusCards(status ?? FALLBACK_STATUS, roadmap ?? FALLBACK_ROADMAP);
-  renderSummary(mergedCards);
-  renderTimeline(mergedCards.timeline);
-  renderTests(mergedCards.tests);
+  latestCards = buildStatusCards(status ?? FALLBACK_STATUS, roadmap ?? FALLBACK_ROADMAP);
+  latestMetrics = normalizeMetrics(metrics ?? FALLBACK_METRICS);
+
+  renderSummary(latestCards, latestMetrics);
+  renderTimeline(latestCards.timeline);
+  renderTests(latestCards.tests, latestMetrics);
   renderLocales(formatLocaleOptions(locales ?? FALLBACK_LOCALES));
   renderLanguages(configuration?.supportedLanguages ?? FALLBACK_LANGUAGES);
+
+  setupMetricsRefresh();
 }
 
-document.addEventListener("DOMContentLoaded", bootstrap);
+if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
+  document.addEventListener("DOMContentLoaded", bootstrap);
+}
