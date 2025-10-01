@@ -7,7 +7,8 @@ import {
   buildDetectPayload,
   buildRewritePayload,
   buildReplyPayload,
-  updateStateWithResponse
+  updateStateWithResponse,
+  resolveThreadId
 } from "./state.js";
 
 function resolveDialogUi(root = typeof document !== "undefined" ? document : undefined) {
@@ -173,6 +174,7 @@ export async function initMessageExtensionDialog({ ui = resolveDialogUi(), teams
   const { teams: sdk, context } = await ensureTeamsContext({ teams });
   const metadata = await fetchMetadata(fetcher);
   const state = buildDialogState({ models: metadata.models, languages: metadata.languages, context });
+  state.threadId = state.threadId ?? resolveThreadId(context);
 
   applySelectOptions(ui.modelSelect, metadata.models, { valueKey: "id", labelKey: "displayName" });
   applySelectOptions(ui.sourceSelect, metadata.languages, { valueKey: "id", labelKey: "name" });
@@ -404,7 +406,8 @@ export async function initMessageExtensionDialog({ ui = resolveDialogUi(), teams
       userId: context?.user?.id,
       sourceLanguage: state.sourceLanguage,
       channelId: context?.channel?.id,
-      metadata: { modelId: state.modelId }
+      metadata: { modelId: state.modelId },
+      threadId: state.threadId ?? resolveThreadId(context)
     };
     updateOfflineStatus(ui, "正在保存离线草稿…");
     try {

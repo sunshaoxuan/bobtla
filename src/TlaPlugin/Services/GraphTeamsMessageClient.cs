@@ -62,9 +62,11 @@ public class GraphTeamsMessageClient : ITeamsMessageClient
 
         using var scope = _contextAccessor.Push(new GraphRequestContext(tenantId, userId, accessToken));
 
-        try
+        var threadLookupAttempted = false;
+        if (!string.IsNullOrEmpty(threadId))
         {
-            if (!string.IsNullOrEmpty(threadId))
+            threadLookupAttempted = true;
+            try
             {
                 var root = await _graphClient.Teams[tenantId].Channels[channelId].Messages[threadId]
                     .GetAsync(static request =>
@@ -90,14 +92,14 @@ public class GraphTeamsMessageClient : ITeamsMessageClient
                     messages.AddRange(replies.Value.Select(Convert));
                 }
             }
-        }
-        catch (ServiceException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized || ex.StatusCode == HttpStatusCode.Forbidden)
-        {
-            return Array.Empty<ContextMessage>();
-        }
-        catch
-        {
-            throw;
+            catch (ServiceException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                // Thread no longer exists; fall back to channel messages below.
+            }
+            catch (ServiceException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized || ex.StatusCode == HttpStatusCode.Forbidden)
+            {
+                return Array.Empty<ContextMessage>();
+            }
         }
 
         if (messages.Count == 0)
@@ -118,6 +120,10 @@ public class GraphTeamsMessageClient : ITeamsMessageClient
                 }
             }
             catch (ServiceException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized || ex.StatusCode == HttpStatusCode.Forbidden)
+            {
+                return Array.Empty<ContextMessage>();
+            }
+            catch (ServiceException ex) when (ex.StatusCode == HttpStatusCode.NotFound && threadLookupAttempted)
             {
                 return Array.Empty<ContextMessage>();
             }

@@ -76,6 +76,84 @@ public class ContextRetrievalIntegrationTests
     }
 
     [Fact]
+    public async Task PrefersThreadMessagesWhenThreadIdPresent()
+    {
+        var options = CreateOptions();
+        var cache = new MemoryCache(new MemoryCacheOptions());
+        var graph = new FakeTeamsMessageClient();
+        graph.Messages.Add(new ContextMessage
+        {
+            Author = "Fallback",
+            Text = "Channel level context",
+            Timestamp = DateTimeOffset.UtcNow.AddMinutes(-5)
+        });
+        graph.ThreadMessages["thread-123"] = new List<ContextMessage>
+        {
+            new()
+            {
+                Author = "Jordan",
+                Text = "Thread specific update",
+                Timestamp = DateTimeOffset.UtcNow
+            }
+        };
+
+        var pipeline = BuildPipeline(options, graph, cache);
+
+        var result = await pipeline.TranslateAsync(new TranslationRequest
+        {
+            Text = "Here is the purchase summary",
+            TenantId = "contoso",
+            UserId = "user",
+            ChannelId = "general",
+            ThreadId = "thread-123",
+            TargetLanguage = "ja",
+            SourceLanguage = "en",
+            UseRag = true
+        }, CancellationToken.None);
+
+        var translation = Assert.NotNull(result.Translation);
+        Assert.Contains("Thread specific update", translation.RawTranslatedText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Channel level context", translation.RawTranslatedText, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("thread-123", graph.LastThreadId);
+        Assert.Equal(1, graph.ThreadHitCount);
+        Assert.Equal(0, graph.ChannelFallbackCount);
+    }
+
+    [Fact]
+    public async Task FallsBackToChannelWhenThreadNotFound()
+    {
+        var options = CreateOptions();
+        var cache = new MemoryCache(new MemoryCacheOptions());
+        var graph = new FakeTeamsMessageClient();
+        graph.Messages.Add(new ContextMessage
+        {
+            Author = "Fallback",
+            Text = "Channel context survives",
+            Timestamp = DateTimeOffset.UtcNow
+        });
+
+        var pipeline = BuildPipeline(options, graph, cache);
+
+        var result = await pipeline.TranslateAsync(new TranslationRequest
+        {
+            Text = "Here is the purchase summary",
+            TenantId = "contoso",
+            UserId = "user",
+            ChannelId = "general",
+            ThreadId = "thread-missing",
+            TargetLanguage = "ja",
+            SourceLanguage = "en",
+            UseRag = true
+        }, CancellationToken.None);
+
+        var translation = Assert.NotNull(result.Translation);
+        Assert.Contains("Channel context survives", translation.RawTranslatedText, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("thread-missing", graph.LastThreadId);
+        Assert.Equal(0, graph.ThreadHitCount);
+        Assert.Equal(1, graph.ChannelFallbackCount);
+    }
+
+    [Fact]
     public async Task UsesCachedMessagesOnSubsequentRequests()
     {
         var options = CreateOptions();
@@ -281,10 +359,14 @@ public class ContextRetrievalIntegrationTests
     private sealed class FakeTeamsMessageClient : ITeamsMessageClient
     {
         public List<ContextMessage> Messages { get; } = new();
+        public Dictionary<string, List<ContextMessage>> ThreadMessages { get; } = new(StringComparer.OrdinalIgnoreCase);
         public int CallCount { get; private set; }
         public bool ShouldThrow { get; set; }
         public AccessToken? LastToken { get; private set; }
         public string? LastUserId { get; private set; }
+        public string? LastThreadId { get; private set; }
+        public int ThreadHitCount { get; private set; }
+        public int ChannelFallbackCount { get; private set; }
 
         public Task<IReadOnlyList<ContextMessage>> GetRecentMessagesAsync(
             string tenantId,
@@ -294,12 +376,29 @@ public class ContextRetrievalIntegrationTests
             CancellationToken cancellationToken)
         {
             CallCount++;
+            LastThreadId = threadId;
             if (ShouldThrow)
             {
                 throw new InvalidOperationException("Graph failure");
             }
 
-            var ordered = Messages
+            IEnumerable<ContextMessage> source;
+            if (!string.IsNullOrEmpty(threadId) && ThreadMessages.TryGetValue(threadId, out var threadList))
+            {
+                ThreadHitCount++;
+                source = threadList;
+            }
+            else
+            {
+                if (!string.IsNullOrEmpty(threadId))
+                {
+                    ChannelFallbackCount++;
+                }
+
+                source = Messages;
+            }
+
+            var ordered = source
                 .OrderByDescending(message => message.Timestamp)
                 .Take(Math.Max(1, maxMessages))
                 .Select(message => new ContextMessage

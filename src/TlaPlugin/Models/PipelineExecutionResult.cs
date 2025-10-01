@@ -102,6 +102,7 @@ public class PipelineExecutionResult
             TenantId = request.TenantId,
             UserId = request.UserId,
             ChannelId = request.ChannelId,
+            ThreadId = request.ThreadId,
             Tone = request.Tone,
             UseGlossary = request.UseGlossary,
             UiLocale = request.UiLocale,

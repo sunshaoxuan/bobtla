@@ -20,6 +20,8 @@ public class TranslationRequest
     public string UserId { get; set; } = string.Empty;
     public string? ChannelId { get; set; }
         = null;
+    public string? ThreadId { get; set; }
+        = null;
     public string Tone { get; set; } = DefaultTone;
     public bool UseGlossary { get; set; } = true;
     public bool UseRag { get; set; } = false;

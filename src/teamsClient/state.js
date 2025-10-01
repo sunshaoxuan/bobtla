@@ -30,6 +30,17 @@ function resolveDefaultTargetLanguage(languages = [], locale = "") {
   return languages[0]?.id ?? "en";
 }
 
+export function resolveThreadId(context) {
+  return (
+    context?.message?.threadId ??
+    context?.message?.replyToId ??
+    context?.message?.id ??
+    context?.conversation?.id ??
+    context?.chat?.id ??
+    undefined
+  );
+}
+
 export function buildDialogState({ models, languages, context } = {}) {
   const metadata = {
     models: models?.length ? models : FALLBACK_METADATA.models,
@@ -43,6 +54,7 @@ export function buildDialogState({ models, languages, context } = {}) {
     modelId: defaultModel?.id ?? "",
     sourceLanguage: metadata.languages[0]?.id ?? "auto",
     targetLanguage,
+    threadId: resolveThreadId(context),
     useTerminology: true,
     useRag: false,
     contextHints: [],
@@ -105,6 +117,10 @@ export function buildTranslatePayload(state, context) {
       tone: state.tone
     }
   };
+  const threadId = state?.threadId ?? resolveThreadId(context);
+  if (threadId) {
+    payload.threadId = threadId;
+  }
   return applyRagPreferences(payload, state);
 }
 
@@ -120,7 +136,7 @@ export function buildRewritePayload(state, context, text) {
   if (!text?.trim()) {
     throw new Error("缺少润色文本");
   }
-  return {
+  const payload = {
     text,
     targetLanguage: state.targetLanguage,
     tone: state.tone,
@@ -133,6 +149,11 @@ export function buildRewritePayload(state, context, text) {
       useTerminology: Boolean(state.useTerminology)
     }
   };
+  const threadId = state?.threadId ?? resolveThreadId(context);
+  if (threadId) {
+    payload.threadId = threadId;
+  }
+  return payload;
 }
 
 export function buildReplyPayload(state, context, text) {
@@ -152,6 +173,10 @@ export function buildReplyPayload(state, context, text) {
       useTerminology: Boolean(state.useTerminology)
     }
   };
+  const threadId = state?.threadId ?? resolveThreadId(context);
+  if (threadId) {
+    payload.threadId = threadId;
+  }
   return applyRagPreferences(payload, state);
 }
 
@@ -182,5 +207,6 @@ export default {
   buildDetectPayload,
   buildRewritePayload,
   buildReplyPayload,
-  updateStateWithResponse
+  updateStateWithResponse,
+  resolveThreadId
 };

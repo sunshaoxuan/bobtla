@@ -48,7 +48,7 @@ public class ContextRetrievalService
             return new ContextRetrievalResult();
         }
 
-        var cacheKey = BuildChannelKey(request.TenantId, request.ChannelId ?? request.ThreadId ?? string.Empty);
+        var cacheKey = BuildChannelKey(request.TenantId, request.ThreadId ?? request.ChannelId ?? string.Empty);
         var hints = request.ContextHints ?? new List<string>();
         var candidates = await GetOrFetchMessagesAsync(cacheKey, request, cancellationToken).ConfigureAwait(false);
 
