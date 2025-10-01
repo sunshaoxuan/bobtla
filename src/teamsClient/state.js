@@ -48,12 +48,14 @@ export function buildDialogState({ models, languages, context } = {}) {
   };
   const defaultModel = metadata.models[0];
   const targetLanguage = resolveDefaultTargetLanguage(metadata.languages, context?.app?.locale ?? "");
+  const availableTargets = metadata.languages.filter((lang) => isSelectableLanguage(lang)).map((lang) => lang.id);
   return {
     text: "",
     translation: "",
     modelId: defaultModel?.id ?? "",
     sourceLanguage: metadata.languages[0]?.id ?? "auto",
     targetLanguage,
+    additionalTargetLanguages: resolveAdditionalTargetLanguages(undefined, targetLanguage, availableTargets),
     threadId: resolveThreadId(context),
     useTerminology: true,
     useRag: false,
@@ -103,10 +105,15 @@ export function buildTranslatePayload(state, context) {
   if (!state.targetLanguage) {
     throw new Error("缺少目标语言");
   }
+  const additionalTargetLanguages = resolveAdditionalTargetLanguages(
+    state.additionalTargetLanguages,
+    state.targetLanguage
+  );
   const payload = {
     text: state.text,
     sourceLanguage: state.sourceLanguage === "auto" ? undefined : state.sourceLanguage,
     targetLanguage: state.targetLanguage,
+    additionalTargetLanguages,
     tenantId: context?.tenant?.id,
     userId: context?.user?.id,
     channelId: context?.channel?.id,
@@ -160,10 +167,15 @@ export function buildReplyPayload(state, context, text) {
   if (!text?.trim()) {
     throw new Error("缺少回帖文本");
   }
+  const additionalTargetLanguages = resolveAdditionalTargetLanguages(
+    state.additionalTargetLanguages,
+    state.targetLanguage
+  );
   const payload = {
     translation: text,
     sourceLanguage: state.sourceLanguage === "auto" ? state.detectedLanguage : state.sourceLanguage,
     targetLanguage: state.targetLanguage,
+    additionalTargetLanguages,
     tenantId: context?.tenant?.id,
     userId: context?.user?.id,
     channelId: context?.channel?.id,
@@ -178,6 +190,32 @@ export function buildReplyPayload(state, context, text) {
     payload.threadId = threadId;
   }
   return applyRagPreferences(payload, state);
+}
+
+export function resolveAdditionalTargetLanguages(list, targetLanguage, available = []) {
+  const source = Array.isArray(list) ? list : [];
+  const normalizedTarget = typeof targetLanguage === "string" ? targetLanguage.trim() : "";
+  const allowed = Array.isArray(available) && available.length > 0 ? new Set(available) : null;
+  const seen = new Set();
+  const result = [];
+  for (const entry of source) {
+    if (typeof entry !== "string") {
+      continue;
+    }
+    const trimmed = entry.trim();
+    if (!trimmed || trimmed === normalizedTarget) {
+      continue;
+    }
+    if (allowed && !allowed.has(trimmed)) {
+      continue;
+    }
+    if (seen.has(trimmed)) {
+      continue;
+    }
+    seen.add(trimmed);
+    result.push(trimmed);
+  }
+  return result;
 }
 
 export function updateStateWithResponse(state, response) {

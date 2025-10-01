@@ -23,6 +23,7 @@ test("buildDialogState chooses default language from context locale", () => {
   assert.equal(state.modelId, "model-a");
   assert.equal(state.useRag, false);
   assert.deepEqual(state.contextHints, []);
+  assert.deepEqual(state.additionalTargetLanguages, []);
 });
 
 test("calculateCostHint multiplies characters and cost", () => {
@@ -39,7 +40,8 @@ test("buildTranslatePayload forwards metadata and context", () => {
     targetLanguage: "zh-Hans",
     modelId: "model-a",
     useTerminology: false,
-    tone: "formal"
+    tone: "formal",
+    additionalTargetLanguages: ["ja", "zh-Hans", "en", "ja"]
   };
   const context = { tenant: { id: "tenant1" }, user: { id: "user1" }, channel: { id: "channel1" } };
   const payload = buildTranslatePayload(state, context);
@@ -47,6 +49,7 @@ test("buildTranslatePayload forwards metadata and context", () => {
   assert.equal(payload.sourceLanguage, undefined);
   assert.equal(payload.useRag, false);
   assert.deepEqual(payload.contextHints, []);
+  assert.deepEqual(payload.additionalTargetLanguages, ["ja", "en"]);
   assert.deepEqual(payload.metadata, {
     origin: "messageExtension",
     modelId: "model-a",
@@ -82,12 +85,14 @@ test("buildReplyPayload reuses rag preferences", () => {
     useTerminology: true,
     tone: "neutral",
     useRag: true,
-    contextHints: ["pricing"]
+    contextHints: ["pricing"],
+    additionalTargetLanguages: ["en", "ja", "fr"]
   };
   const context = { tenant: { id: "tenant" }, user: { id: "user" }, channel: { id: "channel" } };
   const payload = buildReplyPayload(state, context, "こんにちは");
   assert.equal(payload.useRag, true);
   assert.deepEqual(payload.contextHints, ["pricing"]);
+  assert.deepEqual(payload.additionalTargetLanguages, ["en", "fr"]);
 });
 
 test("updateStateWithResponse stores translation text", () => {

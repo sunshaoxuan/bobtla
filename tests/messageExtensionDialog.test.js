@@ -9,8 +9,22 @@ function createStubElement(initial = {}) {
     textContent: initial.textContent ?? "",
     hidden: initial.hidden ?? false,
     dataset: initial.dataset ?? {},
+    selectedValues: Array.isArray(initial.selectedValues) ? [...initial.selectedValues] : [],
     listeners: new Map(),
     replaceChildren() {},
+    setSelectedValues(values) {
+      this.selectedValues = Array.isArray(values) ? values.filter((value) => typeof value === "string") : [];
+      this.value = this.selectedValues.at(-1) ?? this.value;
+      if (Array.isArray(this.optionsData)) {
+        this.optionsData = this.optionsData.map((option) => ({
+          ...option,
+          selected: this.selectedValues.includes(option.value)
+        }));
+      }
+    },
+    getSelectedValues() {
+      return Array.isArray(this.selectedValues) ? [...this.selectedValues] : [];
+    },
     addEventListener(event, handler) {
       this.listeners.set(event, handler);
     },
@@ -38,7 +52,8 @@ test("dialog runs detect → translate → rewrite and submits rewritten text", 
             models: [{ id: "model-a", displayName: "Model A", costPerCharUsd: 0.00002 }],
             languages: [
               { id: "auto", name: "Auto", isDefault: true },
-              { id: "es", name: "Español" }
+              { id: "es", name: "Español" },
+              { id: "fr", name: "Français" }
             ],
             features: { terminologyToggle: true, toneToggle: true },
             pricing: { currency: "USD" }
@@ -65,6 +80,7 @@ test("dialog runs detect → translate → rewrite and submits rewritten text", 
     modelSelect: createStubElement(),
     sourceSelect: createStubElement(),
     targetSelect: createStubElement(),
+    additionalTargetsSelect: createStubElement(),
     terminologyToggle: createStubElement({ checked: true }),
     toneToggle: createStubElement({ checked: false }),
     ragToggle: createStubElement({ checked: false }),
@@ -95,17 +111,22 @@ test("dialog runs detect → translate → rewrite and submits rewritten text", 
   await initMessageExtensionDialog({ ui, teams, fetcher: fakeFetch });
   ui.toneToggle.checked = true;
   await ui.toneToggle.trigger("change");
+  ui.additionalTargetsSelect.setSelectedValues(["fr"]);
+  await ui.additionalTargetsSelect.trigger("change");
   await ui.input.trigger("input");
   await ui.previewButton.trigger("click");
   assert.equal(fetchCalls[0].url, "/api/detect");
   assert.equal(fetchCalls[1].url, "/api/translate");
   assert.equal(fetchCalls[1].body.text, "hello");
+  assert.deepEqual(fetchCalls[1].body.additionalTargetLanguages, ["fr"]);
   await ui.submitButton.trigger("click");
   assert.equal(fetchCalls[2].url, "/api/rewrite");
   assert.equal(fetchCalls[3].url, "/api/reply");
   assert.equal(fetchCalls[3].body.translation, "【正式】hola");
+  assert.deepEqual(fetchCalls[3].body.additionalTargetLanguages, ["fr"]);
   assert.equal(teams.dialog.lastSubmit.translation, "【正式】hola");
   assert.equal(teams.dialog.lastSubmit.tone, "formal");
+  assert.deepEqual(teams.dialog.lastSubmit.additionalTargetLanguages, ["fr"]);
   assert.deepEqual(teams.dialog.lastSubmit.card, { type: "AdaptiveCard", body: [] });
   assert.equal(ui.translation.value, "【正式】hola");
 });
@@ -167,6 +188,7 @@ test("dialog forwards glossary conflict card to Teams host", async () => {
     modelSelect: createStubElement(),
     sourceSelect: createStubElement(),
     targetSelect: createStubElement(),
+    additionalTargetsSelect: createStubElement(),
     terminologyToggle: createStubElement({ checked: true }),
     toneToggle: createStubElement({ checked: false }),
     detectedLabel: createStubElement(),
@@ -198,6 +220,7 @@ test("dialog forwards glossary conflict card to Teams host", async () => {
 
   assert.equal(fetchCalls[0].url, "/api/detect");
   assert.equal(fetchCalls[1].url, "/api/translate");
+  assert.deepEqual(fetchCalls[1].body.additionalTargetLanguages, []);
   assert.equal(teams.dialog.lastSubmit.type, "glossaryConflict");
   assert.deepEqual(teams.dialog.lastSubmit.card, conflictCard);
   assert.deepEqual(teams.dialog.lastSubmit.attachments, [
@@ -247,6 +270,7 @@ test("dialog defaults to first non-auto target and preserves detection label", a
     modelSelect: createStubElement(),
     sourceSelect: createStubElement(),
     targetSelect: createStubElement(),
+    additionalTargetsSelect: createStubElement(),
     terminologyToggle: createStubElement({ checked: true }),
     toneToggle: createStubElement({ checked: true }),
     ragToggle: createStubElement({ checked: false }),
@@ -285,6 +309,7 @@ test("dialog defaults to first non-auto target and preserves detection label", a
   await ui.submitButton.trigger("click");
   assert.equal(fetchCalls.at(-2).url, "/api/rewrite");
   assert.equal(fetchCalls.at(-1).url, "/api/reply");
+  assert.deepEqual(fetchCalls.at(-1).body.additionalTargetLanguages, []);
 });
 
 test("initMessageExtensionDialog corrects target when locale missing from metadata", async () => {
@@ -329,6 +354,7 @@ test("initMessageExtensionDialog corrects target when locale missing from metada
     modelSelect: createStubElement(),
     sourceSelect: createStubElement(),
     targetSelect: createStubElement(),
+    additionalTargetsSelect: createStubElement(),
     terminologyToggle: createStubElement({ checked: true }),
     ragToggle: createStubElement({ checked: false }),
     contextHintsInput: createStubElement(),
@@ -366,6 +392,7 @@ test("initMessageExtensionDialog corrects target when locale missing from metada
   assert.equal(fetchCalls[0].url, "/api/detect");
   assert.equal(translateCall.body.targetLanguage, "ja");
   assert.equal(replyCall.body.targetLanguage, "ja");
+  assert.deepEqual(replyCall.body.additionalTargetLanguages, []);
 });
 
 test("dialog surfaces offline draft completion state", async () => {
@@ -403,6 +430,7 @@ test("dialog surfaces offline draft completion state", async () => {
     modelSelect: createStubElement(),
     sourceSelect: createStubElement(),
     targetSelect: createStubElement(),
+    additionalTargetsSelect: createStubElement(),
     terminologyToggle: createStubElement({ checked: true }),
     ragToggle: createStubElement({ checked: false }),
     contextHintsInput: createStubElement(),
@@ -489,6 +517,7 @@ test("dialog uses concrete target when user locale is unavailable", async () => 
     modelSelect: createStubElement(),
     sourceSelect: createStubElement(),
     targetSelect: Object.assign(createStubElement(), { replaceChildren() {} }),
+    additionalTargetsSelect: createStubElement(),
     terminologyToggle: createStubElement({ checked: true }),
     toneToggle: createStubElement({ checked: false }),
     ragToggle: createStubElement({ checked: false }),
@@ -703,6 +732,7 @@ test("dialog saves offline drafts and refreshes list", async () => {
     modelSelect: createStubElement(),
     sourceSelect: createStubElement(),
     targetSelect: createStubElement(),
+    additionalTargetsSelect: createStubElement(),
     terminologyToggle: createStubElement({ checked: true }),
     toneToggle: createStubElement({ checked: false }),
     detectedLabel: createStubElement(),

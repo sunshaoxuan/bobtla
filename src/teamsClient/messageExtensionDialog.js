@@ -8,7 +8,8 @@ import {
   buildRewritePayload,
   buildReplyPayload,
   updateStateWithResponse,
-  resolveThreadId
+  resolveThreadId,
+  resolveAdditionalTargetLanguages
 } from "./state.js";
 
 function resolveDialogUi(root = typeof document !== "undefined" ? document : undefined) {
@@ -19,6 +20,7 @@ function resolveDialogUi(root = typeof document !== "undefined" ? document : und
     modelSelect: root.querySelector?.("[data-model-select]"),
     sourceSelect: root.querySelector?.("[data-source-select]"),
     targetSelect: root.querySelector?.("[data-target-select]"),
+    additionalTargetsSelect: root.querySelector?.("[data-additional-target-select]"),
     terminologyToggle: root.querySelector?.("[data-terminology-toggle]"),
     toneToggle: root.querySelector?.("[data-tone-toggle]"),
     ragToggle: root.querySelector?.("[data-rag-toggle]"),
@@ -66,6 +68,61 @@ function applySelectOptions(element, options, { valueKey, labelKey }) {
   if (entries.length && element.value === undefined) {
     element.value = entries[0].value;
   }
+}
+
+function getMultiSelectValues(element) {
+  if (!element) {
+    return [];
+  }
+  if (typeof element.getSelectedValues === "function") {
+    const values = element.getSelectedValues();
+    return Array.isArray(values) ? values.filter((value) => typeof value === "string" && value.trim()) : [];
+  }
+  if (element.selectedOptions) {
+    return Array.from(element.selectedOptions)
+      .map((option) => option.value)
+      .filter((value) => typeof value === "string" && value.trim());
+  }
+  if (Array.isArray(element.value)) {
+    return element.value.filter((value) => typeof value === "string" && value.trim());
+  }
+  if (Array.isArray(element.optionsData)) {
+    return element.optionsData
+      .filter((option) => option?.selected)
+      .map((option) => option.value)
+      .filter((value) => typeof value === "string" && value.trim());
+  }
+  if (typeof element.value === "string" && element.value.trim()) {
+    return [element.value.trim()];
+  }
+  return [];
+}
+
+function setMultiSelectValues(element, values = []) {
+  if (!element) {
+    return;
+  }
+  const normalized = Array.isArray(values)
+    ? values.filter((value) => typeof value === "string" && value.trim())
+    : [];
+  if (typeof element.setSelectedValues === "function") {
+    element.setSelectedValues(normalized);
+    return;
+  }
+  const set = new Set(normalized);
+  if (element.options) {
+    Array.from(element.options).forEach((option) => {
+      option.selected = set.has(option.value);
+    });
+    return;
+  }
+  if (Array.isArray(element.optionsData)) {
+    element.optionsData = element.optionsData.map((option) => ({
+      ...option,
+      selected: set.has(option.value)
+    }));
+  }
+  element.value = normalized;
 }
 
 function bindCostHint(ui, state, metadata) {
@@ -184,12 +241,29 @@ export async function initMessageExtensionDialog({ ui = resolveDialogUi(), teams
     valueKey: "id",
     labelKey: "name"
   });
+  applySelectOptions(ui.additionalTargetsSelect, targetLanguages, {
+    valueKey: "id",
+    labelKey: "name"
+  });
 
   const availableTargetIds = targetLanguages.map((lang) => lang.id);
   const fallbackTarget = availableTargetIds[0] ?? "";
   if (!availableTargetIds.includes(state.targetLanguage)) {
     state.targetLanguage = fallbackTarget;
   }
+  state.additionalTargetLanguages = resolveAdditionalTargetLanguages(
+    state.additionalTargetLanguages,
+    state.targetLanguage,
+    availableTargetIds
+  );
+
+  function syncAdditionalTargetSelect() {
+    if (!ui.additionalTargetsSelect) {
+      return;
+    }
+    setMultiSelectValues(ui.additionalTargetsSelect, state.additionalTargetLanguages);
+  }
+  syncAdditionalTargetSelect();
 
   if (ui.modelSelect) {
     ui.modelSelect.value = state.modelId;
@@ -216,6 +290,24 @@ export async function initMessageExtensionDialog({ ui = resolveDialogUi(), teams
     ui.targetSelect.value = state.targetLanguage;
     ui.targetSelect.addEventListener?.("change", (event) => {
       state.targetLanguage = event.target.value;
+      state.additionalTargetLanguages = resolveAdditionalTargetLanguages(
+        state.additionalTargetLanguages,
+        state.targetLanguage,
+        availableTargetIds
+      );
+      syncAdditionalTargetSelect();
+    });
+  }
+  if (ui.additionalTargetsSelect) {
+    syncAdditionalTargetSelect();
+    ui.additionalTargetsSelect.addEventListener?.("change", (event) => {
+      const selected = getMultiSelectValues(event.target);
+      state.additionalTargetLanguages = resolveAdditionalTargetLanguages(
+        selected,
+        state.targetLanguage,
+        availableTargetIds
+      );
+      syncAdditionalTargetSelect();
     });
   }
   if (ui.terminologyToggle) {
@@ -464,10 +556,12 @@ export async function initMessageExtensionDialog({ ui = resolveDialogUi(), teams
         sdk.dialog?.submit?.({
           translation: finalText,
           targetLanguage: state.targetLanguage,
+          additionalTargetLanguages: state.additionalTargetLanguages,
           modelId: state.modelId,
           useTerminology: state.useTerminology,
           tone: state.tone,
           detectedLanguage: state.detectedLanguage,
+          additionalTranslations: replyResult?.additionalTranslations,
           card: replyResult?.card,
           replyStatus: replyResult?.status
         });
@@ -480,6 +574,7 @@ export async function initMessageExtensionDialog({ ui = resolveDialogUi(), teams
     sdk.dialog?.submit?.({
       translation: finalText,
       targetLanguage: state.targetLanguage,
+      additionalTargetLanguages: state.additionalTargetLanguages,
       modelId: state.modelId,
       useTerminology: state.useTerminology,
       tone: state.tone,

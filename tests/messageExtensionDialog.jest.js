@@ -8,6 +8,7 @@ function createDialogDom() {
       <select data-source-select></select>
       <p data-detected-language></p>
       <select data-target-select></select>
+      <select data-additional-target-select multiple></select>
       <label><input type="checkbox" data-terminology-toggle /></label>
       <label><input type="checkbox" data-tone-toggle /></label>
       <label><input type="checkbox" data-rag-toggle /></label>
@@ -123,12 +124,15 @@ describe("message extension dialog (jest)", () => {
     const { state } = await initMessageExtensionDialog({ teams, fetcher: fakeFetch });
     const input = document.querySelector("[data-source-text]");
     const target = document.querySelector("[data-target-select]");
+    const additional = document.querySelector("[data-additional-target-select]");
     const preview = document.querySelector("[data-preview-translation]");
     const translation = document.querySelector("[data-translation-text]");
 
     expect(state.targetLanguage).toBe("es");
     target.value = "ja";
     target.dispatchEvent(new Event("change"));
+    additional.options[0].selected = true;
+    additional.dispatchEvent(new Event("change"));
     input.value = "hello";
     input.dispatchEvent(new Event("input"));
     await flushPromises();
@@ -138,6 +142,7 @@ describe("message extension dialog (jest)", () => {
     expect(fetchCalls.find((call) => call.url === "/api/detect")).toBeTruthy();
     const translateCall = fetchCalls.find((call) => call.url === "/api/translate" && call.body.text === "hello");
     expect(translateCall.body.targetLanguage).toBe("ja");
+    expect(translateCall.body.additionalTargetLanguages).toEqual(["es"]);
     expect(translation.value).toBe("こんにちは");
     const detectedLabel = document.querySelector("[data-detected-language]");
     expect(detectedLabel.textContent).toContain("en");
@@ -165,8 +170,10 @@ describe("message extension dialog (jest)", () => {
     const replyCall = fetchCalls.find((call) => call.url === "/api/reply");
     expect(rewriteCall.body.text).toBe("hola");
     expect(replyCall.body.translation).toBe("【润色】hola");
+    expect(replyCall.body.additionalTargetLanguages).toEqual([]);
     expect(teams.dialog.submit).toHaveBeenCalled();
     expect(teams.dialog.lastSubmit.translation).toBe("【润色】hola");
+    expect(teams.dialog.lastSubmit.additionalTargetLanguages).toEqual([]);
     expect(translation.value).toBe("【润色】hola");
   });
 
