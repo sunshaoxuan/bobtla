@@ -9,6 +9,7 @@ namespace TlaPlugin.Models;
 public class ContextRetrievalRequest
 {
     public string TenantId { get; set; } = string.Empty;
+    public string UserId { get; set; } = string.Empty;
     public string? ChannelId { get; set; }
         = null;
     public string? ThreadId { get; set; }

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Authentication;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Caching.Memory;
@@ -18,16 +19,19 @@ public class ContextRetrievalService
 {
     private readonly ITeamsMessageClient _teamsClient;
     private readonly IMemoryCache _cache;
+    private readonly ITokenBroker _tokenBroker;
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _locks;
     private readonly PluginOptions _options;
 
     public ContextRetrievalService(
         ITeamsMessageClient teamsClient,
         IMemoryCache cache,
+        ITokenBroker tokenBroker,
         IOptions<PluginOptions>? options = null)
     {
         _teamsClient = teamsClient ?? throw new ArgumentNullException(nameof(teamsClient));
         _cache = cache ?? throw new ArgumentNullException(nameof(cache));
+        _tokenBroker = tokenBroker ?? throw new ArgumentNullException(nameof(tokenBroker));
         _options = options?.Value ?? new PluginOptions();
         _locks = new ConcurrentDictionary<string, SemaphoreSlim>(StringComparer.OrdinalIgnoreCase);
     }
@@ -39,7 +43,7 @@ public class ContextRetrievalService
             throw new ArgumentNullException(nameof(request));
         }
 
-        if (string.IsNullOrWhiteSpace(request.TenantId))
+        if (string.IsNullOrWhiteSpace(request.TenantId) || string.IsNullOrWhiteSpace(request.UserId))
         {
             return new ContextRetrievalResult();
         }
@@ -104,8 +108,27 @@ public class ContextRetrievalService
                 limit = _options.Rag.MaxMessages > 0 ? _options.Rag.MaxMessages : 10;
             }
 
+            AccessToken? accessToken = null;
+            try
+            {
+                accessToken = await _tokenBroker
+                    .ExchangeOnBehalfOfAsync(request.TenantId, request.UserId, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (AuthenticationException)
+            {
+                return Array.Empty<ContextMessage>();
+            }
+
             var fetched = await _teamsClient
-                .GetRecentMessagesAsync(request.TenantId, request.ChannelId, request.ThreadId, limit, cancellationToken)
+                .GetRecentMessagesAsync(
+                    request.TenantId,
+                    request.ChannelId,
+                    request.ThreadId,
+                    limit,
+                    accessToken,
+                    request.UserId,
+                    cancellationToken)
                 .ConfigureAwait(false);
 
             var snapshot = fetched
