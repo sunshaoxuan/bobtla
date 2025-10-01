@@ -179,6 +179,7 @@ public class MessageExtensionHandler
                 TenantId = request.TenantId,
                 UserId = request.UserId,
                 ChannelId = request.ChannelId,
+                ThreadId = request.ThreadId,
                 Tone = TranslationRequest.DefaultTone,
                 UiLocale = request.UiLocale,
                 UseGlossary = false,

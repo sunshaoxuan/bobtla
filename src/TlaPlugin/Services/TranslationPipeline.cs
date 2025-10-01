@@ -189,6 +189,7 @@ public class TranslationPipeline : ITranslationPipeline
             TenantId = request.TenantId,
             UserId = request.UserId,
             ChannelId = request.ChannelId,
+            ThreadId = request.ThreadId,
             Tone = request.Tone,
             AdditionalTargetLanguages = new List<string>(additionalTargets),
             UseGlossary = request.UseGlossary,
@@ -219,7 +220,7 @@ public class TranslationPipeline : ITranslationPipeline
                 TenantId = request.TenantId,
                 UserId = request.UserId,
                 ChannelId = request.ChannelId,
-                ThreadId = request.ChannelId,
+                ThreadId = request.ThreadId,
                 MaxMessages = _options.Rag.MaxMessages,
                 ContextHints = new List<string>(request.ContextHints)
             }, cancellationToken);
