@@ -19,11 +19,11 @@ namespace TlaPlugin.Teams;
 /// </summary>
 public class MessageExtensionHandler
 {
-    private readonly TranslationPipeline _pipeline;
+    private readonly ITranslationPipeline _pipeline;
     private readonly LocalizationCatalogService _localization;
     private readonly PluginOptions _options;
 
-    public MessageExtensionHandler(TranslationPipeline pipeline, LocalizationCatalogService localization, IOptions<PluginOptions>? options = null)
+    public MessageExtensionHandler(ITranslationPipeline pipeline, LocalizationCatalogService localization, IOptions<PluginOptions>? options = null)
     {
         _pipeline = pipeline;
         _localization = localization;
@@ -99,12 +99,17 @@ public class MessageExtensionHandler
     public Task<JsonObject> HandleOfflineDraftAsync(OfflineDraftRequest request)
     {
         var record = _pipeline.SaveDraft(request);
+        record = _pipeline.MarkDraftProcessing(record.Id);
         return Task.FromResult(new JsonObject
         {
             ["type"] = "offlineDraftSaved",
             ["draftId"] = record.Id,
             ["status"] = record.Status,
-            ["createdAt"] = record.CreatedAt.ToString("O")
+            ["createdAt"] = record.CreatedAt.ToString("O"),
+            ["attempts"] = record.Attempts,
+            ["resultText"] = JsonValue.Create(record.ResultText),
+            ["errorReason"] = JsonValue.Create(record.ErrorReason),
+            ["completedAt"] = record.CompletedAt.HasValue ? record.CompletedAt.Value.ToString("O") : null
         });
     }
 
