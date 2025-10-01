@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -18,17 +19,36 @@ public class GraphTeamsMessageClient : ITeamsMessageClient
     private static readonly Regex HtmlTagRegex = new("<[^>]+>", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private readonly GraphServiceClient _graphClient;
+    private readonly IGraphRequestContextAccessor _contextAccessor;
 
-    public GraphTeamsMessageClient(GraphServiceClient graphClient)
+    public GraphTeamsMessageClient(GraphServiceClient graphClient, IGraphRequestContextAccessor contextAccessor)
     {
         _graphClient = graphClient ?? throw new ArgumentNullException(nameof(graphClient));
+        _contextAccessor = contextAccessor ?? throw new ArgumentNullException(nameof(contextAccessor));
     }
+
+    public Task<IReadOnlyList<ContextMessage>> GetRecentMessagesAsync(
+        string tenantId,
+        string? channelId,
+        string? threadId,
+        int maxMessages,
+        CancellationToken cancellationToken)
+        => GetRecentMessagesAsync(
+            tenantId,
+            channelId,
+            threadId,
+            maxMessages,
+            accessToken: null,
+            userId: null,
+            cancellationToken);
 
     public async Task<IReadOnlyList<ContextMessage>> GetRecentMessagesAsync(
         string tenantId,
         string? channelId,
         string? threadId,
         int maxMessages,
+        AccessToken? accessToken,
+        string? userId,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(tenantId) || string.IsNullOrWhiteSpace(channelId))
@@ -40,45 +60,66 @@ public class GraphTeamsMessageClient : ITeamsMessageClient
 
         var messages = new List<ContextMessage>();
 
-        if (!string.IsNullOrEmpty(threadId))
+        using var scope = _contextAccessor.Push(new GraphRequestContext(tenantId, userId, accessToken));
+
+        try
         {
-            var root = await _graphClient.Teams[tenantId].Channels[channelId].Messages[threadId]
-                .GetAsync(static request =>
-                {
-                    request.QueryParameters.Select = new[] { "id", "body", "from", "createdDateTime", "lastModifiedDateTime", "replyToId" };
-                }, cancellationToken).ConfigureAwait(false);
-
-            if (root is not null)
+            if (!string.IsNullOrEmpty(threadId))
             {
-                messages.Add(Convert(root));
-            }
+                var root = await _graphClient.Teams[tenantId].Channels[channelId].Messages[threadId]
+                    .GetAsync(static request =>
+                    {
+                        request.QueryParameters.Select = new[] { "id", "body", "from", "createdDateTime", "lastModifiedDateTime", "replyToId" };
+                    }, cancellationToken).ConfigureAwait(false);
 
-            var replies = await _graphClient.Teams[tenantId].Channels[channelId].Messages[threadId].Replies
-                .GetAsync(request =>
+                if (root is not null)
                 {
-                    request.QueryParameters.Top = maxMessages;
-                    request.QueryParameters.Orderby = new[] { "lastModifiedDateTime desc" };
-                    request.QueryParameters.Select = new[] { "id", "body", "from", "createdDateTime", "lastModifiedDateTime", "replyToId" };
-                }, cancellationToken).ConfigureAwait(false);
+                    messages.Add(Convert(root));
+                }
 
-            if (replies?.Value is not null)
-            {
-                messages.AddRange(replies.Value.Select(Convert));
+                var replies = await _graphClient.Teams[tenantId].Channels[channelId].Messages[threadId].Replies
+                    .GetAsync(request =>
+                    {
+                        request.QueryParameters.Top = maxMessages;
+                        request.QueryParameters.Orderby = new[] { "lastModifiedDateTime desc" };
+                        request.QueryParameters.Select = new[] { "id", "body", "from", "createdDateTime", "lastModifiedDateTime", "replyToId" };
+                    }, cancellationToken).ConfigureAwait(false);
+
+                if (replies?.Value is not null)
+                {
+                    messages.AddRange(replies.Value.Select(Convert));
+                }
             }
         }
-        else
+        catch (ServiceException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized || ex.StatusCode == HttpStatusCode.Forbidden)
         {
-            var response = await _graphClient.Teams[tenantId].Channels[channelId].Messages
-                .GetAsync(request =>
-                {
-                    request.QueryParameters.Top = maxMessages;
-                    request.QueryParameters.Orderby = new[] { "lastModifiedDateTime desc" };
-                    request.QueryParameters.Select = new[] { "id", "body", "from", "createdDateTime", "lastModifiedDateTime", "replyToId" };
-                }, cancellationToken).ConfigureAwait(false);
+            return Array.Empty<ContextMessage>();
+        }
+        catch
+        {
+            throw;
+        }
 
-            if (response?.Value is not null)
+        if (messages.Count == 0)
+        {
+            try
             {
-                messages.AddRange(response.Value.Select(Convert));
+                var response = await _graphClient.Teams[tenantId].Channels[channelId].Messages
+                    .GetAsync(request =>
+                    {
+                        request.QueryParameters.Top = maxMessages;
+                        request.QueryParameters.Orderby = new[] { "lastModifiedDateTime desc" };
+                        request.QueryParameters.Select = new[] { "id", "body", "from", "createdDateTime", "lastModifiedDateTime", "replyToId" };
+                    }, cancellationToken).ConfigureAwait(false);
+
+                if (response?.Value is not null)
+                {
+                    messages.AddRange(response.Value.Select(Convert));
+                }
+            }
+            catch (ServiceException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized || ex.StatusCode == HttpStatusCode.Forbidden)
+            {
+                return Array.Empty<ContextMessage>();
             }
         }
 
