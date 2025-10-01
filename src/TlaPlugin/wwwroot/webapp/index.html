@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TLA 团队前端仪表盘</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="dashboard">
+      <section class="summary">
+        <h1>Teams 翻译助手 · 前端仪表盘</h1>
+        <div class="summary__grid">
+          <article class="card">
+            <h2>整体进度</h2>
+            <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" data-overall-progress>
+              <span>0%</span>
+            </div>
+            <p data-overall-text>整体完成度 0%</p>
+          </article>
+          <article class="card">
+            <h2>前端完成度</h2>
+            <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" data-frontend-progress>
+              <span>0%</span>
+            </div>
+            <p data-frontend-text>前端完成度 0%</p>
+            <ul class="readiness" data-readiness></ul>
+          </article>
+          <article class="card">
+            <h2>当前阶段</h2>
+            <h3 data-active-stage-title>阶段加载中</h3>
+            <p data-active-stage-body>正在同步阶段目标...</p>
+            <h4>下一步</h4>
+            <ul class="next-steps" data-next-steps></ul>
+          </article>
+          <article class="card">
+            <h2>可用界面语言</h2>
+            <ul class="locale-list" data-locale-list></ul>
+          </article>
+          <article class="card">
+            <h2>支持翻译语言</h2>
+            <p data-language-count>正在载入...</p>
+            <ul class="language-list" data-language-list></ul>
+          </article>
+          <article class="card card--metrics" data-metrics-card>
+            <header class="metrics__header">
+              <h2>使用指标</h2>
+              <button type="button" class="metrics__refresh" data-metrics-refresh>刷新</button>
+            </header>
+            <div class="metrics__grid">
+              <div class="metrics__stat" data-metric-usage>
+                <span class="metrics__label">24 小时调用</span>
+                <strong class="metrics__value" data-metric-usage-value>--</strong>
+                <span class="metrics__detail" data-metric-usage-detail>成功率 --</span>
+              </div>
+              <div class="metrics__stat" data-metric-cost>
+                <span class="metrics__label">月度成本</span>
+                <strong class="metrics__value" data-metric-cost-value>--</strong>
+                <span class="metrics__detail" data-metric-cost-detail>日均 --</span>
+              </div>
+              <div class="metrics__stat" data-metric-failure-summary>
+                <span class="metrics__label">失败次数</span>
+                <strong class="metrics__value" data-metric-failure-total>--</strong>
+                <span class="metrics__detail" data-metric-failure-detail>主要原因 --</span>
+              </div>
+            </div>
+            <div class="metrics__failures">
+              <h3>高频失败原因</h3>
+              <ul class="metrics__failure-list" data-failure-reasons>
+                <li class="metrics__empty">正在统计...</li>
+              </ul>
+            </div>
+            <p class="metrics__updated" data-metrics-updated>最近更新：--</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>阶段时间线</h2>
+        <div class="timeline" data-timeline></div>
+      </section>
+
+      <section class="section">
+        <h2>测试覆盖</h2>
+        <ul class="test-list" data-test-list></ul>
+      </section>
+
+      <section class="section glossary">
+        <h2>术语表管理</h2>
+        <form class="glossary__form" data-glossary-form>
+          <label>
+            作用域
+            <select data-glossary-scope>
+              <option value="tenant">租户</option>
+              <option value="channel">团队频道</option>
+              <option value="user">个人</option>
+            </select>
+          </label>
+          <label>
+            术语文件（CSV/TBX）
+            <input
+              type="file"
+              accept=".csv,.tbx,text/csv,application/xml"
+              data-glossary-file
+              required
+            />
+          </label>
+          <label class="glossary__toggle">
+            <input type="checkbox" data-glossary-override />
+            覆盖现有术语
+          </label>
+          <button type="submit">上传术语</button>
+        </form>
+
+        <p class="glossary__status" data-glossary-status></p>
+
+        <div class="glossary__results" data-glossary-results hidden>
+          <h3>上传结果</h3>
+          <p data-glossary-summary>尚未上传术语。</p>
+          <dl class="glossary__metrics">
+            <div>
+              <dt>新增</dt>
+              <dd data-glossary-imported>0</dd>
+            </div>
+            <div>
+              <dt>更新</dt>
+              <dd data-glossary-updated>0</dd>
+            </div>
+            <div>
+              <dt>冲突</dt>
+              <dd data-glossary-conflict-count>0</dd>
+            </div>
+            <div>
+              <dt>错误</dt>
+              <dd data-glossary-error-count>0</dd>
+            </div>
+          </dl>
+          <div class="glossary__conflicts" data-glossary-conflicts hidden>
+            <h4>冲突条目</h4>
+            <ul data-glossary-conflict-list></ul>
+          </div>
+          <div class="glossary__errors" data-glossary-errors hidden>
+            <h4>解析/导入错误</h4>
+            <ul data-glossary-error-list></ul>
+          </div>
+        </div>
+
+        <div class="glossary__list">
+          <h3>当前术语</h3>
+          <ul data-glossary-items></ul>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

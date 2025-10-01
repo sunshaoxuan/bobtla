@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BOBTLA Compose 插件</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="compose" data-compose-root>
+    <header class="compose__header">
+      <h1>内联翻译助手</h1>
+      <p>在撰写消息时快速生成译文预览。</p>
+    </header>
+    <main class="compose__main">
+      <label>
+        目标语言
+        <select data-compose-target aria-label="目标语言"></select>
+      </label>
+      <label class="toggle">
+        <input type="checkbox" data-terminology-toggle checked /> 使用术语表
+      </label>
+      <label class="toggle">
+        <input type="checkbox" data-tone-toggle /> 正式语气
+      </label>
+      <p class="compose__cost" data-compose-cost></p>
+      <label class="compose__editor">
+        原文
+        <textarea rows="5" data-compose-input placeholder="输入要翻译的消息"></textarea>
+      </label>
+      <label class="compose__editor">
+        译文预览
+        <textarea rows="5" data-compose-preview readonly></textarea>
+      </label>
+    </main>
+    <footer class="compose__footer">
+      <button type="button" class="btn" data-compose-suggest>生成建议</button>
+      <button type="button" class="btn btn--primary" data-compose-apply>应用译文</button>
+    </footer>
+    <script type="module" src="./composePlugin.js"></script>
+  </body>
+</html>

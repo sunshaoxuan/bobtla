@@ -116,6 +116,9 @@ builder.Services.AddHealthChecks().AddCheck<DraftReplayHealthCheck>("draft_repla
 
 var app = builder.Build();
 
+app.UseDefaultFiles();
+app.UseStaticFiles();
+
 var jsonOptions = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 static bool TryAuthorize(HttpRequest request, out IResult? unauthorized)
 {
@@ -702,6 +705,11 @@ static bool LooksLikeHeader(string[] cells)
         || (first.Contains("term") && second.Contains("translation"));
 }
 
+
+app.MapFallbackToFile("/dashboard/{*path}", "dashboard/index.html");
+app.MapFallbackToFile("/settings/{*path}", "settings/index.html");
+app.MapFallbackToFile("/compose/{*path}", "compose/index.html");
+app.MapFallbackToFile("/dialog/{*path}", "dialog/index.html");
 
 app.Run();
 
