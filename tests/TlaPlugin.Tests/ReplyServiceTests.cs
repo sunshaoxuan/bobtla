@@ -3,10 +3,15 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Net;
 using System.Net.Http;
+using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using TlaPlugin.Configuration;
 using TlaPlugin.Models;
@@ -323,6 +328,178 @@ public class ReplyServiceTests
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             return Task.FromResult(_handler(request));
+        }
+    }
+}
+
+public class ReplyServiceMinimalApiTests : IClassFixture<WebApplicationFactory<Program>>
+{
+    private readonly WebApplicationFactory<Program> _factory;
+
+    public ReplyServiceMinimalApiTests(WebApplicationFactory<Program> factory)
+    {
+        _factory = factory;
+    }
+
+    [Fact]
+    public async Task ReplyEndpointUsesTypedHttpClientFactoryRegistration()
+    {
+        var responseBody = "{\"id\":\"msg-api\",\"createdDateTime\":\"2024-03-01T09:10:11Z\"}";
+        var client = CreateReplyClient(_ => new HttpResponseMessage(HttpStatusCode.Created)
+        {
+            Content = new StringContent(responseBody, Encoding.UTF8, "application/json")
+        }, out var state);
+
+        var response = await client.PostAsJsonAsync("/api/reply", new ReplyRequest
+        {
+            ThreadId = "thread",
+            ReplyText = "你好",
+            TenantId = "contoso",
+            UserId = "user",
+            ChannelId = "general",
+            LanguagePolicy = new ReplyLanguagePolicy { TargetLang = "zh-CN", Tone = ToneTemplateService.Casual }
+        });
+
+        response.EnsureSuccessStatusCode();
+        var payload = await response.Content.ReadFromJsonAsync<ReplyResult>();
+
+        Assert.NotNull(payload);
+        Assert.Equal("msg-api", payload!.MessageId);
+        Assert.Equal("sent", payload.Status);
+
+        Assert.Equal(1, state.RequestCount);
+        Assert.Equal("/teams/contoso/channels/general/messages/thread/replies", state.LastPath);
+        Assert.Equal("Bearer api-token", state.LastAuthorization);
+
+        Assert.NotNull(state.LastContent);
+        using var document = JsonDocument.Parse(state.LastContent);
+        Assert.Equal("thread", document.RootElement.GetProperty("replyToId").GetString());
+        Assert.Equal("zh-CN", document.RootElement.GetProperty("channelData").GetProperty("metadata").GetProperty("language").GetString());
+        Assert.Equal(ToneTemplateService.Casual, document.RootElement.GetProperty("channelData").GetProperty("metadata").GetProperty("tone").GetString());
+    }
+
+    [Fact]
+    public async Task ReplyEndpointReturnsForbiddenWhenTeamsClientRespondsForbidden()
+    {
+        var client = CreateReplyClient(_ => new HttpResponseMessage(HttpStatusCode.Forbidden)
+        {
+            Content = new StringContent("{\"error\":{\"message\":\"denied\"}}", Encoding.UTF8, "application/json")
+        }, out var state);
+
+        var response = await client.PostAsJsonAsync("/api/reply", new ReplyRequest
+        {
+            ThreadId = "thread",
+            ReplyText = "内容",
+            TenantId = "contoso",
+            UserId = "user",
+            ChannelId = "general",
+            LanguagePolicy = new ReplyLanguagePolicy { TargetLang = "zh-CN" }
+        });
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Equal(1, state.RequestCount);
+        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
+        Assert.NotNull(problem);
+        Assert.Equal("指定されたチャネルでは返信権限がありません。", problem!.Detail);
+    }
+
+    [Fact]
+    public async Task ReplyEndpointReturnsPaymentRequiredWhenTeamsClientRespondsPaymentRequired()
+    {
+        var client = CreateReplyClient(_ => new HttpResponseMessage(HttpStatusCode.PaymentRequired)
+        {
+            Content = new StringContent("{\"error\":{\"message\":\"budget exceeded\"}}", Encoding.UTF8, "application/json")
+        }, out _);
+
+        var response = await client.PostAsJsonAsync("/api/reply", new ReplyRequest
+        {
+            ThreadId = "thread",
+            ReplyText = "内容",
+            TenantId = "contoso",
+            UserId = "user",
+            ChannelId = "general",
+            LanguagePolicy = new ReplyLanguagePolicy { TargetLang = "zh-CN" }
+        });
+
+        Assert.Equal(HttpStatusCode.PaymentRequired, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
+        Assert.NotNull(problem);
+        Assert.Contains("budget exceeded", problem!.Detail, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private HttpClient CreateReplyClient(Func<HttpRequestMessage, HttpResponseMessage> responseFactory, out HandlerState state)
+    {
+        state = new HandlerState();
+        return _factory.WithWebHostBuilder(builder =>
+        {
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<ITeamsReplyClient>();
+                services.RemoveAll<ITokenBroker>();
+                services.AddSingleton(state);
+                services.AddSingleton(responseFactory);
+                services.AddHttpClient<ITeamsReplyClient, TeamsReplyClient>()
+                    .ConfigureHttpClient(client =>
+                    {
+                        client.BaseAddress = new Uri("https://graph.test/v1.0/", UriKind.Absolute);
+                        client.Timeout = TimeSpan.FromSeconds(5);
+                    })
+                    .ConfigurePrimaryHttpMessageHandler(sp =>
+                    {
+                        var handlerState = sp.GetRequiredService<HandlerState>();
+                        var factory = sp.GetRequiredService<Func<HttpRequestMessage, HttpResponseMessage>>();
+                        return new CapturingHttpMessageHandler(handlerState, factory);
+                    });
+                services.AddSingleton<ITokenBroker>(new TestTokenBroker("api-token"));
+            });
+        }).CreateClient();
+    }
+
+    private sealed class TestTokenBroker : ITokenBroker
+    {
+        private readonly string _token;
+
+        public TestTokenBroker(string token)
+        {
+            _token = token;
+        }
+
+        public Task<AccessToken> ExchangeOnBehalfOfAsync(string tenantId, string userId, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(new AccessToken(_token, DateTimeOffset.UtcNow.AddMinutes(5), "audience"));
+        }
+    }
+
+    private sealed class HandlerState
+    {
+        public int RequestCount { get; set; }
+        public string? LastPath { get; set; }
+        public string? LastAuthorization { get; set; }
+        public string? LastContent { get; set; }
+    }
+
+    private sealed class CapturingHttpMessageHandler : HttpMessageHandler
+    {
+        private readonly HandlerState _state;
+        private readonly Func<HttpRequestMessage, HttpResponseMessage> _factory;
+
+        public CapturingHttpMessageHandler(HandlerState state, Func<HttpRequestMessage, HttpResponseMessage> factory)
+        {
+            _state = state;
+            _factory = factory;
+        }
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            _state.RequestCount++;
+            _state.LastPath = request.RequestUri?.PathAndQuery;
+            _state.LastAuthorization = request.Headers.Authorization?.ToString();
+            if (request.Content is not null)
+            {
+                _state.LastContent = await request.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            return _factory(request);
         }
     }
 }
