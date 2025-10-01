@@ -16,7 +16,20 @@ function readFileFromSrc(relativePath) {
   return readFileSync(normalized);
 }
 
-async function setupComposePage(page, { translateCalls, replyCalls }) {
+function buildDefaultMetadata() {
+  return {
+    models: [{ id: "model-a", displayName: "Model A", costPerCharUsd: 0.00002 }],
+    languages: [
+      { id: "auto", name: "Auto", isDefault: true },
+      { id: "es", name: "Español" },
+      { id: "ja", name: "日本語" }
+    ],
+    features: { terminologyToggle: true, toneToggle: true },
+    pricing: { currency: "USD" }
+  };
+}
+
+async function setupComposePage(page, { translateCalls, replyCalls, metadataHandler, metadata = buildDefaultMetadata() } = {}) {
   await page.route("http://local.test/**", async (route) => {
     const url = new URL(route.request().url());
     const relative = url.pathname.replace(/^\//, "");
@@ -41,24 +54,17 @@ async function setupComposePage(page, { translateCalls, replyCalls }) {
     await route.fallback();
   });
 
-  const metadata = {
-    models: [{ id: "model-a", displayName: "Model A", costPerCharUsd: 0.00002 }],
-    languages: [
-      { id: "auto", name: "Auto", isDefault: true },
-      { id: "es", name: "Español" },
-      { id: "ja", name: "日本語" }
-    ],
-    features: { terminologyToggle: true, toneToggle: true },
-    pricing: { currency: "USD" }
-  };
+  const metadataRoute = metadataHandler
+    ? metadataHandler
+    : async (route) => {
+        await route.fulfill({
+          status: 200,
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(metadata)
+        });
+      };
 
-  await page.route("**/api/metadata", async (route) => {
-    await route.fulfill({
-      status: 200,
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(metadata)
-    });
-  });
+  await page.route("**/api/metadata", metadataRoute);
 
   await page.route("**/api/translate", async (route) => {
     const payload = JSON.parse(route.request().postData() ?? "{}");
@@ -149,4 +155,24 @@ test("compose page delegates to teams compose plugin", async ({ page }) => {
   expect(sentMessages).toHaveLength(1);
   expect(sentMessages[0].attachments[0].content.type).toBe("AdaptiveCard");
   await expect(preview).toHaveValue("已发送 Adaptive Card 回贴");
+});
+
+test("compose page falls back to local metadata when endpoint fails", async ({ page }) => {
+  await setupComposePage(page, {
+    metadataHandler: async (route) => {
+      await route.fulfill({
+        status: 500,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ error: "metadata unavailable" })
+      });
+    }
+  });
+
+  const targetOptions = await page
+    .locator("[data-compose-target] option")
+    .evaluateAll((options) => options.map((option) => option.value));
+  expect(targetOptions).toContain("fr");
+
+  const costHint = page.locator("[data-compose-cost]");
+  await expect(costHint).toContainText("azureOpenAI:gpt-4o");
 });

@@ -7,7 +7,18 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "../..");
 const srcRoot = path.join(repoRoot, "src");
 
-test.beforeEach(async ({ page }) => {
+const defaultMetadata = {
+  models: [{ id: "model-a", displayName: "Model A", costPerCharUsd: 0.00002 }],
+  languages: [
+    { id: "auto", name: "Auto", isDefault: true },
+    { id: "es", name: "Español" },
+    { id: "ja", name: "日本語" }
+  ],
+  features: { terminologyToggle: true, toneToggle: true },
+  pricing: { currency: "USD" }
+};
+
+async function setupDialogPage(page, { metadata = defaultMetadata, metadataHandler } = {}) {
   await page.route("http://local.test/**", async (route) => {
     const url = new URL(route.request().url());
     const relative = url.pathname.replace(/^\//, "");
@@ -32,24 +43,17 @@ test.beforeEach(async ({ page }) => {
     await route.fallback();
   });
 
-  const metadata = {
-    models: [{ id: "model-a", displayName: "Model A", costPerCharUsd: 0.00002 }],
-    languages: [
-      { id: "auto", name: "Auto", isDefault: true },
-      { id: "es", name: "Español" },
-      { id: "ja", name: "日本語" }
-    ],
-    features: { terminologyToggle: true, toneToggle: true },
-    pricing: { currency: "USD" }
-  };
+  const metadataRoute = metadataHandler
+    ? metadataHandler
+    : async (route) => {
+        await route.fulfill({
+          status: 200,
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(metadata)
+        });
+      };
 
-  await page.route("**/api/metadata", async (route) => {
-    await route.fulfill({
-      status: 200,
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(metadata)
-    });
-  });
+  await page.route("**/api/metadata", metadataRoute);
 
   await page.route("**/api/detect", async (route) => {
     await route.fulfill({
@@ -113,11 +117,13 @@ test.beforeEach(async ({ page }) => {
       }
     };
   });
+
   await page.goto("http://local.test/webapp/dialog.html", { waitUntil: "load" });
   await page.waitForSelector("[data-source-text]");
-});
+}
 
 test("switching language updates translate payload", async ({ page }) => {
+  await setupDialogPage(page);
   const sourceInput = page.locator("[data-source-text]");
   const previewButton = page.locator("[data-preview-translation]");
   const translationInput = page.locator("[data-translation-text]");
@@ -146,6 +152,7 @@ test("switching language updates translate payload", async ({ page }) => {
 });
 
 test("edited translation is rewritten before reply", async ({ page }) => {
+  await setupDialogPage(page);
   const sourceInput = page.locator("[data-source-text]");
   const previewButton = page.locator("[data-preview-translation]");
   const translationInput = page.locator("[data-translation-text]");
@@ -171,6 +178,7 @@ test("edited translation is rewritten before reply", async ({ page }) => {
 });
 
 test("rag toggle sends context hints", async ({ page }) => {
+  await setupDialogPage(page);
   const ragToggle = page.locator("[data-rag-toggle]");
   const hintsInput = page.locator("[data-context-hints]");
   const sourceInput = page.locator("[data-source-text]");
@@ -186,4 +194,23 @@ test("rag toggle sends context hints", async ({ page }) => {
   const payload = (await translateRequest).postDataJSON();
   expect(payload.useRag).toBe(true);
   expect(payload.contextHints).toEqual(["budget review", "contract draft"]);
+});
+
+test("metadata endpoint failure uses fallback configuration", async ({ page }) => {
+  await setupDialogPage(page, {
+    metadataHandler: async (route) => {
+      await route.fulfill({
+        status: 500,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ error: "unavailable" })
+      });
+    }
+  });
+
+  const targetOptions = await page
+    .locator("[data-target-select] option")
+    .evaluateAll((options) => options.map((option) => option.value));
+  expect(targetOptions).toContain("fr");
+  const costHint = page.locator("[data-cost-hint]");
+  await expect(costHint).toContainText("azureOpenAI:gpt-4o");
 });
