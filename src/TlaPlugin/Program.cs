@@ -4,6 +4,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using System;
+using System.Net;
+using System.Net.Http;
 using System.Security.Authentication;
 using System.Collections.Generic;
 using System.IO;
@@ -39,6 +41,38 @@ builder.Services.AddSingleton<GraphServiceClient>(provider =>
     return new GraphServiceClient(authenticationProvider);
 });
 builder.Services.AddSingleton<ITeamsMessageClient, GraphTeamsMessageClient>();
+builder.Services.AddHttpClient<ITeamsReplyClient, TeamsReplyClient>((provider, client) =>
+{
+    var options = provider.GetService<IOptions<PluginOptions>>();
+    var security = options?.Value?.Security;
+    if (security is not null)
+    {
+        if (!string.IsNullOrWhiteSpace(security.GraphBaseUrl) && Uri.TryCreate(security.GraphBaseUrl, UriKind.Absolute, out var baseUri))
+        {
+            client.BaseAddress = baseUri;
+        }
+
+        if (security.GraphTimeout > TimeSpan.Zero)
+        {
+            client.Timeout = security.GraphTimeout;
+        }
+    }
+})
+.ConfigurePrimaryHttpMessageHandler(provider =>
+{
+    var options = provider.GetService<IOptions<PluginOptions>>();
+    var security = options?.Value?.Security;
+    if (security is not null && !string.IsNullOrWhiteSpace(security.GraphProxy))
+    {
+        return new HttpClientHandler
+        {
+            Proxy = new WebProxy(security.GraphProxy),
+            UseProxy = true
+        };
+    }
+
+    return new HttpClientHandler();
+});
 builder.Services.AddSingleton(provider =>
 {
     var glossary = new GlossaryService();

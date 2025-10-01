@@ -262,6 +262,9 @@ public class SecurityOptions
     {
         ["tla-client-secret"] = "local-dev-secret"
     };
+    public string? GraphBaseUrl { get; set; }
+    public TimeSpan GraphTimeout { get; set; } = TimeSpan.FromSeconds(100);
+    public string? GraphProxy { get; set; }
     public IList<string> AllowedReplyChannels { get; set; } = new List<string>();
 }
 
