@@ -76,7 +76,7 @@ builder.Services.AddSingleton<RewriteService>();
 builder.Services.AddSingleton<CostEstimatorService>();
 builder.Services.AddSingleton<McpToolRegistry>();
 builder.Services.AddSingleton<McpServer>();
-builder.Services.AddHostedService<DraftReplayService>();
+builder.Services.AddSingleton<MetadataService>();
 
 var app = builder.Build();
 
@@ -307,6 +307,12 @@ app.MapPost("/api/reply", async (ReplyRequest request, ReplyService service, Can
     {
         return Results.BadRequest(new { error = ex.Message });
     }
+});
+
+app.MapGet("/api/metadata", (MetadataService metadataService) =>
+{
+    var metadata = metadataService.CreateMetadata();
+    return Results.Json(metadata, options: jsonOptions);
 });
 
 app.MapGet("/api/cost-latency", (int payloadSize, string modelId, CostEstimatorService estimator) =>
