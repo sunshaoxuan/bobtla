@@ -59,7 +59,7 @@ public class ConfigurableChatModelProvider : IModelProvider
         {
             var content = await InvokeChatCompletionAsync(instructions, messages, cancellationToken);
             stopwatch.Stop();
-            return new ModelTranslationResult(content, Options.Id, Options.Reliability, (int)stopwatch.ElapsedMilliseconds);
+            return new ModelTranslationResult(content, GetModelIdentifier(), Options.Reliability, (int)stopwatch.ElapsedMilliseconds);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
         {
@@ -130,8 +130,11 @@ public class ConfigurableChatModelProvider : IModelProvider
     private async Task<string> InvokeChatCompletionAsync(string instructions, IList<(string role, string content)> messages, CancellationToken cancellationToken)
     {
         var client = _httpClientFactory!.CreateClient($"provider-{Options.Id}");
+        ApplyTimeout(client);
         using var request = new HttpRequestMessage(HttpMethod.Post, Options.Endpoint);
 
+        request.Headers.Accept.Clear();
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         AppendHeaders(request.Headers);
         await AppendAuthorizationAsync(request.Headers, cancellationToken);
 
@@ -297,5 +300,34 @@ public class ConfigurableChatModelProvider : IModelProvider
         };
 
         return text.EndsWith(suffix, StringComparison.Ordinal) ? text : $"{text} {suffix}";
+    }
+
+    private void ApplyTimeout(HttpClient client)
+    {
+        if (Options.LatencyTargetMs <= 0)
+        {
+            return;
+        }
+
+        var multiplier = Options.LatencyTargetMs * 4L;
+        if (multiplier < 10_000)
+        {
+            multiplier = 10_000;
+        }
+        else if (multiplier > 120_000)
+        {
+            multiplier = 120_000;
+        }
+
+        var desiredTimeout = TimeSpan.FromMilliseconds(multiplier);
+        if (client.Timeout != desiredTimeout)
+        {
+            client.Timeout = desiredTimeout;
+        }
+    }
+
+    private string GetModelIdentifier()
+    {
+        return string.IsNullOrWhiteSpace(Options.Model) ? Options.Id : Options.Model;
     }
 }

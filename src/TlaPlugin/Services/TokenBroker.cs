@@ -33,7 +33,18 @@ public class TokenBroker : ITokenBroker
             return cached;
         }
 
-        var clientSecret = await _resolver.GetSecretAsync(_options.Security.ClientSecretName, cancellationToken);
+        var security = _options.Security;
+        TenantSecurityOverride? tenantOverride = null;
+        if (security.TenantOverrides.TryGetValue(tenantId, out var overrideOption))
+        {
+            tenantOverride = overrideOption;
+        }
+
+        var clientSecretName = !string.IsNullOrWhiteSpace(tenantOverride?.ClientSecretName)
+            ? tenantOverride!.ClientSecretName!
+            : security.ClientSecretName;
+
+        var clientSecret = await _resolver.GetSecretAsync(clientSecretName, cancellationToken);
         if (string.IsNullOrEmpty(clientSecret))
         {
             throw new AuthenticationException("无法获取客户端机密。");
@@ -43,8 +54,11 @@ public class TokenBroker : ITokenBroker
             ? TimeSpan.FromMinutes(30)
             : _options.Security.AccessTokenLifetime;
         var expiresOn = DateTimeOffset.UtcNow.Add(lifetime);
+        var audience = !string.IsNullOrWhiteSpace(tenantOverride?.UserAssertionAudience)
+            ? tenantOverride!.UserAssertionAudience!
+            : security.UserAssertionAudience;
         var value = GenerateToken(tenantId, userId, clientSecret, expiresOn);
-        var token = new AccessToken(value, expiresOn, _options.Security.UserAssertionAudience);
+        var token = new AccessToken(value, expiresOn, audience);
         _cache[cacheKey] = token;
         return token;
     }

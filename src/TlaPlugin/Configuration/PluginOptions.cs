@@ -264,10 +264,19 @@ public class SecurityOptions
     {
         ["tla-client-secret"] = "local-dev-secret"
     };
+    public IDictionary<string, TenantSecurityOverride> TenantOverrides { get; set; }
+        = new Dictionary<string, TenantSecurityOverride>(StringComparer.OrdinalIgnoreCase);
     public string? GraphBaseUrl { get; set; }
     public TimeSpan GraphTimeout { get; set; } = TimeSpan.FromSeconds(100);
     public string? GraphProxy { get; set; }
     public IList<string> AllowedReplyChannels { get; set; } = new List<string>();
+}
+
+public class TenantSecurityOverride
+{
+    public string? ClientId { get; set; }
+    public string? ClientSecretName { get; set; }
+    public string? UserAssertionAudience { get; set; }
 }
 
 /// <summary>

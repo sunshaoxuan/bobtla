@@ -44,7 +44,7 @@ public class MockModelProvider : IModelProvider
 
         var prefix = string.IsNullOrEmpty(Options.TranslationPrefix) ? $"[{Options.Id}]" : Options.TranslationPrefix;
         var output = $"{prefix} {promptPrefix} {text} ({targetLanguage})";
-        return new ModelTranslationResult(output, Options.Id, Options.Reliability, (int)sw.ElapsedMilliseconds);
+        return new ModelTranslationResult(output, GetModelIdentifier(), Options.Reliability, (int)sw.ElapsedMilliseconds);
     }
 
     public Task<string> RewriteAsync(string translatedText, string tone, CancellationToken cancellationToken)
@@ -69,5 +69,10 @@ public class MockModelProvider : IModelProvider
 
         var trimmed = text.Length > 60 ? text[..60] + "…" : text;
         return Task.FromResult($"概要: {trimmed}");
+}
+
+    private string GetModelIdentifier()
+    {
+        return string.IsNullOrWhiteSpace(Options.Model) ? Options.Id : Options.Model;
     }
 }
