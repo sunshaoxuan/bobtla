@@ -3,6 +3,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using TlaPlugin.Configuration;
 using TlaPlugin.Models;
 
 namespace TlaPlugin.Services;
@@ -22,13 +24,32 @@ public class DraftReplayService : BackgroundService
     public DraftReplayService(
         OfflineDraftStore store,
         ITranslationPipeline pipeline,
-        ILogger<DraftReplayService> logger)
+        ILogger<DraftReplayService> logger,
+        IOptions<PluginOptions>? options = null)
     {
         _store = store;
         _pipeline = pipeline;
         _logger = logger;
-        _pollingInterval = TimeSpan.FromSeconds(3);
-        _maxAttempts = 3;
+        var pluginOptions = options?.Value ?? new PluginOptions();
+        _pollingInterval = pluginOptions.DraftReplayPollingInterval > TimeSpan.Zero
+            ? pluginOptions.DraftReplayPollingInterval
+            : TimeSpan.FromSeconds(3);
+        _maxAttempts = Math.Max(1, pluginOptions.DraftReplayMaxAttempts);
+    }
+
+    public override Task StartAsync(CancellationToken cancellationToken)
+    {
+        _logger.LogInformation(
+            "Starting draft replay service with polling interval {Interval} and max attempts {MaxAttempts}.",
+            _pollingInterval,
+            _maxAttempts);
+        return base.StartAsync(cancellationToken);
+    }
+
+    public override Task StopAsync(CancellationToken cancellationToken)
+    {
+        _logger.LogInformation("Stopping draft replay service.");
+        return base.StopAsync(cancellationToken);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -68,6 +89,7 @@ public class DraftReplayService : BackgroundService
         var pending = _store.GetPendingDrafts(MaxBatchSize);
         if (pending.Count == 0)
         {
+            _logger.LogDebug("No pending drafts found during replay cycle.");
             _store.Cleanup();
             return false;
         }
@@ -91,19 +113,43 @@ public class DraftReplayService : BackgroundService
                 if (result.Translation is { } translation)
                 {
                     _store.MarkCompleted(draft.Id, translation.TranslatedText);
+                    _logger.LogInformation(
+                        "Successfully replayed draft {DraftId} on attempt {AttemptCount}.",
+                        draft.Id,
+                        attempts);
                 }
                 else if (result.RequiresLanguageSelection)
                 {
                     _store.MarkFailed(draft.Id, "Language confirmation required.", finalFailure: true);
+                    _logger.LogWarning(
+                        "Draft {DraftId} requires language confirmation and has been marked as failed.",
+                        draft.Id);
                 }
                 else if (result.RequiresGlossaryResolution)
                 {
                     _store.MarkFailed(draft.Id, "Glossary decision required.", finalFailure: true);
+                    _logger.LogWarning(
+                        "Draft {DraftId} requires glossary resolution and has been marked as failed.",
+                        draft.Id);
                 }
                 else
                 {
                     var final = attempts >= _maxAttempts;
                     _store.MarkFailed(draft.Id, "Translation pipeline did not return a result.", final);
+                    if (final)
+                    {
+                        _logger.LogError(
+                            "Draft {DraftId} did not return a translation after {AttemptCount} attempts.",
+                            draft.Id,
+                            attempts);
+                    }
+                    else
+                    {
+                        _logger.LogWarning(
+                            "Translation pipeline returned no result for draft {DraftId}. Attempt {AttemptCount} will be retried.",
+                            draft.Id,
+                            attempts);
+                    }
                 }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)

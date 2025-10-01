@@ -14,6 +14,8 @@ public class PluginOptions
     public TimeSpan CacheTtl { get; set; } = TimeSpan.FromHours(24);
     public int MaxConcurrentTranslations { get; set; } = 4;
     public int RequestsPerMinute { get; set; } = 120;
+    public TimeSpan DraftReplayPollingInterval { get; set; } = TimeSpan.FromSeconds(3);
+    public int DraftReplayMaxAttempts { get; set; } = 3;
     public string OfflineDraftConnectionString { get; set; } = "Data Source=tla-offline.db";
     public IList<string> SupportedLanguages { get; set; } = new List<string>
     {
