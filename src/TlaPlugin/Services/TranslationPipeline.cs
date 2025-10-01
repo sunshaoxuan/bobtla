@@ -217,6 +217,7 @@ public class TranslationPipeline
             retrieval = await _contextRetrieval.GetContextAsync(new ContextRetrievalRequest
             {
                 TenantId = request.TenantId,
+                UserId = request.UserId,
                 ChannelId = request.ChannelId,
                 ThreadId = request.ChannelId,
                 MaxMessages = _options.Rag.MaxMessages,

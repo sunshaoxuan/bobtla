@@ -25,7 +25,19 @@ builder.Services.Configure<PluginOptions>(builder.Configuration.GetSection("Plug
 
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient();
-builder.Services.AddSingleton<GraphServiceClient>(_ => new GraphServiceClient(new AnonymousAuthenticationProvider()));
+builder.Services.AddSingleton<IGraphRequestContextAccessor, GraphRequestContextAccessor>();
+builder.Services.AddSingleton<ITokenBroker, TokenBroker>();
+builder.Services.AddSingleton<IAuthenticationProvider>(provider =>
+{
+    var tokenBroker = provider.GetRequiredService<ITokenBroker>();
+    var contextAccessor = provider.GetRequiredService<IGraphRequestContextAccessor>();
+    return new BrokeredGraphAuthenticationProvider(tokenBroker, contextAccessor);
+});
+builder.Services.AddSingleton<GraphServiceClient>(provider =>
+{
+    var authenticationProvider = provider.GetRequiredService<IAuthenticationProvider>();
+    return new GraphServiceClient(authenticationProvider);
+});
 builder.Services.AddSingleton<ITeamsMessageClient, GraphTeamsMessageClient>();
 builder.Services.AddSingleton(provider =>
 {
@@ -49,7 +61,6 @@ builder.Services.AddSingleton(provider => new OfflineDraftStore(provider.GetServ
 builder.Services.AddSingleton<TranslationCache>();
 builder.Services.AddSingleton<TranslationThrottle>();
 builder.Services.AddSingleton<KeyVaultSecretResolver>();
-builder.Services.AddSingleton<ITokenBroker, TokenBroker>();
 builder.Services.AddSingleton<ModelProviderFactory>();
 builder.Services.AddSingleton<UsageMetricsService>();
 builder.Services.AddSingleton<LocalizationCatalogService>();

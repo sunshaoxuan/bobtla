@@ -476,7 +476,7 @@ public class MessageExtensionHandlerTests
         var throttle = new TranslationThrottle(options);
         var rewrite = new RewriteService(router, throttle);
         var reply = new ReplyService(rewrite, options);
-        var context = contextOverride ?? new ContextRetrievalService(new NullTeamsMessageClient(), new MemoryCache(new MemoryCacheOptions()), options);
+        var context = contextOverride ?? new ContextRetrievalService(new NullTeamsMessageClient(), new MemoryCache(new MemoryCacheOptions()), tokenBroker, options);
         var pipeline = new TranslationPipeline(router, glossary, new OfflineDraftStore(options), new LanguageDetector(), cache, throttle, context, rewrite, reply, options);
         return new MessageExtensionHandler(pipeline, localization, options);
     }
