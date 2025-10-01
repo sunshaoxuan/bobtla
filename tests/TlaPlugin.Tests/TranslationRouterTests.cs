@@ -4,6 +4,7 @@ using System.Security.Authentication;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Linq;
+using System.Text.Json.Nodes;
 using Microsoft.Extensions.Options;
 using TlaPlugin.Configuration;
 using TlaPlugin.Models;
@@ -200,6 +201,52 @@ public class TranslationRouterTests
         var failure = Assert.Single(tenant.Failures);
         Assert.Equal(UsageMetricsService.FailureReasons.Authentication, failure.Reason);
         Assert.Equal(1, failure.Count);
+    }
+
+    [Fact]
+    public async Task RecordsActualModelInMetricsAndAuditLog()
+    {
+        var providerOptions = new ModelProviderOptions
+        {
+            Id = "mock-provider",
+            Model = "gpt-4o-mini",
+            CostPerCharUsd = 0.0001m,
+            Regions = new List<string> { "global" },
+            Certifications = new List<string> { "iso27001" }
+        };
+
+        var options = Options.Create(new PluginOptions
+        {
+            Providers = new List<ModelProviderOptions> { providerOptions },
+            Compliance = new CompliancePolicyOptions
+            {
+                RequiredRegionTags = new List<string> { "global" },
+                RequiredCertifications = new List<string> { "iso27001" }
+            }
+        });
+
+        var metrics = new UsageMetricsService();
+        var audit = new AuditLogger();
+        var router = new TranslationRouter(new ModelProviderFactory(options), new ComplianceGateway(options), new BudgetGuard(options.Value), audit, new ToneTemplateService(), new RecordingTokenBroker(), metrics, new LocalizationCatalogService(), options);
+
+        var result = await router.TranslateAsync(new TranslationRequest
+        {
+            Text = "hello world",
+            TenantId = "contoso",
+            UserId = "user",
+            TargetLanguage = "ja",
+            SourceLanguage = "en"
+        }, CancellationToken.None);
+
+        Assert.Equal("gpt-4o-mini", result.ModelId);
+
+        var report = metrics.GetReport();
+        var tenant = Assert.Single(report.Tenants);
+        var modelSnapshot = Assert.Single(tenant.Models);
+        Assert.Equal("gpt-4o-mini", modelSnapshot.ModelId);
+
+        var log = Assert.Single(audit.Export());
+        Assert.Equal("gpt-4o-mini", log["modelId"]?.GetValue<string>());
     }
 
     [Fact]
