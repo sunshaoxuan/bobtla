@@ -101,6 +101,7 @@ builder.Services.AddSingleton<LocalizationCatalogService>();
 builder.Services.AddSingleton<ContextRetrievalService>();
 builder.Services.AddSingleton<TranslationRouter>();
 builder.Services.AddSingleton<ITranslationPipeline, TranslationPipeline>();
+builder.Services.AddHostedService<DraftReplayService>();
 builder.Services.AddSingleton<MessageExtensionHandler>();
 builder.Services.AddSingleton<ConfigurationSummaryService>();
 builder.Services.AddSingleton<ProjectStatusService>();
@@ -111,6 +112,7 @@ builder.Services.AddSingleton<CostEstimatorService>();
 builder.Services.AddSingleton<McpToolRegistry>();
 builder.Services.AddSingleton<McpServer>();
 builder.Services.AddSingleton<MetadataService>();
+builder.Services.AddHealthChecks().AddCheck<DraftReplayHealthCheck>("draft_replay");
 
 var app = builder.Build();
 
@@ -475,6 +477,8 @@ app.MapGet("/api/localization/catalog/{locale?}", (string? locale, LocalizationC
     var catalog = localization.GetCatalog(locale);
     return Results.Json(catalog, options: jsonOptions);
 });
+
+app.MapHealthChecks("/healthz");
 
 app.MapGet("/api/roadmap", (DevelopmentRoadmapService roadmapService) =>
 {
