@@ -26,6 +26,7 @@ public class ConfigurableChatModelProviderTests
             Endpoint = "https://api.test/v1/chat/completions",
             Model = "gpt-4o-mini",
             ApiKeySecretName = "openai-api-key",
+            ApiKeyTenantId = "contoso.onmicrosoft.com",
             LatencyTargetMs = 350,
             DefaultHeaders = new Dictionary<string, string>
             {
