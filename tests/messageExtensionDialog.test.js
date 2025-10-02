@@ -124,7 +124,8 @@ test("dialog runs detect → translate → rewrite and submits rewritten text", 
   assert.equal(fetchCalls[2].url, "/api/rewrite");
   assert.equal(fetchCalls[2].headers.Authorization, "Bearer user");
   assert.equal(fetchCalls[3].url, "/api/reply");
-  assert.equal(fetchCalls[3].body.translation, "【正式】hola");
+  assert.equal(fetchCalls[3].body.replyText, "【正式】hola");
+  assert.equal(fetchCalls[3].body.text, "【正式】hola");
   assert.deepEqual(fetchCalls[3].body.additionalTargetLanguages, ["fr"]);
   assert.equal(fetchCalls[3].headers.Authorization, "Bearer user");
   assert.equal(teams.dialog.lastSubmit.translation, "【正式】hola");

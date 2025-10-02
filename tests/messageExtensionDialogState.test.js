@@ -90,6 +90,9 @@ test("buildReplyPayload reuses rag preferences", () => {
   };
   const context = { tenant: { id: "tenant" }, user: { id: "user" }, channel: { id: "channel" } };
   const payload = buildReplyPayload(state, context, "こんにちは");
+  assert.equal(payload.replyText, "こんにちは");
+  assert.equal(payload.text, "こんにちは");
+  assert.equal("translation" in payload, false);
   assert.equal(payload.useRag, true);
   assert.deepEqual(payload.contextHints, ["pricing"]);
   assert.deepEqual(payload.additionalTargetLanguages, ["en", "fr"]);

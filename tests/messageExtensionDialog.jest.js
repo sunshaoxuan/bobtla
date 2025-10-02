@@ -169,7 +169,8 @@ describe("message extension dialog (jest)", () => {
     const rewriteCall = fetchCalls.find((call) => call.url === "/api/rewrite");
     const replyCall = fetchCalls.find((call) => call.url === "/api/reply");
     expect(rewriteCall.body.text).toBe("hola");
-    expect(replyCall.body.translation).toBe("【润色】hola");
+    expect(replyCall.body.replyText).toBe("【润色】hola");
+    expect(replyCall.body.text).toBe("【润色】hola");
     expect(replyCall.body.additionalTargetLanguages).toEqual([]);
     expect(teams.dialog.submit).toHaveBeenCalled();
     expect(teams.dialog.lastSubmit.translation).toBe("【润色】hola");

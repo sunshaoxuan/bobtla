@@ -83,12 +83,13 @@ async function setupComposePage(page, { translateCalls, replyCalls, metadataHand
   await page.route("**/api/reply", async (route) => {
     const payload = JSON.parse(route.request().postData() ?? "{}");
     replyCalls?.push(payload);
+    const replyText = payload.replyText ?? payload.text ?? payload.translation ?? "";
     await route.fulfill({
       status: 200,
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         status: "ok",
-        card: { type: "AdaptiveCard", body: [{ type: "TextBlock", text: payload.translation ?? "" }] }
+        card: { type: "AdaptiveCard", body: [{ type: "TextBlock", text: replyText }] }
       })
     });
   });
@@ -149,7 +150,8 @@ test("compose page delegates to teams compose plugin", async ({ page }) => {
 
   expect(replyCalls).toHaveLength(1);
   expect(replyCalls[0].metadata.tone).toBe("formal");
-  expect(replyCalls[0].translation).toBe("hola");
+  expect(replyCalls[0].replyText).toBe("hola");
+  expect(replyCalls[0].text).toBe("hola");
 
   const sentMessages = await page.evaluate(() => window.sentMessages);
   expect(sentMessages).toHaveLength(1);
