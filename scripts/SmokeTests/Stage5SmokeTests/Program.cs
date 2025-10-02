@@ -48,6 +48,8 @@ switch (command)
         return await RunSecretCheckAsync(pluginOptions, cancellationToken).ConfigureAwait(false);
     case "reply":
         return await RunReplySmokeAsync(pluginOptions, optionsMap, cancellationToken).ConfigureAwait(false);
+    case "metrics":
+        return await RunMetricsProbeAsync(optionsMap, cancellationToken).ConfigureAwait(false);
     default:
         Console.Error.WriteLine($"未知命令: {command}");
         PrintUsage();
@@ -95,6 +97,7 @@ static void PrintUsage()
     Console.WriteLine("命令:");
     Console.WriteLine("  secrets   校验 appsettings.json 中声明的密钥是否可由 KeyVaultSecretResolver 读取。");
     Console.WriteLine("  reply     模拟 OBO 令牌与 Teams 回帖调用，输出指标与审计快照。");
+    Console.WriteLine("  metrics   访问已部署服务的 /api/metrics 与 /api/audit 端点并打印结果。");
     Console.WriteLine();
     Console.WriteLine("通用参数:");
     Console.WriteLine("  --appsettings <path>    指定要加载的 appsettings.json，默认使用 src/TlaPlugin/appsettings.json。");
@@ -109,9 +112,14 @@ static void PrintUsage()
     Console.WriteLine("  --tone <tone>           语气模板，默认为 polite。");
     Console.WriteLine("  --text <content>        待翻译并回帖的正文，默认为 'ステージ 5 連携テスト'。");
     Console.WriteLine();
+    Console.WriteLine("metrics 命令参数:");
+    Console.WriteLine("  --baseUrl <url>         Stage 服务的根地址，默认为 https://localhost:5001。");
+    Console.WriteLine("  --output <path>         可选，将响应写入指定文件（JSON 文本）。");
+    Console.WriteLine();
     Console.WriteLine("示例:");
     Console.WriteLine("  dotnet run --project scripts/SmokeTests/Stage5SmokeTests -- secrets");
     Console.WriteLine("  dotnet run --project scripts/SmokeTests/Stage5SmokeTests -- reply --tenant contoso.onmicrosoft.com --user fiona --thread 19:abc --channel general");
+    Console.WriteLine("  dotnet run --project scripts/SmokeTests/Stage5SmokeTests -- metrics --baseUrl https://stage5.contoso.net");
 }
 
 static (PluginOptions Options, IConfigurationRoot Configuration) LoadOptions(string appsettingsPath, string? overridePath)
@@ -375,6 +383,94 @@ static async Task<int> RunReplySmokeAsync(PluginOptions options, IReadOnlyDictio
     {
         Console.Error.WriteLine("未触发 TeamsReplyClient 调用。");
         return 7;
+    }
+
+    return 0;
+}
+
+static async Task<int> RunMetricsProbeAsync(IReadOnlyDictionary<string, string?> parameters, CancellationToken cancellationToken)
+{
+    var baseUrl = GetValue(parameters, "baseUrl", "https://localhost:5001");
+    if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var baseUri))
+    {
+        Console.Error.WriteLine($"无效的 baseUrl: {baseUrl}");
+        return 1;
+    }
+
+    using var httpClient = new HttpClient
+    {
+        BaseAddress = baseUri
+    };
+
+    static async Task<string> ReadOrThrowAsync(HttpResponseMessage response, string name, CancellationToken ct)
+    {
+        if (!response.IsSuccessStatusCode)
+        {
+            var reason = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            throw new InvalidOperationException($"请求 {name} 失败: {(int)response.StatusCode} {response.ReasonPhrase}. {reason}");
+        }
+
+        return await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+    }
+
+    HttpResponseMessage metricsResponse;
+    HttpResponseMessage auditResponse;
+    try
+    {
+        metricsResponse = await httpClient.GetAsync("/api/metrics", cancellationToken).ConfigureAwait(false);
+        auditResponse = await httpClient.GetAsync("/api/audit", cancellationToken).ConfigureAwait(false);
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine("调用阶段环境 API 失败: " + ex.Message);
+        return 2;
+    }
+
+    string metricsPayload;
+    string auditPayload;
+    try
+    {
+        metricsPayload = await ReadOrThrowAsync(metricsResponse, "/api/metrics", cancellationToken).ConfigureAwait(false);
+        auditPayload = await ReadOrThrowAsync(auditResponse, "/api/audit", cancellationToken).ConfigureAwait(false);
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine(ex.Message);
+        return 3;
+    }
+
+    Console.WriteLine("/api/metrics 响应:");
+    Console.WriteLine(metricsPayload);
+    Console.WriteLine();
+    Console.WriteLine("/api/audit 响应:");
+    Console.WriteLine(auditPayload);
+
+    if (parameters.TryGetValue("output", out var outputPath) && !string.IsNullOrWhiteSpace(outputPath))
+    {
+        try
+        {
+            var directory = Path.GetDirectoryName(Path.GetFullPath(outputPath));
+            if (!string.IsNullOrEmpty(directory))
+            {
+                Directory.CreateDirectory(directory!);
+            }
+
+            var payload = new
+            {
+                Metrics = metricsPayload,
+                Audit = auditPayload,
+                RetrievedAt = DateTimeOffset.UtcNow.ToString("O", System.Globalization.CultureInfo.InvariantCulture)
+            };
+            var serialized = JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true });
+            await File.WriteAllTextAsync(outputPath!, serialized, cancellationToken).ConfigureAwait(false);
+            Console.WriteLine();
+            Console.WriteLine($"响应已写入 {outputPath}");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine("写入输出文件失败: " + ex.Message);
+            return 4;
+        }
     }
 
     return 0;

@@ -20,7 +20,7 @@
    az keyvault secret set --vault-name <vault> --name enterprise-graph-secret --value <enterprise-secret>
    ```
 
-3. **将 Key Vault 引用映射进配置** – 在 Stage 配置（例如 `appsettings.Stage.json`）或部署环境变量中，设置以下键值对，让 `KeyVaultSecretResolver` 能够解析到实际密钥：
+3. **将 Key Vault 引用映射进配置** – 在 Stage 配置（例如 `appsettings.Stage.json`）或部署环境变量中，设置以下键值对，让 `KeyVaultSecretResolver` 能够解析到实际密钥。对真实 Key Vault，可使用 [Azure App Service Key Vault 引用](https://learn.microsoft.com/azure/app-service/app-service-key-vault-references) 或下方示例直接注入机密值：
 
    ```bash
    # 使用环境变量覆盖 SeedSecrets
@@ -29,7 +29,7 @@
    export TLA_Plugin__Security__SeedSecrets__enterprise-graph-secret="<enterprise-secret>"
    ```
 
-4. **运行密钥解析冒烟** – 利用新增的 `Stage5SmokeTests` 工具检查所有密钥是否可被 `KeyVaultSecretResolver` 获取：
+4. **运行密钥解析冒烟** – 利用新增的 `Stage5SmokeTests` 工具检查所有密钥是否可被 `KeyVaultSecretResolver` 获取，确认映射指向 Key Vault 中的真实条目：
 
    ```bash
    dotnet run --project scripts/SmokeTests/Stage5SmokeTests -- secrets --appsettings src/TlaPlugin/appsettings.json --override appsettings.Stage.json
@@ -72,6 +72,14 @@
 
 1. **Metrics API** – Stage 环境部署后，可直接访问 `GET /api/metrics` 获取与冒烟输出一致的 `UsageMetricsReport`，字段包含 `overall` 汇总、各租户 `translations/cost/failures` 细分。可将结果接入 Grafana/Workbook 进行可视化。【F:src/TlaPlugin/Program.cs†L454-L474】【F:src/TlaPlugin/Services/UsageMetricsService.cs†L1-L120】
 
+   ```bash
+   dotnet run --project scripts/SmokeTests/Stage5SmokeTests -- metrics \
+     --baseUrl https://stage5.contoso.net \
+     --output ./artifacts/stage5-metrics.json
+   ```
+
+   命令会打印 `/api/metrics` 与 `/api/audit` 响应，并在 `--output` 指定路径落盘留痕，便于将成本与失败原因导入仪表盘或变更记录。【F:scripts/SmokeTests/Stage5SmokeTests/Program.cs†L36-L278】
+
 2. **失败原因映射** – `UsageMetricsService` 会将预算、认证、模型、鉴权失败分别记录为「预算不足」「合规拒绝」「模型错误」「认证失败」，确保仪表盘上可直接洞察失败原因比例。【F:src/TlaPlugin/Services/UsageMetricsService.cs†L7-L74】
 
 3. **审计导出** – `/api/audit` 返回由 `AuditLogger` 生成的 JSON 列表，包含租户、模型、成本及消息哈希。冒烟脚本输出的审计快照与线上格式一致，可作为调试模板或 SOX 留档。【F:src/TlaPlugin/Services/AuditLogger.cs†L1-L44】【F:scripts/SmokeTests/Stage5SmokeTests/Program.cs†L314-L332】
@@ -81,7 +89,7 @@
    1. 密钥映射并通过 `secrets` 检查；
    2. 完成 Graph 权限与管理员同意；
    3. 运行 `reply` 冒烟，保存指标/审计快照；
-   4. 在仪表盘验证 `/api/metrics` 展示的成本、失败原因，确保与 Runbook 输出一致；
+   4. 运行 `metrics` 命令或直接 `curl /api/metrics`，确认仪表盘展示的成本、失败原因与冒烟快照一致；
    5. 将脚本与命令记录在变更工单或自动化流水线中，便于回归与成本复核。
 
 通过上述步骤，可在 Stage 环境保证 Key Vault、Graph OBO 与观测指标三项能力全部打通，为后续正式上线提供可重复的联调手册。
