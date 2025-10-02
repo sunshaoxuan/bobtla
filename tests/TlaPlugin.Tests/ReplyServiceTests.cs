@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
@@ -115,7 +117,19 @@ public class ReplyServiceTests
         var additional = teamsClient.LastRequest!.AdditionalTranslations;
         Assert.True(additional.ContainsKey("en"));
         Assert.True(additional.ContainsKey("de"));
-        Assert.NotNull(teamsClient.LastRequest!.AdaptiveCard);
+        var card = teamsClient.LastRequest!.AdaptiveCard;
+        Assert.NotNull(card);
+        var body = card!["body"]?.AsArray();
+        Assert.NotNull(body);
+        var primaryInfo = body![1]!.AsObject();
+        Assert.Equal("Primary language: fr", primaryInfo["text"]!.GetValue<string>());
+        var translationBlocks = body
+            .Skip(2)
+            .Select(node => node!.AsObject()["text"]!.GetValue<string>())
+            .ToList();
+        Assert.Collection(translationBlocks,
+            text => Assert.StartsWith("en:", text, StringComparison.OrdinalIgnoreCase),
+            text => Assert.StartsWith("de:", text, StringComparison.OrdinalIgnoreCase));
         Assert.Equal(result.FinalText, teamsClient.LastRequest!.FinalText);
         Assert.Contains("[en]", result.FinalText, StringComparison.Ordinal);
         Assert.Contains("[de]", result.FinalText, StringComparison.Ordinal);
