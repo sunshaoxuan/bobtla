@@ -21,8 +21,8 @@ public class TokenBrokerTests
         var resolver = new KeyVaultSecretResolver(options);
         var broker = new TokenBroker(resolver, options);
 
-        var first = await broker.ExchangeOnBehalfOfAsync("contoso", "user", CancellationToken.None);
-        var second = await broker.ExchangeOnBehalfOfAsync("contoso", "user", CancellationToken.None);
+        var first = await broker.ExchangeOnBehalfOfAsync("contoso", "user", "assertion", CancellationToken.None);
+        var second = await broker.ExchangeOnBehalfOfAsync("contoso", "user", "assertion", CancellationToken.None);
 
         Assert.Equal(first.Value, second.Value);
     }
@@ -34,8 +34,8 @@ public class TokenBrokerTests
         var resolver = new KeyVaultSecretResolver(options);
         var broker = new TokenBroker(resolver, options);
 
-        var userToken = await broker.ExchangeOnBehalfOfAsync("contoso", "user1", CancellationToken.None);
-        var adminToken = await broker.ExchangeOnBehalfOfAsync("contoso", "user2", CancellationToken.None);
+        var userToken = await broker.ExchangeOnBehalfOfAsync("contoso", "user1", "assertion", CancellationToken.None);
+        var adminToken = await broker.ExchangeOnBehalfOfAsync("contoso", "user2", "assertion", CancellationToken.None);
 
         // 验证不同用户得到不同的token
         Assert.NotEqual(userToken.Value, adminToken.Value);
@@ -68,8 +68,8 @@ public class TokenBrokerTests
         var resolver = new KeyVaultSecretResolver(options);
         var broker = new TokenBroker(resolver, options);
 
-        var defaultToken = await broker.ExchangeOnBehalfOfAsync("contoso.onmicrosoft.com", "user", CancellationToken.None);
-        var enterpriseToken = await broker.ExchangeOnBehalfOfAsync("enterprise.onmicrosoft.com", "user", CancellationToken.None);
+        var defaultToken = await broker.ExchangeOnBehalfOfAsync("contoso.onmicrosoft.com", "user", "assertion", CancellationToken.None);
+        var enterpriseToken = await broker.ExchangeOnBehalfOfAsync("enterprise.onmicrosoft.com", "user", "assertion", CancellationToken.None);
 
         Assert.NotEqual(defaultToken.Value, enterpriseToken.Value);
         Assert.Equal("api://enterprise-graph", enterpriseToken.Audience);
@@ -100,7 +100,7 @@ public class TokenBrokerTests
         fakeClient.Results.Enqueue(new OnBehalfOfTokenResult("obo-token", expiry));
         var broker = new TokenBroker(resolver, options, fakeClient);
 
-        var token = await broker.ExchangeOnBehalfOfAsync("contoso", "user-assertion", CancellationToken.None);
+        var token = await broker.ExchangeOnBehalfOfAsync("contoso", "user", "user-assertion", CancellationToken.None);
 
         Assert.Equal("obo-token", token.Value);
         Assert.Equal(expiry, token.ExpiresOn);
@@ -147,7 +147,7 @@ public class TokenBrokerTests
         fakeClient.Results.Enqueue(new OnBehalfOfTokenResult("enterprise-token", DateTimeOffset.UtcNow.AddMinutes(10)));
         var broker = new TokenBroker(resolver, options, fakeClient);
 
-        var token = await broker.ExchangeOnBehalfOfAsync("enterprise.onmicrosoft.com", "enterprise-assertion", CancellationToken.None);
+        var token = await broker.ExchangeOnBehalfOfAsync("enterprise.onmicrosoft.com", "user", "enterprise-assertion", CancellationToken.None);
 
         Assert.Equal("api://enterprise-graph", token.Audience);
         var call = Assert.Single(fakeClient.Calls);
@@ -182,7 +182,32 @@ public class TokenBrokerTests
         var broker = new TokenBroker(resolver, options, fakeClient);
 
         await Assert.ThrowsAsync<AuthenticationException>(() =>
-            broker.ExchangeOnBehalfOfAsync("contoso", "user-assertion", CancellationToken.None));
+            broker.ExchangeOnBehalfOfAsync("contoso", "user", "user-assertion", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ThrowsWhenUserAssertionMissingInMsalMode()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            Security = new SecurityOptions
+            {
+                ClientId = "obo-client",
+                ClientSecretName = "obo-secret",
+                UseHmacFallback = false,
+                GraphScopes = new List<string> { "https://graph.microsoft.com/.default" },
+                SeedSecrets = new Dictionary<string, string>
+                {
+                    ["obo-secret"] = "obo-secret-value"
+                }
+            }
+        });
+
+        var resolver = new KeyVaultSecretResolver(options);
+        var broker = new TokenBroker(resolver, options, new StubOnBehalfOfTokenClient());
+
+        await Assert.ThrowsAsync<AuthenticationException>(() =>
+            broker.ExchangeOnBehalfOfAsync("contoso", "user", null, CancellationToken.None));
     }
 
     [Fact]

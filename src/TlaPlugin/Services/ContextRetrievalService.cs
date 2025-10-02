@@ -108,11 +108,16 @@ public class ContextRetrievalService
                 limit = _options.Rag.MaxMessages > 0 ? _options.Rag.MaxMessages : 10;
             }
 
+            if (string.IsNullOrWhiteSpace(request.UserAssertion))
+            {
+                return Array.Empty<ContextMessage>();
+            }
+
             AccessToken? accessToken = null;
             try
             {
                 accessToken = await _tokenBroker
-                    .ExchangeOnBehalfOfAsync(request.TenantId, request.UserId, cancellationToken)
+                    .ExchangeOnBehalfOfAsync(request.TenantId, request.UserId, request.UserAssertion, cancellationToken)
                     .ConfigureAwait(false);
             }
             catch (AuthenticationException)
@@ -128,6 +133,7 @@ public class ContextRetrievalService
                     limit,
                     accessToken,
                     request.UserId,
+                    request.UserAssertion,
                     cancellationToken)
                 .ConfigureAwait(false);
 

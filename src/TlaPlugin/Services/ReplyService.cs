@@ -68,7 +68,8 @@ public class ReplyService
                 TenantId = context.TenantId,
                 UserId = context.UserId,
                 ChannelId = context.ChannelId,
-                UiLocale = context.UiLocale
+                UiLocale = context.UiLocale,
+                UserAssertion = request.UserAssertion
             }, cancellationToken);
 
             finalText = rewrite.RewrittenText;
@@ -83,6 +84,11 @@ public class ReplyService
         if (request is null)
         {
             throw new ArgumentNullException(nameof(request));
+        }
+
+        if (string.IsNullOrWhiteSpace(request.UserAssertion))
+        {
+            throw new AuthenticationException("缺少用户令牌。");
         }
 
         if (string.IsNullOrWhiteSpace(request.ThreadId))
@@ -151,7 +157,8 @@ public class ReplyService
             request.UiLocale,
             targetLanguage,
             tone,
-            normalizedAdditionalLanguages);
+            normalizedAdditionalLanguages,
+            request.UserAssertion);
     }
 
     private async Task<ReplyResult> PostAsync(ReplyExecutionContext context, string finalText, string? toneApplied, CancellationToken cancellationToken)
@@ -160,7 +167,7 @@ public class ReplyService
         try
         {
             token = await _tokenBroker
-                .ExchangeOnBehalfOfAsync(context.TenantId, context.UserId, cancellationToken)
+                .ExchangeOnBehalfOfAsync(context.TenantId, context.UserId, context.UserAssertion, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (AuthenticationException)
@@ -237,7 +244,8 @@ public class ReplyService
                 ThreadId = context.ThreadId,
                 Tone = context.Tone ?? TranslationRequest.DefaultTone,
                 UiLocale = context.UiLocale,
-                AdditionalTargetLanguages = new List<string>()
+                AdditionalTargetLanguages = new List<string>(),
+                UserAssertion = context.UserAssertion
             }, cancellationToken).ConfigureAwait(false);
 
             results[language] = translation.TranslatedText;
@@ -366,5 +374,6 @@ public class ReplyService
         string? UiLocale,
         string TargetLanguage,
         string? Tone,
-        IReadOnlyList<string> AdditionalTargetLanguages);
+        IReadOnlyList<string> AdditionalTargetLanguages,
+        string UserAssertion);
 }

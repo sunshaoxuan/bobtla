@@ -32,6 +32,11 @@ public class RewriteService
             throw new AuthenticationException("tenantId と userId は必須です。");
         }
 
+        if (string.IsNullOrWhiteSpace(request.UserAssertion))
+        {
+            throw new AuthenticationException("缺少用户令牌。");
+        }
+
         var textToRewrite = !string.IsNullOrWhiteSpace(request.EditedText)
             ? request.EditedText!
             : request.Text;
@@ -49,7 +54,8 @@ public class RewriteService
             TenantId = request.TenantId,
             UserId = request.UserId,
             ChannelId = request.ChannelId,
-            UiLocale = request.UiLocale
+            UiLocale = request.UiLocale,
+            UserAssertion = request.UserAssertion
         };
 
         return await _router.RewriteAsync(normalizedRequest, cancellationToken);

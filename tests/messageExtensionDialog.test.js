@@ -42,7 +42,7 @@ test("dialog runs detect → translate → rewrite and submits rewritten text", 
   const fetchCalls = [];
   const fakeFetch = async (url, options = {}) => {
     if (options.body) {
-      fetchCalls.push({ url, body: JSON.parse(options.body) });
+      fetchCalls.push({ url, headers: options.headers ?? {}, body: JSON.parse(options.body) });
     }
     return {
       ok: true,
@@ -119,11 +119,14 @@ test("dialog runs detect → translate → rewrite and submits rewritten text", 
   assert.equal(fetchCalls[1].url, "/api/translate");
   assert.equal(fetchCalls[1].body.text, "hello");
   assert.deepEqual(fetchCalls[1].body.additionalTargetLanguages, ["fr"]);
+  assert.equal(fetchCalls[1].headers.Authorization, "Bearer user");
   await ui.submitButton.trigger("click");
   assert.equal(fetchCalls[2].url, "/api/rewrite");
+  assert.equal(fetchCalls[2].headers.Authorization, "Bearer user");
   assert.equal(fetchCalls[3].url, "/api/reply");
   assert.equal(fetchCalls[3].body.translation, "【正式】hola");
   assert.deepEqual(fetchCalls[3].body.additionalTargetLanguages, ["fr"]);
+  assert.equal(fetchCalls[3].headers.Authorization, "Bearer user");
   assert.equal(teams.dialog.lastSubmit.translation, "【正式】hola");
   assert.equal(teams.dialog.lastSubmit.tone, "formal");
   assert.deepEqual(teams.dialog.lastSubmit.additionalTargetLanguages, ["fr"]);
@@ -149,7 +152,7 @@ test("dialog forwards glossary conflict card to Teams host", async () => {
   };
   const fakeFetch = async (url, options = {}) => {
     if (options.body) {
-      fetchCalls.push({ url, body: JSON.parse(options.body) });
+      fetchCalls.push({ url, headers: options.headers ?? {}, body: JSON.parse(options.body) });
     }
     return {
       ok: true,
@@ -232,7 +235,7 @@ test("dialog defaults to first non-auto target and preserves detection label", a
   const fetchCalls = [];
   const fakeFetch = async (url, options = {}) => {
     if (options.body) {
-      fetchCalls.push({ url, body: JSON.parse(options.body) });
+      fetchCalls.push({ url, headers: options.headers ?? {}, body: JSON.parse(options.body) });
     }
     return {
       ok: true,
@@ -316,7 +319,7 @@ test("initMessageExtensionDialog corrects target when locale missing from metada
   const fetchCalls = [];
   const fakeFetch = async (url, options = {}) => {
     if (options.body) {
-      fetchCalls.push({ url, body: JSON.parse(options.body) });
+      fetchCalls.push({ url, headers: options.headers ?? {}, body: JSON.parse(options.body) });
     }
     return {
       ok: true,
@@ -398,7 +401,7 @@ test("initMessageExtensionDialog corrects target when locale missing from metada
 test("dialog surfaces offline draft completion state", async () => {
   const fetchCalls = [];
   const fakeFetch = async (url, options = {}) => {
-    fetchCalls.push({ url, method: options.method ?? "GET" });
+    fetchCalls.push({ url, method: options.method ?? "GET", headers: options.headers ?? {} });
     return {
       ok: true,
       async json() {
@@ -480,7 +483,7 @@ test("dialog uses concrete target when user locale is unavailable", async () => 
   const fetchCalls = [];
   const fakeFetch = async (url, options = {}) => {
     if (options.body) {
-      fetchCalls.push({ url, body: JSON.parse(options.body) });
+      fetchCalls.push({ url, headers: options.headers ?? {}, body: JSON.parse(options.body) });
     }
     return {
       ok: true,

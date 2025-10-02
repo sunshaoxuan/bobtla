@@ -8,6 +8,8 @@ public class SummarizeRequest
     public string Context { get; set; } = string.Empty;
     public string TenantId { get; set; } = string.Empty;
     public string UserId { get; set; } = string.Empty;
+    public string? UserAssertion { get; set; }
+        = null;
 }
 
 /// <summary>

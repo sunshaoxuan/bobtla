@@ -45,7 +45,7 @@ public sealed class BrokeredGraphAuthenticationProvider : IAuthenticationProvide
             }
 
             token = await _tokenBroker
-                .ExchangeOnBehalfOfAsync(context.TenantId, context.UserId, cancellationToken)
+                .ExchangeOnBehalfOfAsync(context.TenantId, context.UserId, context.UserAssertion, cancellationToken)
                 .ConfigureAwait(false);
 
             context.UpdateToken(token);
