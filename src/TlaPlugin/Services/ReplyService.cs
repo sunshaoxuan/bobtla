@@ -161,7 +161,7 @@ public class ReplyService
 
         var additionalTranslations = await TranslateAdditionalLanguagesAsync(context, finalText, cancellationToken).ConfigureAwait(false);
         var finalMessage = BuildMultilingualMessage(finalText, additionalTranslations, context.AdditionalTargetLanguages);
-        var adaptiveCard = BuildAdaptiveCard(finalText, context.TargetLanguage, additionalTranslations);
+        var adaptiveCard = BuildAdaptiveCard(finalText, context.TargetLanguage, context.AdditionalTargetLanguages, additionalTranslations);
 
         try
         {
@@ -270,7 +270,11 @@ public class ReplyService
         return builder.ToString().TrimEnd();
     }
 
-    private static JsonObject? BuildAdaptiveCard(string finalText, string primaryLanguage, IReadOnlyDictionary<string, string> additionalTranslations)
+    private static JsonObject? BuildAdaptiveCard(
+        string finalText,
+        string primaryLanguage,
+        IReadOnlyList<string> languageOrder,
+        IReadOnlyDictionary<string, string> additionalTranslations)
     {
         if (additionalTranslations.Count == 0)
         {
@@ -296,8 +300,33 @@ public class ReplyService
             }
         };
 
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var language in languageOrder)
+        {
+            if (!additionalTranslations.TryGetValue(language, out var translation))
+            {
+                continue;
+            }
+
+            seen.Add(language);
+
+            body.Add(new JsonObject
+            {
+                ["type"] = "TextBlock",
+                ["text"] = string.Format(System.Globalization.CultureInfo.InvariantCulture, "{0}: {1}", language, translation),
+                ["wrap"] = true,
+                ["spacing"] = "Medium"
+            });
+        }
+
         foreach (var kvp in additionalTranslations)
         {
+            if (!seen.Add(kvp.Key))
+            {
+                continue;
+            }
+
             body.Add(new JsonObject
             {
                 ["type"] = "TextBlock",
