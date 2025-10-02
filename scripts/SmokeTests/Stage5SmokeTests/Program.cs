@@ -250,6 +250,7 @@ private readonly record struct SecretProbe(string? TenantId, string SecretName);
 
 static async Task<int> RunReplySmokeAsync(PluginOptions options, IReadOnlyDictionary<string, string?> parameters, CancellationToken cancellationToken)
 {
+    var useLiveGraph = parameters.ContainsKey("use-live-graph");
     var tenantId = GetValue(parameters, "tenant", "contoso.onmicrosoft.com");
     var userId = GetValue(parameters, "user", "user1");
     var threadId = GetValue(parameters, "thread", "message-id");
@@ -350,17 +351,17 @@ static async Task<int> RunReplySmokeAsync(PluginOptions options, IReadOnlyDictio
         return 3;
     }
 
-    var innerHandler = options.Security.UseHmacFallback
+    HttpMessageHandler innerHandler = !useLiveGraph || options.Security.UseHmacFallback
         ? new StubGraphHandler()
         : new HttpClientHandler();
-    if (!options.Security.UseHmacFallback
-        && innerHandler is HttpClientHandler httpHandler
+    if (innerHandler is HttpClientHandler httpHandler
         && !string.IsNullOrWhiteSpace(options.Security.GraphProxy))
     {
         httpHandler.Proxy = new WebProxy(options.Security.GraphProxy);
         httpHandler.UseProxy = true;
     }
     var handler = new RecordingGraphHandler(innerHandler);
+    var graphTrace = handler;
     var graphBase = string.IsNullOrWhiteSpace(options.Security.GraphBaseUrl)
         ? "https://graph.microsoft.com/v1.0/"
         : options.Security.GraphBaseUrl;
@@ -447,11 +448,11 @@ static async Task<int> RunReplySmokeAsync(PluginOptions options, IReadOnlyDictio
             }
         }
 
-        if (!string.IsNullOrWhiteSpace(graphTrace.RequestBody))
+        if (!string.IsNullOrWhiteSpace(graphTrace.LastBody))
         {
             try
             {
-                using var payload = JsonDocument.Parse(graphTrace.RequestBody);
+                using var payload = JsonDocument.Parse(graphTrace.LastBody);
                 var metadata = payload.RootElement
                     .GetProperty("channelData")
                     .GetProperty("metadata");
@@ -595,6 +596,72 @@ static async Task<int> RunMetricsProbeAsync(IReadOnlyDictionary<string, string?>
     }
 
     return 0;
+}
+
+static void PrintGraphDiagnostics(RecordingGraphHandler trace, bool useLiveGraph)
+{
+    Console.WriteLine("Graph 调用诊断:");
+    Console.WriteLine($"  Mode:        {(useLiveGraph ? "live" : "stub")}");
+    Console.WriteLine($"  CallCount:   {trace.CallCount}");
+    Console.WriteLine($"  LastPath:    {trace.LastPath ?? "<none>"}");
+    Console.WriteLine($"  Authorization:{(string.IsNullOrWhiteSpace(trace.LastAuthorization) ? " <none>" : " " + trace.LastAuthorization)}");
+    if (!string.IsNullOrWhiteSpace(trace.LastBody))
+    {
+        Console.WriteLine("  Body:");
+        Console.WriteLine(trace.LastBody);
+    }
+    else
+    {
+        Console.WriteLine("  Body:        <none>");
+    }
+}
+
+static bool ShouldRetryGraph(Exception ex)
+{
+    if (ex is TeamsReplyException replyException)
+    {
+        return replyException.StatusCode == HttpStatusCode.TooManyRequests
+            || replyException.StatusCode == HttpStatusCode.RequestTimeout
+            || replyException.StatusCode == HttpStatusCode.ServiceUnavailable
+            || replyException.StatusCode == HttpStatusCode.GatewayTimeout
+            || replyException.StatusCode == HttpStatusCode.BadGateway;
+    }
+
+    return ex is HttpRequestException or TaskCanceledException;
+}
+
+static async Task<T> ExecuteWithRetryAsync<T>(Func<CancellationToken, Task<T>> action, int maxAttempts, TimeSpan delay, CancellationToken cancellationToken, Func<Exception, bool> shouldRetry)
+{
+    if (action is null)
+    {
+        throw new ArgumentNullException(nameof(action));
+    }
+    if (shouldRetry is null)
+    {
+        throw new ArgumentNullException(nameof(shouldRetry));
+    }
+    if (maxAttempts <= 0)
+    {
+        throw new ArgumentOutOfRangeException(nameof(maxAttempts));
+    }
+
+    var attempt = 0;
+    while (true)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        try
+        {
+            attempt++;
+            return await action(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (attempt < maxAttempts && shouldRetry(ex))
+        {
+            if (delay > TimeSpan.Zero)
+            {
+                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+            }
+        }
+    }
 }
 
 static string GetValue(IReadOnlyDictionary<string, string?> parameters, string key, string fallback)
