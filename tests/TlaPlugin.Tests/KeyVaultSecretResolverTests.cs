@@ -83,6 +83,24 @@ public class KeyVaultSecretResolverTests
     {
         var resolver = new KeyVaultSecretResolver();
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => resolver.GetSecretAsync("missing", CancellationToken.None));
+        await Assert.ThrowsAsync<SecretRetrievalException>(() => resolver.GetSecretAsync("missing", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task FallsBackToSeedWhenVaultUnavailable()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            Security = new SecurityOptions
+            {
+                KeyVaultUri = "https://contoso.vault.azure.net/",
+                SeedSecrets = new Dictionary<string, string> { ["custom-secret"] = "seed-value" }
+            }
+        });
+
+        var resolver = new KeyVaultSecretResolver(options);
+        var value = await resolver.GetSecretAsync("custom-secret", CancellationToken.None);
+
+        Assert.Equal("seed-value", value);
     }
 }
