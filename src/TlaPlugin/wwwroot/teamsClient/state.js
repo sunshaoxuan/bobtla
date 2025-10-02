@@ -179,7 +179,8 @@ export function buildReplyPayload(state, context, text) {
     state.availableTargetLanguages
   );
   const payload = {
-    translation: text,
+    replyText: text,
+    text,
     sourceLanguage: state.sourceLanguage === "auto" ? state.detectedLanguage : state.sourceLanguage,
     targetLanguage: state.targetLanguage,
     additionalTargetLanguages,

@@ -94,7 +94,8 @@ test("compose plugin translates and posts reply payload", async () => {
   assert.equal(preview.value || preview.textContent, "hola");
   await applyButton.trigger("click");
   assert.equal(fetchCalls[1].url, "/api/reply");
-  assert.equal(fetchCalls[1].body.translation, "hola");
+  assert.equal(fetchCalls[1].body.replyText, "hola");
+  assert.equal(fetchCalls[1].body.text, "hola");
   assert.equal(fetchCalls[1].body.sourceLanguage, "en");
   assert.equal(fetchCalls[1].body.sourceLanguage, state.detectedLanguage);
   assert.equal(fetchCalls[1].body.metadata.modelId, "model-a");

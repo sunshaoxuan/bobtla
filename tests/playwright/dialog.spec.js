@@ -88,10 +88,15 @@ async function setupDialogPage(page, { metadata = defaultMetadata, metadataHandl
 
   await page.route("**/api/reply", async (route) => {
     const payload = JSON.parse(route.request().postData() ?? "{}");
+    const replyText = payload.replyText ?? payload.text ?? payload.translation ?? "";
     await route.fulfill({
       status: 200,
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ status: "ok", echo: payload, card: { type: "AdaptiveCard", body: [] } })
+      body: JSON.stringify({
+        status: "ok",
+        echo: payload,
+        card: { type: "AdaptiveCard", body: [{ type: "TextBlock", text: replyText }] }
+      })
     });
   });
 

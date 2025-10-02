@@ -22,11 +22,13 @@ export class MessageExtensionHandler {
   }
 
   async reply(payload) {
+    const translation =
+      payload?.replyText ?? payload?.text ?? payload?.translation;
     return this.pipeline.replyWithTranslation({
-      translation: payload.translation,
-      sourceLanguage: payload.sourceLanguage,
-      targetLanguage: payload.targetLanguage,
-      metadata: payload.metadata
+      translation,
+      sourceLanguage: payload?.sourceLanguage,
+      targetLanguage: payload?.targetLanguage,
+      metadata: payload?.metadata
     });
   }
 
