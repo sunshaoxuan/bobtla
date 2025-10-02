@@ -22,7 +22,7 @@
 
 3. **配置访问策略或托管身份** – 为运行 Stage 服务的托管身份或应用注册授予目标 Key Vault 的 `get`/`list` Secret 权限。可通过 Azure Portal、`az keyvault set-policy` 或 Terraform 完成，确保 `Stage5SmokeTests` 的 `secrets` 命令能够直接读取远程机密。未授予权限时脚本会输出「无法访问远程 Key Vault」的提示，请根据错误信息补齐访问策略。
 
-4. **将 Key Vault 引用映射进配置** – 在 Stage 配置（例如 `appsettings.Stage.json`）或部署环境变量中，设置以下键值对，让 `KeyVaultSecretResolver` 能够解析到实际密钥。若不同租户使用独立 Vault，可在 `Plugin.Security.TenantOverrides["<tenant>"].KeyVaultUri` 指向各自的 Key Vault。对真实 Key Vault，可使用 [Azure App Service Key Vault 引用](https://learn.microsoft.com/azure/app-service/app-service-key-vault-references) 或下方示例直接注入机密值：
+4. **将 Key Vault 引用映射进配置** – 在 Stage 配置中引用 `src/TlaPlugin/appsettings.Stage.json` 模板，按租户替换其中的 `KeyVaultUri`、`ClientId`、`ClientSecretName` 占位符，并确认 `GraphScopes` 与 `UseHmacFallback=false` 已覆盖 OBO 场景。部署命令或冒烟脚本可通过 `--override appsettings.Stage.json` 注入该文件。若不同租户使用独立 Vault，可在 `Plugin.Security.TenantOverrides["<tenant>"].KeyVaultUri` 指向各自的 Key Vault。对真实 Key Vault，可使用 [Azure App Service Key Vault 引用](https://learn.microsoft.com/azure/app-service/app-service-key-vault-references) 或下方示例直接注入机密值：
 
    ```bash
    # 使用环境变量覆盖 SeedSecrets
