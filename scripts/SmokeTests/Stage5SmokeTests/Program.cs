@@ -152,27 +152,9 @@ static (PluginOptions Options, IConfigurationRoot Configuration) LoadOptions(str
 static async Task<int> RunSecretCheckAsync(PluginOptions options, CancellationToken cancellationToken)
 {
     var resolver = new KeyVaultSecretResolver(Options.Create(options));
-    var secretNames = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+    var probes = BuildSecretProbes(options);
 
-    if (!string.IsNullOrWhiteSpace(options.Security.ClientSecretName))
-    {
-        secretNames.Add(options.Security.ClientSecretName);
-    }
-
-    foreach (var provider in options.Providers.Where(p => !string.IsNullOrWhiteSpace(p.ApiKeySecretName)))
-    {
-        secretNames.Add(provider.ApiKeySecretName);
-    }
-
-    foreach (var tenantOverride in options.Security.TenantOverrides.Values)
-    {
-        if (!string.IsNullOrWhiteSpace(tenantOverride.ClientSecretName))
-        {
-            secretNames.Add(tenantOverride.ClientSecretName);
-        }
-    }
-
-    if (secretNames.Count == 0)
+    if (probes.Count == 0)
     {
         Console.WriteLine("未在配置中找到任何需要解析的密钥名称。");
         return 0;
@@ -181,23 +163,29 @@ static async Task<int> RunSecretCheckAsync(PluginOptions options, CancellationTo
     var success = new List<string>();
     var failures = new List<string>();
 
-    foreach (var name in secretNames)
+    foreach (var probe in probes)
     {
         try
         {
-            var value = await resolver.GetSecretAsync(name, cancellationToken).ConfigureAwait(false);
+            var value = await resolver.GetSecretAsync(probe.SecretName, probe.TenantId, cancellationToken).ConfigureAwait(false);
             if (string.IsNullOrEmpty(value))
             {
-                failures.Add($"{name} => 解析结果为空");
+                failures.Add($"{FormatProbe(probe)} => 解析结果为空");
             }
             else
             {
-                success.Add($"{name} => 长度 {value.Length}");
+                success.Add($"{FormatProbe(probe)} => 长度 {value.Length}");
             }
+        }
+        catch (SecretRetrievalException ex)
+        {
+            var vault = string.IsNullOrWhiteSpace(ex.VaultUri) ? options.Security.KeyVaultUri : ex.VaultUri;
+            var hint = "请确认托管身份或应用主体已在对应 Key Vault 中授予 get 权限，并且密钥名称拼写正确。";
+            failures.Add($"{FormatProbe(probe)} => 无法访问远程 Key Vault ({vault}): {ex.InnerException?.Message ?? ex.Message}. {hint}");
         }
         catch (Exception ex)
         {
-            failures.Add($"{name} => {ex.Message}");
+            failures.Add($"{FormatProbe(probe)} => {ex.Message}");
         }
     }
 
@@ -216,6 +204,49 @@ static async Task<int> RunSecretCheckAsync(PluginOptions options, CancellationTo
     Console.WriteLine($"成功: {success.Count}, 失败: {failures.Count}");
     return failures.Count == 0 ? 0 : 2;
 }
+
+static List<SecretProbe> BuildSecretProbes(PluginOptions options)
+{
+    var probes = new List<SecretProbe>();
+    var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+    void AddProbe(string? tenantId, string? secretName)
+    {
+        if (string.IsNullOrWhiteSpace(secretName))
+        {
+            return;
+        }
+
+        var key = $"{tenantId ?? "__default__"}::{secretName}";
+        if (seen.Add(key))
+        {
+            probes.Add(new SecretProbe(tenantId, secretName));
+        }
+    }
+
+    AddProbe(null, options.Security.ClientSecretName);
+
+    foreach (var provider in options.Providers.Where(p => !string.IsNullOrWhiteSpace(p.ApiKeySecretName)))
+    {
+        AddProbe(null, provider.ApiKeySecretName);
+    }
+
+    foreach (var kvp in options.Security.TenantOverrides)
+    {
+        var tenantSecret = !string.IsNullOrWhiteSpace(kvp.Value.ClientSecretName)
+            ? kvp.Value.ClientSecretName
+            : options.Security.ClientSecretName;
+        AddProbe(kvp.Key, tenantSecret);
+    }
+
+    probes.Sort((left, right) => string.CompareOrdinal(FormatProbe(left), FormatProbe(right)));
+    return probes;
+}
+
+static string FormatProbe(SecretProbe probe)
+    => string.IsNullOrWhiteSpace(probe.TenantId) ? probe.SecretName : $"{probe.TenantId}/{probe.SecretName}";
+
+private readonly record struct SecretProbe(string? TenantId, string SecretName);
 
 static async Task<int> RunReplySmokeAsync(PluginOptions options, IReadOnlyDictionary<string, string?> parameters, CancellationToken cancellationToken)
 {

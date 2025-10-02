@@ -44,7 +44,7 @@ public class TokenBroker : ITokenBroker
             ? tenantOverride!.ClientSecretName!
             : security.ClientSecretName;
 
-        var clientSecret = await _resolver.GetSecretAsync(clientSecretName, cancellationToken);
+        var clientSecret = await _resolver.GetSecretAsync(clientSecretName, tenantId, cancellationToken);
         if (string.IsNullOrEmpty(clientSecret))
         {
             throw new AuthenticationException("无法获取客户端机密。");
