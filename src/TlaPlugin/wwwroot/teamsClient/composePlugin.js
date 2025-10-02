@@ -5,7 +5,8 @@ import {
   buildTranslatePayload,
   buildReplyPayload,
   calculateCostHint,
-  updateStateWithResponse
+  updateStateWithResponse,
+  resolveAdditionalTargetLanguages
 } from "./state.js";
 
 function resolveComposeUi(root = typeof document !== "undefined" ? document : undefined) {
@@ -15,6 +16,7 @@ function resolveComposeUi(root = typeof document !== "undefined" ? document : un
   return {
     input: root.querySelector?.("[data-compose-input]"),
     targetSelect: root.querySelector?.("[data-compose-target]") ?? root.querySelector?.("[data-target-select]"),
+    additionalTargetsSelect: root.querySelector?.("[data-compose-additional-targets]"),
     suggestButton: root.querySelector?.("[data-compose-suggest]"),
     applyButton: root.querySelector?.("[data-compose-apply]"),
     preview: root.querySelector?.("[data-compose-preview]"),
@@ -33,6 +35,60 @@ function setPreview(previewElement, text) {
     return;
   }
   previewElement.textContent = text;
+}
+
+function getMultiSelectValues(element) {
+  if (!element) {
+    return [];
+  }
+  if (typeof element.getSelectedValues === "function") {
+    const values = element.getSelectedValues();
+    return Array.isArray(values) ? values.filter((value) => typeof value === "string" && value.trim()) : [];
+  }
+  if (element.selectedOptions) {
+    return Array.from(element.selectedOptions)
+      .map((option) => option.value)
+      .filter((value) => typeof value === "string" && value.trim());
+  }
+  if (Array.isArray(element.value)) {
+    return element.value.filter((value) => typeof value === "string" && value.trim());
+  }
+  if (Array.isArray(element.optionsData)) {
+    return element.optionsData
+      .filter((option) => option?.selected)
+      .map((option) => option.value)
+      .filter((value) => typeof value === "string" && value.trim());
+  }
+  if (typeof element.value === "string" && element.value.trim()) {
+    return [element.value.trim()];
+  }
+  return [];
+}
+
+function setMultiSelectValues(element, values = []) {
+  if (!element) {
+    return;
+  }
+  const normalized = Array.isArray(values)
+    ? values.filter((value) => typeof value === "string" && value.trim())
+    : [];
+  if (typeof element.setSelectedValues === "function") {
+    element.setSelectedValues(normalized);
+    return;
+  }
+  const set = new Set(normalized);
+  if (element.options) {
+    Array.from(element.options).forEach((option) => {
+      option.selected = set.has(option.value);
+    });
+  }
+  if (Array.isArray(element.optionsData)) {
+    element.optionsData = element.optionsData.map((option) => ({
+      ...option,
+      selected: set.has(option.value)
+    }));
+  }
+  element.value = normalized;
 }
 
 export async function initComposePlugin({ ui = resolveComposeUi(), teams, fetcher } = {}) {
@@ -57,10 +113,53 @@ export async function initComposePlugin({ ui = resolveComposeUi(), teams, fetche
   }
 
   const availableTargetIds = targetLanguages.map((lang) => lang.id);
+  state.availableTargetLanguages = availableTargetIds;
   const fallbackTarget = availableTargetIds[0] ?? "";
   if (!availableTargetIds.includes(state.targetLanguage)) {
     state.targetLanguage = fallbackTarget;
   }
+
+  if (ui.additionalTargetsSelect) {
+    if (
+      typeof ui.additionalTargetsSelect.replaceChildren === "function" &&
+      typeof document !== "undefined"
+    ) {
+      const nodes = targetLanguages.map((lang) => {
+        const option = document.createElement("option");
+        option.value = lang.id;
+        option.textContent = lang.name;
+        return option;
+      });
+      ui.additionalTargetsSelect.replaceChildren(...nodes);
+    } else {
+      ui.additionalTargetsSelect.optionsData = targetLanguages.map((lang) => ({
+        value: lang.id,
+        label: lang.name,
+        selected: false
+      }));
+    }
+  }
+
+  const applyAdditionalTargets = (values) => {
+    state.additionalTargetLanguages = values;
+    if (ui.additionalTargetsSelect) {
+      setMultiSelectValues(ui.additionalTargetsSelect, values);
+    }
+    return values;
+  };
+
+  const syncAdditionalTargets = () => {
+    const selected = ui.additionalTargetsSelect
+      ? getMultiSelectValues(ui.additionalTargetsSelect)
+      : state.additionalTargetLanguages;
+    const allowed = Array.isArray(state.availableTargetLanguages)
+      ? state.availableTargetLanguages
+      : availableTargetIds;
+    const resolved = resolveAdditionalTargetLanguages(selected, state.targetLanguage, allowed);
+    return applyAdditionalTargets(resolved);
+  };
+
+  applyAdditionalTargets(state.additionalTargetLanguages);
 
   if (ui.targetSelect) {
     if (!availableTargetIds.includes(ui.targetSelect.value)) {
@@ -69,8 +168,13 @@ export async function initComposePlugin({ ui = resolveComposeUi(), teams, fetche
     ui.targetSelect.value = state.targetLanguage;
     ui.targetSelect.addEventListener?.("change", (event) => {
       state.targetLanguage = event.target.value;
+      syncAdditionalTargets();
     });
   }
+
+  ui.additionalTargetsSelect?.addEventListener?.("change", () => {
+    syncAdditionalTargets();
+  });
 
   if (ui.terminologyToggle) {
     ui.terminologyToggle.checked = state.useTerminology;
@@ -106,7 +210,11 @@ export async function initComposePlugin({ ui = resolveComposeUi(), teams, fetche
       setPreview(ui.preview, "请输入要翻译的文本");
       return;
     }
-    const payload = buildTranslatePayload({ ...state }, context);
+    const additionalTargets = syncAdditionalTargets();
+    const payload = buildTranslatePayload(
+      { ...state, additionalTargetLanguages: additionalTargets },
+      context
+    );
     try {
       const response = await translateText(payload, fetcher);
       const nextState = updateStateWithResponse(state, response);
@@ -130,7 +238,12 @@ export async function initComposePlugin({ ui = resolveComposeUi(), teams, fetche
     if (!finalText) {
       return;
     }
-    const replyPayload = buildReplyPayload(state, context, finalText);
+    const additionalTargets = syncAdditionalTargets();
+    const replyPayload = buildReplyPayload(
+      { ...state, additionalTargetLanguages: additionalTargets },
+      context,
+      finalText
+    );
     let replyResult;
     try {
       replyResult = await sendReply(replyPayload, fetcher);

@@ -107,6 +107,100 @@ test("compose plugin translates and posts reply payload", async () => {
   assert.equal(preview.value || preview.textContent, "已发送 Adaptive Card 回贴");
 });
 
+test("compose plugin sends additional target languages", async () => {
+  const fetchCalls = [];
+  const fakeFetch = async (url, options = {}) => {
+    if (options.body) {
+      fetchCalls.push({ url, options: JSON.parse(options.body) });
+    }
+    return {
+      ok: true,
+      async json() {
+        if (url === "/api/metadata") {
+          return {
+            models: [{ id: "model-a", displayName: "Model A", costPerCharUsd: 0.00002 }],
+            languages: [
+              { id: "auto", name: "Auto", isDefault: true },
+              { id: "es", name: "Español" },
+              { id: "fr", name: "Français" },
+              { id: "ja", name: "日本語" }
+            ],
+            features: { terminologyToggle: true, toneToggle: true },
+            pricing: { currency: "USD" }
+          };
+        }
+        if (url === "/api/translate") {
+          return { text: "hola", detectedLanguage: "en" };
+        }
+        if (url === "/api/reply") {
+          return {
+            status: "ok",
+            card: {
+              type: "AdaptiveCard",
+              body: [
+                { type: "TextBlock", text: "hola" },
+                { type: "TextBlock", text: "bonjour" },
+                { type: "TextBlock", text: "こんにちは" }
+              ]
+            }
+          };
+        }
+        throw new Error(`unexpected url ${url}`);
+      }
+    };
+  };
+
+  const suggestButton = createStubElement();
+  const applyButton = createStubElement();
+  const input = createStubElement({ value: "hello" });
+  const preview = createStubElement();
+  const targetSelect = Object.assign(createStubElement({ value: "es" }), { replaceChildren() {} });
+  const additionalTargetsSelect = createStubElement({ value: [] });
+
+  const teams = {
+    app: {
+      async initialize() {
+        return undefined;
+      },
+      async getContext() {
+        return { tenant: { id: "t" }, user: { id: "u" }, channel: { id: "c" }, app: { locale: "en-US" } };
+      }
+    },
+    conversations: {
+      async sendMessageToConversation(payload) {
+        teams.conversations.lastMessage = payload;
+      }
+    }
+  };
+
+  await initComposePlugin({
+    ui: { input, targetSelect, additionalTargetsSelect, suggestButton, applyButton, preview },
+    teams,
+    fetcher: fakeFetch
+  });
+
+  additionalTargetsSelect.value = ["fr", "ja"];
+  await additionalTargetsSelect.trigger("change");
+  await suggestButton.trigger("click");
+  await applyButton.trigger("click");
+
+  const translateCall = fetchCalls.find((call) => call.url === "/api/translate");
+  const replyCall = fetchCalls.find((call) => call.url === "/api/reply");
+  assert.ok(translateCall, "expected translate call");
+  assert.ok(replyCall, "expected reply call");
+  assert.deepEqual(translateCall.options.additionalTargetLanguages, ["fr", "ja"]);
+  assert.deepEqual(replyCall.options.additionalTargetLanguages, ["fr", "ja"]);
+  assert.equal(
+    teams.conversations.lastMessage.attachments[0].content.body[1].text,
+    "bonjour"
+  );
+  assert.equal(
+    teams.conversations.lastMessage.attachments[0].content.body[2].text,
+    "こんにちは"
+  );
+  assert.equal(preview.value || preview.textContent, "已发送 Adaptive Card 回贴");
+});
+
 test("compose plugin falls back to first non-auto target", async () => {
   const fetchCalls = [];
   const fakeFetch = async (url, options = {}) => {
