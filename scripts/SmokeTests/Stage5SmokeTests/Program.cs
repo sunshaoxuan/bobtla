@@ -204,6 +204,8 @@ static async Task<int> RunSecretCheckAsync(PluginOptions options, CancellationTo
 
     Console.WriteLine();
     Console.WriteLine($"成功: {success.Count}, 失败: {failures.Count}");
+    Console.WriteLine();
+    PrintGraphScopeReminder(options);
     return failures.Count == 0 ? 0 : 2;
 }
 
@@ -250,6 +252,44 @@ static string FormatProbe(SecretProbe probe)
 
 private readonly record struct SecretProbe(string? TenantId, string SecretName);
 
+static void PrintGraphScopeReminder(PluginOptions options)
+{
+    var scopes = options.Security.GraphScopes
+        .Where(scope => !string.IsNullOrWhiteSpace(scope))
+        .Select(scope => scope.Trim())
+        .ToList();
+
+    Console.WriteLine("GraphScopes 配置检查:");
+
+    if (scopes.Count == 0)
+    {
+        Console.WriteLine("  ⚠️ 未配置 GraphScopes。请在 Azure AD 中授权 https://graph.microsoft.com/.default 等作用域，否则 OBO 会返回 invalid_scope。");
+        Console.WriteLine("  提醒：作用域需与 Azure AD 应用注册的授权列表一致。");
+        Console.WriteLine();
+        return;
+    }
+
+    foreach (var scope in scopes)
+    {
+        Console.WriteLine("  - " + scope);
+    }
+
+    var invalid = scopes
+        .Where(scope => !scope.StartsWith("https://graph.microsoft.com/", StringComparison.OrdinalIgnoreCase))
+        .ToList();
+
+    if (invalid.Count > 0)
+    {
+        Console.WriteLine("  ⚠️ 检测到未使用资源限定格式的 scope。请改用 https://graph.microsoft.com/.default 或 https://graph.microsoft.com/<Permission> 并与 Azure AD 管理员已授权的范围一致，避免 OBO 出现 invalid_scope。");
+    }
+    else
+    {
+        Console.WriteLine("  提醒：请确认上述作用域已完成管理员同意并保持与 Azure AD 授权同步。");
+    }
+
+    Console.WriteLine();
+}
+
 static async Task<int> RunReplySmokeAsync(PluginOptions options, IReadOnlyDictionary<string, string?> parameters, CancellationToken cancellationToken)
 {
     var useLiveGraph = parameters.ContainsKey("use-live-graph");
@@ -261,6 +301,11 @@ static async Task<int> RunReplySmokeAsync(PluginOptions options, IReadOnlyDictio
     var language = GetValue(parameters, "language", "ja");
     var tone = GetValue(parameters, "tone", TranslationRequest.DefaultTone);
     var text = GetValue(parameters, "text", "ステージ 5 連携テスト");
+
+    if (!options.Security.UseHmacFallback)
+    {
+        PrintGraphScopeReminder(options);
+    }
 
     var metrics = new UsageMetricsService();
     var audit = new AuditLogger();
