@@ -1,7 +1,12 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Azure;
+using Azure.Core;
+using Azure.Identity;
+using Azure.Security.KeyVault.Secrets;
 using Microsoft.Extensions.Options;
 using TlaPlugin.Configuration;
 
@@ -13,42 +18,186 @@ namespace TlaPlugin.Services;
 public class KeyVaultSecretResolver
 {
     private readonly PluginOptions _options;
-    private readonly ConcurrentDictionary<string, CachedSecret> _cache = new();
+    private readonly ConcurrentDictionary<string, CachedSecret> _cache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, SecretClient> _clients = new(StringComparer.OrdinalIgnoreCase);
+    private readonly TokenCredential _credential;
 
-    public KeyVaultSecretResolver(IOptions<PluginOptions>? options = null)
+    public KeyVaultSecretResolver(IOptions<PluginOptions>? options = null, TokenCredential? credential = null)
     {
         _options = options?.Value ?? new PluginOptions();
+        _credential = credential ?? new DefaultAzureCredential();
     }
 
     public Task<string> GetSecretAsync(string secretName, CancellationToken cancellationToken)
+        => GetSecretAsync(secretName, tenantId: null, cancellationToken);
+
+    public async Task<string> GetSecretAsync(string secretName, string? tenantId, CancellationToken cancellationToken)
     {
         if (string.IsNullOrEmpty(secretName))
         {
-            return Task.FromResult(string.Empty);
+            return string.Empty;
         }
 
-        if (_cache.TryGetValue(secretName, out var cached) && cached.Expiry > DateTimeOffset.UtcNow)
+        var cacheKey = BuildCacheKey(secretName, tenantId);
+        if (_cache.TryGetValue(cacheKey, out var cached) && cached.Expiry > DateTimeOffset.UtcNow)
         {
-            return Task.FromResult(cached.Value);
+            return cached.Value;
         }
 
-        if (!_options.Security.SeedSecrets.TryGetValue(secretName, out var value))
+        var (vaultUri, shouldQueryVault) = ResolveVaultUri(tenantId);
+        string? resolved = null;
+        Exception? vaultError = null;
+
+        if (shouldQueryVault)
         {
-            throw new InvalidOperationException($"KeyVault 中不存在名为 {secretName} 的机密。");
+            try
+            {
+                var client = GetSecretClient(vaultUri!);
+                var response = await client.GetSecretAsync(secretName, cancellationToken: cancellationToken).ConfigureAwait(false);
+                resolved = response.Value.Value;
+            }
+            catch (RequestFailedException ex) when (ex.Status == 404)
+            {
+                vaultError = ex;
+            }
+            catch (Exception ex) when (ex is CredentialUnavailableException or AuthenticationFailedException)
+            {
+                vaultError = ex;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                vaultError = ex;
+            }
+        }
+
+        if (string.IsNullOrEmpty(resolved))
+        {
+            if (!_options.Security.SeedSecrets.TryGetValue(secretName, out resolved) || string.IsNullOrEmpty(resolved))
+            {
+                if (shouldQueryVault)
+                {
+                    throw new SecretRetrievalException(secretName, vaultUri, vaultError);
+                }
+
+                throw new InvalidOperationException($"KeyVault 中不存在名为 {secretName} 的机密。");
+            }
         }
 
         var ttl = _options.Security.SecretCacheTtl <= TimeSpan.Zero
             ? TimeSpan.FromMinutes(1)
             : _options.Security.SecretCacheTtl;
         var expiry = DateTimeOffset.UtcNow.Add(ttl);
-        _cache[secretName] = new CachedSecret(value, expiry);
-        return Task.FromResult(value);
+        _cache[cacheKey] = new CachedSecret(resolved, expiry);
+        return resolved;
     }
 
     public void Invalidate(string secretName)
     {
-        _cache.TryRemove(secretName, out _);
+        if (string.IsNullOrWhiteSpace(secretName))
+        {
+            return;
+        }
+
+        foreach (var key in _cache.Keys)
+        {
+            if (key.EndsWith($"::{secretName}", StringComparison.OrdinalIgnoreCase))
+            {
+                _cache.TryRemove(key, out _);
+            }
+        }
+    }
+
+    public void Invalidate(string secretName, string? tenantId)
+    {
+        if (string.IsNullOrWhiteSpace(secretName))
+        {
+            return;
+        }
+
+        var cacheKey = BuildCacheKey(secretName, tenantId);
+        _cache.TryRemove(cacheKey, out _);
     }
 
     private readonly record struct CachedSecret(string Value, DateTimeOffset Expiry);
+
+    private static string BuildCacheKey(string secretName, string? tenantId)
+        => $"{tenantId ?? "__default__"}::{secretName}";
+
+    private (string? VaultUri, bool Enabled) ResolveVaultUri(string? tenantId)
+    {
+        var security = _options.Security;
+        string? vaultUri = null;
+
+        if (!string.IsNullOrWhiteSpace(tenantId)
+            && security.TenantOverrides.TryGetValue(tenantId, out var tenantOverride)
+            && !string.IsNullOrWhiteSpace(tenantOverride.KeyVaultUri))
+        {
+            vaultUri = tenantOverride.KeyVaultUri;
+        }
+
+        if (string.IsNullOrWhiteSpace(vaultUri))
+        {
+            vaultUri = security.KeyVaultUri;
+        }
+
+        if (string.IsNullOrWhiteSpace(vaultUri))
+        {
+            return (null, false);
+        }
+
+        if (Uri.TryCreate(vaultUri, UriKind.Absolute, out var parsed))
+        {
+            var host = parsed.Host;
+            var vaultName = host.Split('.')[0];
+            if (string.Equals(vaultName, "localhost", StringComparison.OrdinalIgnoreCase))
+            {
+                return (null, false);
+            }
+        }
+
+        return (vaultUri, true);
+    }
+
+    private SecretClient GetSecretClient(string vaultUri)
+    {
+        return _clients.GetOrAdd(vaultUri, uri =>
+        {
+            if (!Uri.TryCreate(uri, UriKind.Absolute, out var parsed))
+            {
+                throw new InvalidOperationException($"KeyVault URI {uri} 无效。");
+            }
+
+            return new SecretClient(parsed, _credential);
+        });
+    }
+}
+
+public class SecretRetrievalException : Exception
+{
+    public SecretRetrievalException(string secretName, string? vaultUri, Exception? innerException)
+        : base(CreateMessage(secretName, vaultUri, innerException), innerException)
+    {
+        SecretName = secretName;
+        VaultUri = vaultUri;
+    }
+
+    public string SecretName { get; }
+
+    public string? VaultUri { get; }
+
+    private static string CreateMessage(string secretName, string? vaultUri, Exception? innerException)
+    {
+        var target = string.IsNullOrWhiteSpace(vaultUri) ? "配置的 Key Vault" : vaultUri;
+        var reason = innerException?.Message;
+        if (string.IsNullOrWhiteSpace(reason))
+        {
+            return $"无法从 {target} 获取名为 {secretName} 的机密。";
+        }
+
+        return $"无法从 {target} 获取名为 {secretName} 的机密: {reason}";
+    }
 }

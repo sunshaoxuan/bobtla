@@ -20,7 +20,9 @@
    az keyvault secret set --vault-name <vault> --name enterprise-graph-secret --value <enterprise-secret>
    ```
 
-3. **将 Key Vault 引用映射进配置** – 在 Stage 配置（例如 `appsettings.Stage.json`）或部署环境变量中，设置以下键值对，让 `KeyVaultSecretResolver` 能够解析到实际密钥。对真实 Key Vault，可使用 [Azure App Service Key Vault 引用](https://learn.microsoft.com/azure/app-service/app-service-key-vault-references) 或下方示例直接注入机密值：
+3. **配置访问策略或托管身份** – 为运行 Stage 服务的托管身份或应用注册授予目标 Key Vault 的 `get`/`list` Secret 权限。可通过 Azure Portal、`az keyvault set-policy` 或 Terraform 完成，确保 `Stage5SmokeTests` 的 `secrets` 命令能够直接读取远程机密。未授予权限时脚本会输出「无法访问远程 Key Vault」的提示，请根据错误信息补齐访问策略。
+
+4. **将 Key Vault 引用映射进配置** – 在 Stage 配置（例如 `appsettings.Stage.json`）或部署环境变量中，设置以下键值对，让 `KeyVaultSecretResolver` 能够解析到实际密钥。若不同租户使用独立 Vault，可在 `Plugin.Security.TenantOverrides["<tenant>"].KeyVaultUri` 指向各自的 Key Vault。对真实 Key Vault，可使用 [Azure App Service Key Vault 引用](https://learn.microsoft.com/azure/app-service/app-service-key-vault-references) 或下方示例直接注入机密值：
 
    ```bash
    # 使用环境变量覆盖 SeedSecrets
@@ -29,7 +31,7 @@
    export TLA_Plugin__Security__SeedSecrets__enterprise-graph-secret="<enterprise-secret>"
    ```
 
-4. **运行密钥解析冒烟** – 利用新增的 `Stage5SmokeTests` 工具检查所有密钥是否可被 `KeyVaultSecretResolver` 获取，确认映射指向 Key Vault 中的真实条目：
+5. **运行密钥解析冒烟** – 利用新增的 `Stage5SmokeTests` 工具检查所有密钥是否可被 `KeyVaultSecretResolver` 获取，确认映射指向 Key Vault 中的真实条目：
 
    ```bash
    dotnet run --project scripts/SmokeTests/Stage5SmokeTests -- secrets --appsettings src/TlaPlugin/appsettings.json --override appsettings.Stage.json
@@ -50,7 +52,7 @@
 
    - 读取配置并调用 `TokenBroker.ExchangeOnBehalfOfAsync`；
    - 使用内置 `TranslationRouter` 生成译文，触发审计与成本指标；
-   - 通过 `TeamsReplyClient.SendReplyAsync` 发送模拟回帖，并回显 Graph 请求；
+   - 通过 `TeamsReplyClient.SendReplyAsync` 发起 Graph 请求（可模拟或直连）；
    - 输出 `/api/metrics` 中同源的数据结构与审计日志样例。
 
    > 提示：`TokenBroker` 在默认配置下继续使用 HMAC 令牌便于单元测试。若要打通真实 Graph OBO，请在 `Plugin.Security` 中将 `UseHmacFallback` 设置为 `false`，填充所需的 `GraphScopes`，并按租户覆盖 `ClientId`/`ClientSecretName`。冒烟脚本会记录成功调用时的 Authorization 头部，便于比对 AAD 返回的访问令牌。
@@ -66,9 +68,23 @@
      --text "Stage 5 手动联调验证"
    ```
 
-   命令成功会打印 Graph 调用路径、Authorization 头、请求体，以及指标/审计 JSON 快照；若返回码非零，可按日志排查 Token、权限或配置缺失。【F:scripts/SmokeTests/Stage5SmokeTests/Program.cs†L214-L356】
+   **真实 Graph 调用** – 当 Stage 环境已具备可用的 AAD Token 与网络出口时，追加 `--use-live-graph`。脚本将读取 `Plugin.Security.GraphBaseUrl`/`GraphTimeout`/`GraphProxy` 配置实例化 `HttpClient`，并在失败时按 2 秒间隔重试最多三次：
 
-3. **若需对接真实 Graph** – 将 Stage 服务的反向代理或网络安全组打开至 Graph 端点，并在部署主机上替换 `SeedSecrets` 为 Key Vault 引用。由于当前实现的 Token 为 HMAC 模拟值，若要对接真实 Graph，可在 Stage 环境扩展 `TokenBroker` 以使用 AAD 访问令牌，再复用上述命令验证 `ReplyService` 行为。
+   ```bash
+   dotnet run --project scripts/SmokeTests/Stage5SmokeTests -- reply \
+     --tenant contoso.onmicrosoft.com \
+     --user stage-user \
+     --thread 19:stage-thread@thread.tacv2 \
+     --channel 19:stage-channel \
+     --language ja \
+     --tone business \
+     --text "Stage 5 手动联调验证" \
+     --use-live-graph
+   ```
+
+   模式无论真假都会打印 Graph 请求路径、Authorization 头与负载；在真实模式下还会追加 `StatusCode` 与响应 JSON，便于现场工程师对照 Graph 诊断信息定位权限或配额问题。若命令返回非零退出码，请根据控制台中输出的 Graph 错误消息与错误代码排查 Token、权限或配置缺失。【F:scripts/SmokeTests/Stage5SmokeTests/Program.cs†L322-L382】【F:scripts/SmokeTests/Stage5SmokeTests/Program.cs†L563-L653】
+
+3. **网络与凭据准备** – 对接真实 Graph 前需确保 Stage 服务的反向代理或网络安全组允许访问 Graph 端点，并将 `SeedSecrets` 替换为 Key Vault 引用。若当前环境仍使用模拟 Token，可在 Stage 实现中扩展 `TokenBroker` 以获取 AAD 访问令牌，再复用上述命令验证 `ReplyService` 行为。
 
 ## 3. 指标与审计观测
 

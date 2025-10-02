@@ -279,6 +279,7 @@ public class SecurityOptions
 
 public class TenantSecurityOverride
 {
+    public string? KeyVaultUri { get; set; }
     public string? ClientId { get; set; }
     public string? ClientSecretName { get; set; }
     public string? UserAssertionAudience { get; set; }
