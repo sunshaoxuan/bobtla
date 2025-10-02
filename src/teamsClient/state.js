@@ -55,7 +55,12 @@ export function buildDialogState({ models, languages, context } = {}) {
     modelId: defaultModel?.id ?? "",
     sourceLanguage: metadata.languages[0]?.id ?? "auto",
     targetLanguage,
-    additionalTargetLanguages: resolveAdditionalTargetLanguages(undefined, targetLanguage, availableTargets),
+    additionalTargetLanguages: resolveAdditionalTargetLanguages(
+      undefined,
+      targetLanguage,
+      availableTargets
+    ),
+    availableTargetLanguages: availableTargets,
     threadId: resolveThreadId(context),
     useTerminology: true,
     useRag: false,
@@ -107,7 +112,8 @@ export function buildTranslatePayload(state, context) {
   }
   const additionalTargetLanguages = resolveAdditionalTargetLanguages(
     state.additionalTargetLanguages,
-    state.targetLanguage
+    state.targetLanguage,
+    state.availableTargetLanguages
   );
   const payload = {
     text: state.text,
@@ -169,7 +175,8 @@ export function buildReplyPayload(state, context, text) {
   }
   const additionalTargetLanguages = resolveAdditionalTargetLanguages(
     state.additionalTargetLanguages,
-    state.targetLanguage
+    state.targetLanguage,
+    state.availableTargetLanguages
   );
   const payload = {
     translation: text,
