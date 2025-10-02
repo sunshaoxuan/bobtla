@@ -206,11 +206,16 @@ static async Task<int> RunSecretCheckAsync(PluginOptions options, CancellationTo
     }
 
     Console.WriteLine();
-    Console.WriteLine($"成功: {success.Count}, 失败: {failures.Count}");
+    var diagnostics = PrintTenantOverrideSummary(options, probeResults);
+    var totalFailures = failures.Count + diagnostics.FailureCount;
+    Console.WriteLine($"成功: {success.Count}, 失败: {totalFailures}");
+    if (diagnostics.MissingComparisons > 0)
+    {
+        Console.WriteLine($"提示: 有 {diagnostics.MissingComparisons} 个租户覆盖缺少对比数据，请确认已在 Key Vault 中创建对应密钥。");
+    }
     Console.WriteLine();
-    PrintTenantOverrideSummary(options, probeResults);
     PrintGraphScopeReminder(options);
-    return failures.Count == 0 ? 0 : 2;
+    return totalFailures == 0 ? 0 : 2;
 }
 
 static List<SecretProbe> BuildSecretProbes(PluginOptions options)
@@ -237,6 +242,10 @@ static List<SecretProbe> BuildSecretProbes(PluginOptions options)
     foreach (var provider in options.Providers.Where(p => !string.IsNullOrWhiteSpace(p.ApiKeySecretName)))
     {
         AddProbe(null, provider.ApiKeySecretName);
+        if (!string.IsNullOrWhiteSpace(provider.ApiKeyTenantId))
+        {
+            AddProbe(provider.ApiKeyTenantId, provider.ApiKeySecretName);
+        }
     }
 
     foreach (var kvp in options.Security.TenantOverrides)
@@ -257,7 +266,7 @@ static string FormatProbe(SecretProbe probe)
 private readonly record struct SecretProbe(string? TenantId, string SecretName);
 private readonly record struct SecretProbeResult(string? TenantId, string SecretName, string Fingerprint);
 
-static void PrintTenantOverrideSummary(PluginOptions options, IReadOnlyList<SecretProbeResult> results)
+static TenantOverrideDiagnostics PrintTenantOverrideSummary(PluginOptions options, IReadOnlyList<SecretProbeResult> results)
 {
     var overrides = options.Security.TenantOverrides
         .Where(kvp => !string.IsNullOrWhiteSpace(kvp.Value.KeyVaultUri))
@@ -272,7 +281,7 @@ static void PrintTenantOverrideSummary(PluginOptions options, IReadOnlyList<Secr
 
     if (overrides.Count == 0 || results.Count == 0)
     {
-        return;
+        return new TenantOverrideDiagnostics(0, 0);
     }
 
     var lookup = new Dictionary<string, SecretProbeResult>(StringComparer.OrdinalIgnoreCase);
@@ -283,6 +292,9 @@ static void PrintTenantOverrideSummary(PluginOptions options, IReadOnlyList<Secr
     }
 
     Console.WriteLine("[KeyVaultSecretResolver] 租户 KeyVaultUri 覆盖检查:");
+
+    var failureCount = 0;
+    var missingComparisons = 0;
 
     foreach (var group in overrides.GroupBy(o => o.SecretName, StringComparer.OrdinalIgnoreCase))
     {
@@ -303,6 +315,7 @@ static void PrintTenantOverrideSummary(PluginOptions options, IReadOnlyList<Secr
         if (candidates.Count < 2)
         {
             Console.WriteLine($"  ⚠️ {group.Key} => 缺少默认或租户特定的密钥值，无法对比。");
+            missingComparisons++;
             continue;
         }
 
@@ -317,15 +330,20 @@ static void PrintTenantOverrideSummary(PluginOptions options, IReadOnlyList<Secr
         }
         else
         {
-            Console.WriteLine($"  ⚠️ {group.Key} => 所有环境返回相同的值，请确认 KeyVaultUri 覆盖是否生效。");
+            Console.WriteLine($"  ✘ {group.Key} => 所有环境返回相同的值，请确认 KeyVaultUri 覆盖是否生效。");
+            failureCount++;
         }
     }
 
     Console.WriteLine();
+
+    return new TenantOverrideDiagnostics(failureCount, missingComparisons);
 }
 
 static string BuildResultKey(string? tenantId, string secretName)
     => $"{tenantId ?? "__default__"}::{secretName}";
+
+private readonly record struct TenantOverrideDiagnostics(int FailureCount, int MissingComparisons);
 
 static string ComputeFingerprint(string value)
 {

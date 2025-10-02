@@ -214,6 +214,7 @@ public class ModelProviderOptions
     public string Endpoint { get; set; } = string.Empty;
     public string Model { get; set; } = string.Empty;
     public string ApiKeySecretName { get; set; } = string.Empty;
+    public string? ApiKeyTenantId { get; set; }
     public string Organization { get; set; } = string.Empty;
     public IDictionary<string, string> DefaultHeaders { get; set; } = new Dictionary<string, string>();
 }

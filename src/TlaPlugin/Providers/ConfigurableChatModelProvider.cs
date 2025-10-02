@@ -170,7 +170,10 @@ public class ConfigurableChatModelProvider : IModelProvider
             return;
         }
 
-        var secret = await _secretResolver!.GetSecretAsync(Options.ApiKeySecretName, cancellationToken);
+        var secret = await _secretResolver!.GetSecretAsync(
+            Options.ApiKeySecretName,
+            Options.ApiKeyTenantId,
+            cancellationToken);
         if (string.IsNullOrWhiteSpace(secret))
         {
             return;

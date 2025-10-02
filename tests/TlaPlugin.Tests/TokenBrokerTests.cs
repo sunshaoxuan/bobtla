@@ -77,6 +77,33 @@ public class TokenBrokerTests
     }
 
     [Fact]
+    public async Task RefreshesCacheWhenClientSecretNameChanges()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            Security = new SecurityOptions
+            {
+                ClientSecretName = "tla-client-secret",
+                SeedSecrets = new Dictionary<string, string>
+                {
+                    ["tla-client-secret"] = "initial-secret",
+                    ["rotated-client-secret"] = "rotated-secret"
+                }
+            }
+        });
+
+        var resolver = new KeyVaultSecretResolver(options);
+        var broker = new TokenBroker(resolver, options);
+
+        var original = await broker.ExchangeOnBehalfOfAsync("contoso", "user", "assertion", CancellationToken.None);
+
+        options.Value.Security.ClientSecretName = "rotated-client-secret";
+        var rotated = await broker.ExchangeOnBehalfOfAsync("contoso", "user", "assertion", CancellationToken.None);
+
+        Assert.NotEqual(original.Value, rotated.Value);
+    }
+
+    [Fact]
     public async Task UsesMsalWhenEnabled()
     {
         var options = Options.Create(new PluginOptions
