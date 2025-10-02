@@ -12,10 +12,10 @@ public class DevelopmentRoadmapServiceTests
 
         var roadmap = service.GetRoadmap();
 
-        Assert.Equal("phase4", roadmap.ActiveStageId);
+        Assert.Equal("phase5", roadmap.ActiveStageId);
         Assert.Equal(5, roadmap.Stages.Count);
-        Assert.Contains(roadmap.Stages, stage => stage.Id == "phase4" && !stage.Completed);
-        Assert.Contains(roadmap.Stages, stage => stage.Deliverables.Contains("新增 src/webapp 仪表盘页面与视图模型"));
+        Assert.Contains(roadmap.Stages, stage => stage.Id == "phase4" && stage.Completed);
+        Assert.Contains(roadmap.Stages, stage => stage.Deliverables.Contains("密钥映射与凭据分发 Runbook"));
         Assert.Contains(roadmap.Tests, test => test.Id == "dashboard" && test.Automated);
     }
 }

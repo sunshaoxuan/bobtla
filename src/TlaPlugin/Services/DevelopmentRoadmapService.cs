@@ -63,17 +63,17 @@ public class DevelopmentRoadmapService
             "phase4",
             "阶段 4：前端体验",
             "构建 Teams 设置页与前端仪表盘，统一本地化。",
-            false,
+            true,
             new[]
             {
-                "LocalizationCatalogService 推送日文默认 UI",
-                "/api/status 与 /api/roadmap 汇总阶段数据",
-                "新增 src/webapp 仪表盘页面与视图模型"
+                "Teams 设置 Tab 与仪表盘 UI 凝练交互",
+                "前端消费 /api/status、/api/roadmap 实时刷新",
+                "LocalizationCatalogService 发布多语言资源"
             },
             new[]
             {
-                "本地化单测",
-                "前端视图模型测试"
+                "前端视图模型测试",
+                "仪表盘冒烟回归"
             }),
         new(
             "phase5",
@@ -83,13 +83,15 @@ public class DevelopmentRoadmapService
             new[]
             {
                 "接入生产模型与监控",
-                "前后端联调脚本",
-                "发布清单与回滚预案"
+                "密钥映射与凭据分发 Runbook",
+                "Graph/OBO 冒烟脚本与报表",
+                "真实模型切换 SmokeTest 清单"
             },
             new[]
             {
-                "联调回归测试",
-                "性能基准测试"
+                "上线 Runbook 演练",
+                "Graph/OBO 冒烟测试",
+                "发布 SmokeTest"
             })
     };
 

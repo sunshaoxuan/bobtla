@@ -1,30 +1,30 @@
 import { buildStatusCards, formatLocaleOptions } from "./viewModel.js";
 
 const FALLBACK_STATUS = {
-  currentStageId: "phase4",
-  overallCompletionPercent: 60,
+  currentStageId: "phase5",
+  overallCompletionPercent: 80,
   nextSteps: [
-    "完善设置页组件并补全前端校验",
-    "串联状态/路标 API 与实时刷新机制",
-    "安排跨团队联调与上线验收"
+    "完成密钥映射 Runbook 并固化凭据分发",
+    "安排 Graph/OBO 冒烟测试验证令牌链路",
+    "切换至真实模型并执行发布 SmokeTest"
   ],
   stages: [
     { id: "phase1", name: "阶段 1：平台基线", completed: true },
     { id: "phase2", name: "阶段 2：安全与合规", completed: true },
     { id: "phase3", name: "阶段 3：性能与可观测", completed: true },
-    { id: "phase4", name: "阶段 4：前端体验", completed: false },
+    { id: "phase4", name: "阶段 4：前端体验", completed: true },
     { id: "phase5", name: "阶段 5：上线准备", completed: false }
   ],
   frontend: {
-    completionPercent: 55,
+    completionPercent: 80,
     dataPlaneReady: true,
     uiImplemented: true,
-    integrationReady: false
+    integrationReady: true
   }
 };
 
 const FALLBACK_ROADMAP = {
-  activeStageId: "phase4",
+  activeStageId: "phase5",
   stages: [
     {
       id: "phase1",
@@ -63,11 +63,11 @@ const FALLBACK_ROADMAP = {
       id: "phase4",
       name: "阶段 4：前端体验",
       objective: "构建 Teams 设置页与前端仪表盘，统一本地化。",
-      completed: false,
+      completed: true,
       deliverables: [
-        "LocalizationCatalogService 推送日文默认 UI",
-        "/api/status 与 /api/roadmap 汇总阶段数据",
-        "新增 src/webapp 仪表盘页面与视图模型"
+        "Teams 设置 Tab 与仪表盘 UI 凝练交互",
+        "前端消费 /api/status、/api/roadmap 实时刷新",
+        "LocalizationCatalogService 发布多语言资源"
       ]
     },
     {
@@ -77,8 +77,9 @@ const FALLBACK_ROADMAP = {
       completed: false,
       deliverables: [
         "接入生产模型与监控",
-        "前后端联调脚本",
-        "发布清单与回滚预案"
+        "密钥映射与凭据分发 Runbook",
+        "Graph/OBO 冒烟脚本与报表",
+        "真实模型切换 SmokeTest 清单"
       ]
     }
   ],

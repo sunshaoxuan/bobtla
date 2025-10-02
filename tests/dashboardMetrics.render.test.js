@@ -44,10 +44,10 @@ test("renderSummary populates metrics blocks", (t) => {
   });
 
   const cards = {
-    overallPercent: 75,
-    frontend: { completionPercent: 60, dataPlaneReady: true, uiImplemented: false, integrationReady: false },
-    nextSteps: ["完善 API"],
-    activeStage: { name: "阶段 4", objective: "交付前端体验" }
+    overallPercent: 80,
+    frontend: { completionPercent: 80, dataPlaneReady: true, uiImplemented: true, integrationReady: true },
+    nextSteps: ["密钥映射 Runbook"],
+    activeStage: { name: "阶段 5", objective: "上线准备" }
   };
 
   const metrics = normalizeMetrics({
