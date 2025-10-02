@@ -1,10 +1,12 @@
 using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
@@ -63,9 +65,22 @@ public class TeamsReplyClient : ITeamsReplyClient
                 metadata = new
                 {
                     language = request.Language,
-                    tone = request.Tone
+                    tone = request.Tone,
+                    additionalTranslations = request.AdditionalTranslations.Count > 0
+                        ? request.AdditionalTranslations
+                        : null
                 }
-            }
+            },
+            attachments = request.AdaptiveCard is null
+                ? null
+                : new object[]
+                {
+                    new
+                    {
+                        contentType = "application/vnd.microsoft.card.adaptive",
+                        content = request.AdaptiveCard
+                    }
+                }
         };
 
         httpRequest.Content = new StringContent(JsonSerializer.Serialize(payload, SerializerOptions), Encoding.UTF8, "application/json");
@@ -187,7 +202,9 @@ public sealed record TeamsReplyRequest(
     string FinalText,
     string Language,
     string Tone,
-    string AccessToken);
+    string AccessToken,
+    IReadOnlyDictionary<string, string> AdditionalTranslations,
+    JsonObject? AdaptiveCard);
 
 public sealed record TeamsReplyResponse(string MessageId, DateTimeOffset SentAt, string Status);
 

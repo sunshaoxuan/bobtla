@@ -85,6 +85,40 @@ public class ReplyServiceTests
     }
 
     [Fact]
+    public async Task SendsAdditionalTranslationsWhenRequested()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            Providers = new List<ModelProviderOptions> { new() { Id = "primary" } }
+        });
+
+        var metrics = new UsageMetricsService();
+        var teamsClient = new RecordingTeamsClient
+        {
+            Response = new TeamsReplyResponse("msg-multi", DateTimeOffset.UtcNow, "sent")
+        };
+        var service = CreateService(options, teamsClient, metrics);
+
+        var result = await service.SendReplyAsync(new ReplyRequest
+        {
+            ThreadId = "thread",
+            ReplyText = "Bonjour",
+            TenantId = "contoso",
+            UserId = "user",
+            ChannelId = "general",
+            LanguagePolicy = new ReplyLanguagePolicy { TargetLang = "fr", Tone = ToneTemplateService.Casual },
+            AdditionalTargetLanguages = new List<string> { "en", "en", "de" }
+        }, CancellationToken.None);
+
+        Assert.Equal("sent", result.Status);
+        Assert.NotNull(teamsClient.LastRequest);
+        var additional = teamsClient.LastRequest!.AdditionalTranslations;
+        Assert.True(additional.ContainsKey("en"));
+        Assert.True(additional.ContainsKey("de"));
+        Assert.NotNull(teamsClient.LastRequest!.AdaptiveCard);
+    }
+
+    [Fact]
     public async Task ThrowsWhenThreadIdMissing()
     {
         var options = Options.Create(new PluginOptions
@@ -197,7 +231,8 @@ public class ReplyServiceTests
             TenantId = "contoso",
             UserId = "user",
             ChannelId = "general",
-            LanguagePolicy = new ReplyLanguagePolicy { TargetLang = "ja", Tone = ToneTemplateService.Casual }
+            LanguagePolicy = new ReplyLanguagePolicy { TargetLang = "ja", Tone = ToneTemplateService.Casual },
+            AdditionalTargetLanguages = new List<string> { "fr" }
         }, "グラフ投稿", ToneTemplateService.Casual, CancellationToken.None);
 
         Assert.Equal("msg-http", result.MessageId);
@@ -209,10 +244,18 @@ public class ReplyServiceTests
         Assert.NotNull(capturedPayload);
         var root = capturedPayload!.RootElement;
         Assert.Equal("message", root.GetProperty("replyToId").GetString());
-        Assert.Equal("ja", root.GetProperty("channelData").GetProperty("metadata").GetProperty("language").GetString());
-        Assert.Equal(ToneTemplateService.Casual, root.GetProperty("channelData").GetProperty("metadata").GetProperty("tone").GetString());
+        var metadata = root.GetProperty("channelData").GetProperty("metadata");
+        Assert.Equal("ja", metadata.GetProperty("language").GetString());
+        Assert.Equal(ToneTemplateService.Casual, metadata.GetProperty("tone").GetString());
+        var extras = metadata.GetProperty("additionalTranslations");
+        Assert.Equal("fr", Assert.Single(extras.EnumerateObject()).Name);
+        Assert.Contains("fr", extras.GetProperty("fr").GetString());
         var html = root.GetProperty("body").GetProperty("content").GetString();
         Assert.Contains("グラフ投稿", html, StringComparison.Ordinal);
+        var attachments = root.GetProperty("attachments");
+        var card = attachments[0].GetProperty("content");
+        Assert.Equal("application/vnd.microsoft.card.adaptive", attachments[0].GetProperty("contentType").GetString());
+        Assert.Contains("グラフ投稿", card.GetProperty("body")[0].GetProperty("text").GetString(), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -285,7 +328,7 @@ public class ReplyServiceTests
         var router = new TranslationRouter(new ModelProviderFactory(options), new ComplianceGateway(options), new BudgetGuard(options.Value), new AuditLogger(), new ToneTemplateService(), broker, metrics, new LocalizationCatalogService(), options);
         var throttle = new TranslationThrottle(options);
         var rewrite = new RewriteService(router, throttle);
-        return new ReplyService(rewrite, teamsClient, broker, metrics, options);
+        return new ReplyService(rewrite, router, teamsClient, broker, metrics, options);
     }
 
     private sealed class RecordingTeamsClient : ITeamsReplyClient

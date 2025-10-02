@@ -293,6 +293,7 @@ public class ContextRetrievalIntegrationTests
         var glossary = new GlossaryService();
         var localization = new LocalizationCatalogService();
         var tokenBroker = new TokenBroker(new KeyVaultSecretResolver(options), options);
+        var metrics = new UsageMetricsService();
         var router = new TranslationRouter(
             new ModelProviderFactory(options),
             new ComplianceGateway(options),
@@ -300,7 +301,7 @@ public class ContextRetrievalIntegrationTests
             new AuditLogger(),
             new ToneTemplateService(),
             tokenBroker,
-            new UsageMetricsService(),
+            metrics,
             localization,
             options);
 
@@ -308,7 +309,7 @@ public class ContextRetrievalIntegrationTests
         var cacheStore = new TranslationCache(options);
         var throttle = new TranslationThrottle(options);
         var rewrite = new RewriteService(router, throttle);
-        var reply = new ReplyService(rewrite, options);
+        var reply = new ReplyService(rewrite, router, new NoopTeamsReplyClient(), tokenBroker, metrics, options);
 
         return new TranslationPipeline(
             router,
@@ -512,4 +513,10 @@ public class ContextRetrievalIntegrationTests
             return Task.FromResult(token);
         }
     }
+}
+
+internal sealed class NoopTeamsReplyClient : ITeamsReplyClient
+{
+    public Task<TeamsReplyResponse> SendReplyAsync(TeamsReplyRequest request, CancellationToken cancellationToken)
+        => Task.FromResult(new TeamsReplyResponse("noop", DateTimeOffset.UtcNow, "skipped"));
 }
