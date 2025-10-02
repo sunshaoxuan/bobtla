@@ -285,6 +285,15 @@ static async Task<int> RunReplySmokeAsync(PluginOptions options, IReadOnlyDictio
     var throttle = new TranslationThrottle(Options.Create(options));
     var rewrite = new RewriteService(router, throttle);
 
+    var additionalTargets = options.DefaultTargetLanguages
+        .Where(l => !string.Equals(l, language, StringComparison.OrdinalIgnoreCase))
+        .Take(3)
+        .ToList();
+    if (additionalTargets.Count == 0)
+    {
+        additionalTargets.Add("en-US");
+    }
+
     var translationRequest = new TranslationRequest
     {
         Text = text,
@@ -294,7 +303,8 @@ static async Task<int> RunReplySmokeAsync(PluginOptions options, IReadOnlyDictio
         ChannelId = channelId,
         ThreadId = threadId,
         Tone = tone,
-        UiLocale = options.DefaultUiLocale
+        UiLocale = options.DefaultUiLocale,
+        AdditionalTargetLanguages = additionalTargets
     };
 
     TranslationResult translation;
@@ -314,7 +324,7 @@ static async Task<int> RunReplySmokeAsync(PluginOptions options, IReadOnlyDictio
         BaseAddress = new Uri("https://graph.microsoft.com/v1.0/", UriKind.Absolute)
     };
     var teamsClient = new TeamsReplyClient(httpClient);
-    var replyService = new ReplyService(rewrite, teamsClient, tokenBroker, metrics, Options.Create(options));
+    var replyService = new ReplyService(rewrite, router, teamsClient, tokenBroker, metrics, Options.Create(options));
 
     var replyRequest = new ReplyRequest
     {
@@ -329,7 +339,8 @@ static async Task<int> RunReplySmokeAsync(PluginOptions options, IReadOnlyDictio
         {
             TargetLang = translation.TargetLanguage,
             Tone = tone
-        }
+        },
+        AdditionalTargetLanguages = additionalTargets
     };
 
     ReplyResult replyResult;
@@ -356,6 +367,54 @@ static async Task<int> RunReplySmokeAsync(PluginOptions options, IReadOnlyDictio
     Console.WriteLine($"  Authorization: {handler.LastAuthorization}");
     Console.WriteLine($"  Payload:     {handler.LastBody}");
     Console.WriteLine();
+
+    if (additionalTargets.Count > 0)
+    {
+        if (translation.AdditionalTranslations.Count == 0)
+        {
+            Console.Error.WriteLine("翻译结果缺少附加语种输出。");
+            return 8;
+        }
+
+        foreach (var language in additionalTargets)
+        {
+            if (!translation.AdditionalTranslations.ContainsKey(language))
+            {
+                Console.Error.WriteLine($"翻译结果未包含 {language} 的附加译文。");
+                return 9;
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(handler.LastBody))
+        {
+            try
+            {
+                using var payload = JsonDocument.Parse(handler.LastBody);
+                var metadata = payload.RootElement
+                    .GetProperty("channelData")
+                    .GetProperty("metadata");
+                if (!metadata.TryGetProperty("additionalTranslations", out var metadataTranslations) || metadataTranslations.ValueKind != JsonValueKind.Object)
+                {
+                    Console.Error.WriteLine("Graph 请求缺少 additionalTranslations 字段。");
+                    return 10;
+                }
+
+                foreach (var language in additionalTargets)
+                {
+                    if (!metadataTranslations.TryGetProperty(language, out var translationNode) || translationNode.ValueKind != JsonValueKind.String)
+                    {
+                        Console.Error.WriteLine($"Graph 请求未包含 {language} 的附加译文。");
+                        return 11;
+                    }
+                }
+            }
+            catch (Exception ex) when (ex is KeyNotFoundException or InvalidOperationException or JsonException)
+            {
+                Console.Error.WriteLine("无法解析 Graph 请求以验证附加译文: " + ex.Message);
+                return 12;
+            }
+        }
+    }
 
     Console.WriteLine("使用指标摘要:");
     Console.WriteLine(JsonSerializer.Serialize(metricsReport, new JsonSerializerOptions { WriteIndented = true }));
