@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -112,6 +113,7 @@ static void PrintUsage()
     Console.WriteLine("  --tone <tone>           语气模板，默认为 polite。");
     Console.WriteLine("  --text <content>        待翻译并回帖的正文，默认为 'ステージ 5 連携テスト'。");
     Console.WriteLine("  --use-live-graph        启用真实 Graph 调用，默认使用内置模拟响应。");
+    Console.WriteLine("  --use-live-model        启用真实模型 Provider，默认使用内置 Stub 模型。");
     Console.WriteLine();
     Console.WriteLine("metrics 命令参数:");
     Console.WriteLine("  --baseUrl <url>         Stage 服务的根地址，默认为 https://localhost:5001。");
@@ -251,6 +253,7 @@ private readonly record struct SecretProbe(string? TenantId, string SecretName);
 static async Task<int> RunReplySmokeAsync(PluginOptions options, IReadOnlyDictionary<string, string?> parameters, CancellationToken cancellationToken)
 {
     var useLiveGraph = parameters.ContainsKey("use-live-graph");
+    var useLiveModel = parameters.ContainsKey("use-live-model");
     var tenantId = GetValue(parameters, "tenant", "contoso.onmicrosoft.com");
     var userId = GetValue(parameters, "user", "user1");
     var threadId = GetValue(parameters, "thread", "message-id");
@@ -303,9 +306,18 @@ static async Task<int> RunReplySmokeAsync(PluginOptions options, IReadOnlyDictio
         providerOptions.Certifications.Add("iso27001");
     }
 
-    var stubProvider = new StubModelProvider(providerOptions);
+    var httpClientFactory = useLiveModel ? new SmokeTestHttpClientFactory() : null;
+    var providerFactory = new ModelProviderFactory(Options.Create(options), httpClientFactory, useLiveModel ? resolver : null);
+
+    IEnumerable<IModelProvider>? providerOverrides = null;
+    if (!useLiveModel)
+    {
+        var stubProvider = new StubModelProvider(providerOptions);
+        providerOverrides = new[] { stubProvider };
+    }
+
     var router = new TranslationRouter(
-        new ModelProviderFactory(Options.Create(options)),
+        providerFactory,
         compliance,
         budget,
         audit,
@@ -314,7 +326,7 @@ static async Task<int> RunReplySmokeAsync(PluginOptions options, IReadOnlyDictio
         metrics,
         localization,
         Options.Create(options),
-        new[] { stubProvider });
+        providerOverrides);
     var throttle = new TranslationThrottle(Options.Create(options));
     var rewrite = new RewriteService(router, throttle);
 
@@ -698,6 +710,17 @@ sealed class RecordingGraphHandler : DelegatingHandler
             : await request.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
 
         return await base.SendAsync(request, cancellationToken).ConfigureAwait(false);
+    }
+}
+
+sealed class SmokeTestHttpClientFactory : IHttpClientFactory
+{
+    private readonly ConcurrentDictionary<string, HttpClient> _clients = new(StringComparer.OrdinalIgnoreCase);
+
+    public HttpClient CreateClient(string name)
+    {
+        var key = string.IsNullOrWhiteSpace(name) ? "default" : name;
+        return _clients.GetOrAdd(key, _ => new HttpClient());
     }
 }
 
