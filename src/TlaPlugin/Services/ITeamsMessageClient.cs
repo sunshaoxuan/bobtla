@@ -43,6 +43,7 @@ public interface ITeamsMessageClient
         int maxMessages,
         AccessToken? accessToken,
         string? userId,
+        string? userAssertion,
         CancellationToken cancellationToken)
         => GetRecentMessagesAsync(tenantId, channelId, threadId, maxMessages, cancellationToken);
 }

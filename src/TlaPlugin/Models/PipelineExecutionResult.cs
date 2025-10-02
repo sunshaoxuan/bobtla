@@ -106,6 +106,7 @@ public class PipelineExecutionResult
             Tone = request.Tone,
             UseGlossary = request.UseGlossary,
             UiLocale = request.UiLocale,
+            UserAssertion = request.UserAssertion,
             AdditionalTargetLanguages = new List<string>(request.AdditionalTargetLanguages),
             GlossaryDecisions = request.GlossaryDecisions.ToDictionary(
                 pair => pair.Key,

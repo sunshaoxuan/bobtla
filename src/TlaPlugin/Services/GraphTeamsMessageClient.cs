@@ -40,6 +40,7 @@ public class GraphTeamsMessageClient : ITeamsMessageClient
             maxMessages,
             accessToken: null,
             userId: null,
+            userAssertion: null,
             cancellationToken);
 
     public async Task<IReadOnlyList<ContextMessage>> GetRecentMessagesAsync(
@@ -49,6 +50,7 @@ public class GraphTeamsMessageClient : ITeamsMessageClient
         int maxMessages,
         AccessToken? accessToken,
         string? userId,
+        string? userAssertion,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(tenantId) || string.IsNullOrWhiteSpace(channelId))
@@ -60,7 +62,7 @@ public class GraphTeamsMessageClient : ITeamsMessageClient
 
         var messages = new List<ContextMessage>();
 
-        using var scope = _contextAccessor.Push(new GraphRequestContext(tenantId, userId, accessToken));
+        using var scope = _contextAccessor.Push(new GraphRequestContext(tenantId, userId, accessToken, userAssertion));
 
         var threadLookupAttempted = false;
         if (!string.IsNullOrEmpty(threadId))

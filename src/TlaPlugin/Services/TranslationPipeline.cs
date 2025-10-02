@@ -197,6 +197,7 @@ public class TranslationPipeline : ITranslationPipeline
             ContextHints = new List<string>(contextHints),
             ContextSummary = request.ContextSummary,
             UiLocale = request.UiLocale,
+            UserAssertion = request.UserAssertion,
             GlossaryDecisions = request.GlossaryDecisions.ToDictionary(
                 pair => pair.Key,
                 pair => pair.Value.Clone(),
@@ -222,7 +223,8 @@ public class TranslationPipeline : ITranslationPipeline
                 ChannelId = request.ChannelId,
                 ThreadId = request.ThreadId,
                 MaxMessages = _options.Rag.MaxMessages,
-                ContextHints = new List<string>(request.ContextHints)
+                ContextHints = new List<string>(request.ContextHints),
+                UserAssertion = request.UserAssertion
             }, cancellationToken);
         }
         catch (OperationCanceledException)
@@ -253,7 +255,8 @@ public class TranslationPipeline : ITranslationPipeline
             {
                 Context = combined,
                 TenantId = request.TenantId,
-                UserId = request.UserId
+                UserId = request.UserId,
+                UserAssertion = request.UserAssertion
             }, cancellationToken);
 
             summary = summarize.Summary;

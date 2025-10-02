@@ -70,6 +70,7 @@ public class TranslationPipelineTests
             Text = "hi",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             TargetLanguage = "ja",
             SourceLanguage = "en"
         };
@@ -138,6 +139,7 @@ public class TranslationPipelineTests
             Text = "Here is the purchase summary",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             ChannelId = "general",
             TargetLanguage = "ja",
             SourceLanguage = "en",
@@ -200,6 +202,7 @@ public class TranslationPipelineTests
             Text = "Here is the purchase summary",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             ChannelId = "general",
             TargetLanguage = "ja",
             SourceLanguage = "en",
@@ -270,6 +273,7 @@ public class TranslationPipelineTests
             Text = "Share the latest update",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             ChannelId = "general",
             TargetLanguage = "ja",
             SourceLanguage = "en",
@@ -316,6 +320,7 @@ public class TranslationPipelineTests
             Text = "12345",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             TargetLanguage = "ja",
             SourceLanguage = "en"
         }, CancellationToken.None);
@@ -361,6 +366,7 @@ public class TranslationPipelineTests
             Text = "12345",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             TargetLanguage = "ja"
         }, detection, CancellationToken.None);
 
@@ -394,6 +400,7 @@ public class TranslationPipelineTests
             Text = "first",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             TargetLanguage = "ja",
             SourceLanguage = "en"
         }, CancellationToken.None);
@@ -405,6 +412,7 @@ public class TranslationPipelineTests
             Text = "second",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             TargetLanguage = "ja",
             SourceLanguage = "en"
         }, CancellationToken.None));
@@ -437,6 +445,7 @@ public class TranslationPipelineTests
             Text = "locale test",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             TargetLanguage = "ja",
             SourceLanguage = "en",
             UiLocale = "ja-JP"
@@ -447,6 +456,7 @@ public class TranslationPipelineTests
             Text = "locale test",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             TargetLanguage = "ja",
             SourceLanguage = "en",
             UiLocale = "zh-CN"
@@ -487,6 +497,7 @@ public class TranslationPipelineTests
             Text = "Team update",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             TargetLanguage = "ja",
             ChannelId = "general"
         }, CancellationToken.None);
@@ -499,6 +510,7 @@ public class TranslationPipelineTests
             EditedText = translation.RawTranslatedText + "（追加の説明）",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             ChannelId = "general",
             Tone = ToneTemplateService.Business
         }, CancellationToken.None);
@@ -512,6 +524,7 @@ public class TranslationPipelineTests
             EditedText = rewrite.RewrittenText,
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             ChannelId = "general",
             LanguagePolicy = new ReplyLanguagePolicy { Tone = ToneTemplateService.Business, TargetLang = "ja" }
         }, CancellationToken.None);
@@ -545,6 +558,7 @@ public class TranslationPipelineTests
             EditedText = "Custom content",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             Tone = ToneTemplateService.Business
         }, CancellationToken.None);
 
@@ -582,6 +596,7 @@ public class TranslationPipelineTests
             Text = "GPU",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             TargetLanguage = "ja",
             SourceLanguage = "en",
             ChannelId = "finance",
@@ -626,6 +641,7 @@ public class TranslationPipelineTests
             Text = "GPU", 
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             TargetLanguage = "ja",
             SourceLanguage = "en",
             ChannelId = "finance",
@@ -671,6 +687,7 @@ public class TranslationPipelineTests
             Text = "Hello there",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             TargetLanguage = "ja"
         }, CancellationToken.None);
 
@@ -705,6 +722,7 @@ public class TranslationPipelineTests
             Text = "Besok pagi kami akan berangkat ke pasar untuk membeli sayur segar dan buah segar.",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             TargetLanguage = "ja"
         }, CancellationToken.None);
 
@@ -736,6 +754,7 @@ public class TranslationPipelineTests
             Text = "La nation et la population attendent une solution rapide.",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             TargetLanguage = "ja"
         }, CancellationToken.None);
 
@@ -795,6 +814,7 @@ public class TranslationPipelineTests
             Text = "東京都庁",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             TargetLanguage = "en"
         }, CancellationToken.None);
 
@@ -827,6 +847,7 @@ public class TranslationPipelineTests
             Text = "東京都大阪府。",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             TargetLanguage = "en"
         }, CancellationToken.None);
 
@@ -859,6 +880,7 @@ public class TranslationPipelineTests
             Text = "Hello again",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             TargetLanguage = "ja"
         };
 
@@ -906,6 +928,7 @@ public class TranslationPipelineTests
             Text = "漢字語彙句読点、標準。",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             TargetLanguage = "en"
         }, CancellationToken.None);
 
@@ -976,6 +999,7 @@ public class TranslationPipelineTests
             Text = "Provider requires manual confirmation despite supplied source language.",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             TargetLanguage = "ja",
             SourceLanguage = "en"
         }, CancellationToken.None);
@@ -1034,7 +1058,7 @@ public class TranslationPipelineTests
 
     private sealed class StaticTokenBroker : ITokenBroker
     {
-        public Task<AccessToken> ExchangeOnBehalfOfAsync(string tenantId, string userId, CancellationToken cancellationToken)
+        public Task<AccessToken> ExchangeOnBehalfOfAsync(string tenantId, string userId, string? userAssertion, CancellationToken cancellationToken)
             => Task.FromResult(new AccessToken("token", DateTimeOffset.UtcNow.AddMinutes(5), "api://audience"));
     }
 

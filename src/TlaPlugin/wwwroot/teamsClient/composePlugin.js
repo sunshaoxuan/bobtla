@@ -98,6 +98,27 @@ export async function initComposePlugin({ ui = resolveComposeUi(), teams, fetche
   state.text = "";
   state.translation = "";
 
+  let cachedAuthorization;
+  async function resolveAuthorization() {
+    if (cachedAuthorization !== undefined) {
+      return cachedAuthorization;
+    }
+    if (sdk?.authentication?.getAuthToken) {
+      try {
+        const token = await sdk.authentication.getAuthToken();
+        if (token) {
+          cachedAuthorization = `Bearer ${token}`;
+          return cachedAuthorization;
+        }
+      } catch (error) {
+        console.warn("获取 Teams OAuth 令牌失败", error);
+      }
+    }
+    const fallback = context?.user?.id ?? context?.user?.aadObjectId;
+    cachedAuthorization = fallback ? `Bearer ${fallback}` : undefined;
+    return cachedAuthorization;
+  }
+
   const targetLanguages = metadata.languages.filter((lang) => lang.id !== "auto");
 
   if (ui.targetSelect && typeof ui.targetSelect.replaceChildren === "function" && typeof document !== "undefined") {
@@ -216,7 +237,8 @@ export async function initComposePlugin({ ui = resolveComposeUi(), teams, fetche
       context
     );
     try {
-      const response = await translateText(payload, fetcher);
+      const authorization = await resolveAuthorization();
+      const response = await translateText(payload, fetcher, { authorization });
       const nextState = updateStateWithResponse(state, response);
       Object.assign(state, nextState);
       if (ui.toneToggle) {
@@ -246,7 +268,8 @@ export async function initComposePlugin({ ui = resolveComposeUi(), teams, fetche
     );
     let replyResult;
     try {
-      replyResult = await sendReply(replyPayload, fetcher);
+      const authorization = await resolveAuthorization();
+      replyResult = await sendReply(replyPayload, fetcher, { authorization });
     } catch (error) {
       setPreview(ui.preview, `发送失败：${error.message}`);
       return;

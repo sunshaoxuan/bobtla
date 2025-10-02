@@ -8,6 +8,7 @@ using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Security.Authentication;
 using Microsoft.Extensions.Options;
 using TlaPlugin.Models;
 using TlaPlugin.Services;
@@ -34,6 +35,11 @@ public class MessageExtensionHandler
 
     public async Task<JsonObject> HandleTranslateAsync(TranslationRequest request)
     {
+        if (string.IsNullOrWhiteSpace(request.UserAssertion))
+        {
+            throw new AuthenticationException("缺少用户令牌。");
+        }
+
         ApplyGlossarySelections(request);
         ApplyRagPreferences(request);
 
@@ -115,6 +121,11 @@ public class MessageExtensionHandler
 
     public async Task<JsonObject> HandleRewriteAsync(RewriteRequest request)
     {
+        if (string.IsNullOrWhiteSpace(request.UserAssertion))
+        {
+            throw new AuthenticationException("缺少用户令牌。");
+        }
+
         var locale = request.UiLocale ?? _options.DefaultUiLocale;
         var catalog = _localization.GetCatalog(locale);
         try
@@ -146,6 +157,11 @@ public class MessageExtensionHandler
 
     public async Task<JsonObject> HandleReplyAsync(ReplyRequest request)
     {
+        if (string.IsNullOrWhiteSpace(request.UserAssertion))
+        {
+            throw new AuthenticationException("缺少用户令牌。");
+        }
+
         var locale = request.UiLocale ?? _options.DefaultUiLocale;
         var catalog = _localization.GetCatalog(locale);
         try
@@ -183,7 +199,8 @@ public class MessageExtensionHandler
                 Tone = TranslationRequest.DefaultTone,
                 UiLocale = request.UiLocale,
                 UseGlossary = false,
-                UseRag = _options.Rag.Enabled
+                UseRag = _options.Rag.Enabled,
+                UserAssertion = request.UserAssertion
             };
 
             ApplyRagPreferences(translationRequest);

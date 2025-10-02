@@ -15,6 +15,8 @@ public class RewriteRequest
         = null;
     public string? UiLocale { get; set; }
         = null;
+    public string? UserAssertion { get; set; }
+        = null;
 }
 
 /// <summary>

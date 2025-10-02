@@ -42,6 +42,8 @@ public class TranslationRouterTests
             Text = "hello world",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
+            UserAssertion = "assertion",
             TargetLanguage = "ja",
             SourceLanguage = "en",
             AdditionalTargetLanguages = new List<string> { "fr" }
@@ -91,6 +93,7 @@ public class TranslationRouterTests
             ContextSummary = "recent decision on merger",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             TargetLanguage = "ja",
             SourceLanguage = "en",
             UseRag = true
@@ -126,6 +129,7 @@ public class TranslationRouterTests
             Text = "blocked content",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             Tone = ToneTemplateService.Business
         }, CancellationToken.None));
     }
@@ -154,6 +158,7 @@ public class TranslationRouterTests
             Text = new string('a', 200),
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             TargetLanguage = "ja",
             SourceLanguage = "en"
         };
@@ -192,6 +197,7 @@ public class TranslationRouterTests
             Text = "hello",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             TargetLanguage = "ja",
             SourceLanguage = "en"
         }, CancellationToken.None));
@@ -234,6 +240,7 @@ public class TranslationRouterTests
             Text = "hello world",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             TargetLanguage = "ja",
             SourceLanguage = "en"
         }, CancellationToken.None);
@@ -308,6 +315,7 @@ public class TranslationRouterTests
             Text = "hello world",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             TargetLanguage = "ja",
             SourceLanguage = "en",
             AdditionalTargetLanguages = new List<string> { "fr", "de" }
@@ -361,6 +369,7 @@ public class TranslationRouterTests
             Text = "hello",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             TargetLanguage = "ja",
             SourceLanguage = "en",
             AdditionalTargetLanguages = new List<string> { "fr" }
@@ -371,6 +380,7 @@ public class TranslationRouterTests
             Text = "hello",
             TenantId = "fabrikam",
             UserId = "user",
+            UserAssertion = "assertion",
             TargetLanguage = "ja",
             SourceLanguage = "en"
         }, CancellationToken.None);
@@ -408,6 +418,7 @@ public class TranslationRouterTests
             Text = "hello",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             TargetLanguage = "ja",
             SourceLanguage = "en"
         }, CancellationToken.None));
@@ -442,6 +453,7 @@ public class TranslationRouterTests
             Text = "hello",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             TargetLanguage = "ja",
             SourceLanguage = "en",
             UiLocale = "zh-CN"
@@ -489,6 +501,7 @@ public class TranslationRouterTests
             Text = "こんにちは",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             Tone = ToneTemplateService.Business
         }, CancellationToken.None);
 
@@ -567,6 +580,7 @@ public class TranslationRouterTests
             Text = "12345",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             TargetLanguage = "ja"
         }, CancellationToken.None));
 
@@ -580,7 +594,7 @@ public class TranslationRouterTests
         public bool ShouldThrow { get; set; }
         public int Calls { get; private set; }
 
-        public Task<AccessToken> ExchangeOnBehalfOfAsync(string tenantId, string userId, CancellationToken cancellationToken)
+        public Task<AccessToken> ExchangeOnBehalfOfAsync(string tenantId, string userId, string? userAssertion, CancellationToken cancellationToken)
         {
             Calls++;
             if (ShouldThrow)

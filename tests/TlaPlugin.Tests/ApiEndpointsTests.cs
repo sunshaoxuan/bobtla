@@ -4,6 +4,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Threading.Tasks;
@@ -183,11 +184,14 @@ public class ApiEndpointsTests : IClassFixture<WebApplicationFactory<Program>>
             });
         }).CreateClient();
 
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "assertion");
+
         var response = await client.PostAsJsonAsync("/api/rewrite", new RewriteRequest
         {
             Text = new string('a', 10),
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             Tone = ToneTemplateService.Business
         });
 
@@ -198,12 +202,15 @@ public class ApiEndpointsTests : IClassFixture<WebApplicationFactory<Program>>
     public async Task RewriteEndpointReturnsRewrittenTextForEditedInput()
     {
         var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "assertion");
+
         var response = await client.PostAsJsonAsync("/api/rewrite", new RewriteRequest
         {
             Text = "Original",
             EditedText = "用户自定义",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             Tone = ToneTemplateService.Business
         });
 
@@ -217,6 +224,8 @@ public class ApiEndpointsTests : IClassFixture<WebApplicationFactory<Program>>
     public async Task ReplyEndpointReturnsSuccessPayload()
     {
         var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "assertion");
+
         var response = await client.PostAsJsonAsync("/api/reply", new ReplyRequest
         {
             ThreadId = "thread",
@@ -224,6 +233,7 @@ public class ApiEndpointsTests : IClassFixture<WebApplicationFactory<Program>>
             EditedText = "手动编辑",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             ChannelId = "general",
             LanguagePolicy = new ReplyLanguagePolicy { TargetLang = "ja", Tone = ToneTemplateService.Business }
         });

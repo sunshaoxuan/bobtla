@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
@@ -46,6 +47,7 @@ public class ReplyServiceTests
             ReplyText = "hello",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             ChannelId = "random"
         }, CancellationToken.None));
     }
@@ -72,6 +74,7 @@ public class ReplyServiceTests
             EditedText = "手动调整",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             ChannelId = "general",
             LanguagePolicy = new ReplyLanguagePolicy { Tone = ToneTemplateService.Business, TargetLang = "ja" }
         }, CancellationToken.None);
@@ -107,6 +110,7 @@ public class ReplyServiceTests
             ReplyText = "Bonjour",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             ChannelId = "general",
             LanguagePolicy = new ReplyLanguagePolicy { TargetLang = "fr", Tone = ToneTemplateService.Casual },
             AdditionalTargetLanguages = new List<string> { "en", "en", "de" }
@@ -175,6 +179,7 @@ public class ReplyServiceTests
             ReplyText = "ignored",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             ChannelId = "general",
             LanguagePolicy = new ReplyLanguagePolicy { TargetLang = "ja", Tone = ToneTemplateService.Business }
         }, "最终文本", ToneTemplateService.Business, CancellationToken.None);
@@ -202,6 +207,7 @@ public class ReplyServiceTests
             ReplyText = "ignored",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             ChannelId = "general",
             LanguagePolicy = new ReplyLanguagePolicy { TargetLang = "ja" }
         }, string.Empty, null, CancellationToken.None));
@@ -247,6 +253,7 @@ public class ReplyServiceTests
             ReplyText = "ignored",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             ChannelId = "general",
             LanguagePolicy = new ReplyLanguagePolicy { TargetLang = "ja", Tone = ToneTemplateService.Casual },
             AdditionalTargetLanguages = new List<string> { "fr" }
@@ -299,6 +306,7 @@ public class ReplyServiceTests
             ReplyText = "text",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             ChannelId = "general",
             LanguagePolicy = new ReplyLanguagePolicy { TargetLang = "ja" }
         }, "最终", null, CancellationToken.None));
@@ -331,6 +339,7 @@ public class ReplyServiceTests
             ReplyText = "text",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             ChannelId = "general",
             LanguagePolicy = new ReplyLanguagePolicy { TargetLang = "ja" }
         }, "最终", null, CancellationToken.None));
@@ -371,7 +380,7 @@ public class ReplyServiceTests
             _token = token;
         }
 
-        public Task<AccessToken> ExchangeOnBehalfOfAsync(string tenantId, string userId, CancellationToken cancellationToken)
+        public Task<AccessToken> ExchangeOnBehalfOfAsync(string tenantId, string userId, string? userAssertion, CancellationToken cancellationToken)
         {
             return Task.FromResult(new AccessToken(_token, DateTimeOffset.UtcNow.AddMinutes(10), "audience"));
         }
@@ -411,12 +420,15 @@ public class ReplyServiceMinimalApiTests : IClassFixture<WebApplicationFactory<P
             Content = new StringContent(responseBody, Encoding.UTF8, "application/json")
         }, out var state);
 
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "assertion");
+
         var response = await client.PostAsJsonAsync("/api/reply", new ReplyRequest
         {
             ThreadId = "thread",
             ReplyText = "你好",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             ChannelId = "general",
             LanguagePolicy = new ReplyLanguagePolicy { TargetLang = "zh-CN", Tone = ToneTemplateService.Casual }
         });
@@ -447,12 +459,15 @@ public class ReplyServiceMinimalApiTests : IClassFixture<WebApplicationFactory<P
             Content = new StringContent("{\"error\":{\"message\":\"denied\"}}", Encoding.UTF8, "application/json")
         }, out var state);
 
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "assertion");
+
         var response = await client.PostAsJsonAsync("/api/reply", new ReplyRequest
         {
             ThreadId = "thread",
             ReplyText = "内容",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             ChannelId = "general",
             LanguagePolicy = new ReplyLanguagePolicy { TargetLang = "zh-CN" }
         });
@@ -472,12 +487,15 @@ public class ReplyServiceMinimalApiTests : IClassFixture<WebApplicationFactory<P
             Content = new StringContent("{\"error\":{\"message\":\"budget exceeded\"}}", Encoding.UTF8, "application/json")
         }, out _);
 
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "assertion");
+
         var response = await client.PostAsJsonAsync("/api/reply", new ReplyRequest
         {
             ThreadId = "thread",
             ReplyText = "内容",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "assertion",
             ChannelId = "general",
             LanguagePolicy = new ReplyLanguagePolicy { TargetLang = "zh-CN" }
         });
@@ -525,7 +543,7 @@ public class ReplyServiceMinimalApiTests : IClassFixture<WebApplicationFactory<P
             _token = token;
         }
 
-        public Task<AccessToken> ExchangeOnBehalfOfAsync(string tenantId, string userId, CancellationToken cancellationToken)
+        public Task<AccessToken> ExchangeOnBehalfOfAsync(string tenantId, string userId, string? userAssertion, CancellationToken cancellationToken)
         {
             return Task.FromResult(new AccessToken(_token, DateTimeOffset.UtcNow.AddMinutes(5), "audience"));
         }

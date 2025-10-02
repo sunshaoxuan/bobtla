@@ -36,7 +36,7 @@ public class TokenBroker : ITokenBroker
         _logger = logger;
     }
 
-    public async Task<AccessToken> ExchangeOnBehalfOfAsync(string tenantId, string userId, CancellationToken cancellationToken)
+public async Task<AccessToken> ExchangeOnBehalfOfAsync(string tenantId, string userId, string? userAssertion, CancellationToken cancellationToken)
     {
         var cacheKey = $"{tenantId}:{userId}";
         if (_cache.TryGetValue(cacheKey, out var cached) && cached.ExpiresOn > DateTimeOffset.UtcNow.AddMinutes(-1))
@@ -81,10 +81,15 @@ public class TokenBroker : ITokenBroker
                 throw new AuthenticationException("缺少用户断言，无法执行 OBO 交换。");
             }
 
+            if (string.IsNullOrWhiteSpace(userAssertion))
+            {
+                throw new AuthenticationException("缺少用户断言，无法执行 OBO 交换。");
+            }
+
             try
             {
                 var result = await _onBehalfOfClient
-                    .AcquireTokenAsync(tenantId, effectiveClientId, clientSecret, userId, scopes, cancellationToken)
+                    .AcquireTokenAsync(tenantId, effectiveClientId, clientSecret, userAssertion, scopes, cancellationToken)
                     .ConfigureAwait(false);
                 var token = new AccessToken(result.AccessToken, result.ExpiresOn, audience);
                 _cache[cacheKey] = token;
@@ -123,7 +128,7 @@ public class TokenBroker : ITokenBroker
 
 public interface ITokenBroker
 {
-    Task<AccessToken> ExchangeOnBehalfOfAsync(string tenantId, string userId, CancellationToken cancellationToken);
+    Task<AccessToken> ExchangeOnBehalfOfAsync(string tenantId, string userId, string? userAssertion, CancellationToken cancellationToken);
 }
 
 public record AccessToken(string Value, DateTimeOffset ExpiresOn, string Audience);

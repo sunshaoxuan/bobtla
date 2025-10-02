@@ -18,6 +18,8 @@ public class ContextRetrievalRequest
         = null;
     public IList<string> ContextHints { get; set; }
         = new List<string>();
+    public string? UserAssertion { get; set; }
+        = null;
 }
 
 /// <summary>

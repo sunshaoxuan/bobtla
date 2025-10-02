@@ -69,16 +69,19 @@ public sealed class GraphRequestContextAccessor : IGraphRequestContextAccessor
 /// </summary>
 public sealed class GraphRequestContext
 {
-    public GraphRequestContext(string tenantId, string? userId, AccessToken? accessToken)
+    public GraphRequestContext(string tenantId, string? userId, AccessToken? accessToken, string? userAssertion = null)
     {
         TenantId = tenantId ?? throw new ArgumentNullException(nameof(tenantId));
         UserId = userId;
         AccessToken = accessToken;
+        UserAssertion = userAssertion;
     }
 
     public string TenantId { get; }
 
     public string? UserId { get; }
+
+    public string? UserAssertion { get; }
 
     public AccessToken? AccessToken { get; private set; }
 

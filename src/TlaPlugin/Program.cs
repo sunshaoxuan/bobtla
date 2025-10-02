@@ -153,27 +153,56 @@ app.UseDefaultFiles();
 app.UseStaticFiles();
 
 var jsonOptions = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
-static bool TryAuthorize(HttpRequest request, out IResult? unauthorized)
+static bool TryAuthorize(HttpRequest request, out string? bearerToken, out IResult? unauthorized)
 {
+    bearerToken = null;
     if (!request.Headers.TryGetValue("Authorization", out var header) || string.IsNullOrWhiteSpace(header))
     {
         unauthorized = Results.Unauthorized();
         return false;
     }
 
+    var value = header.ToString();
+    if (value.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+    {
+        value = value.Substring("Bearer ".Length);
+    }
+
+    value = value.Trim();
+    if (string.IsNullOrEmpty(value))
+    {
+        unauthorized = Results.Unauthorized();
+        return false;
+    }
+
+    bearerToken = value;
     unauthorized = null;
     return true;
 }
 
-app.MapPost("/api/translate", async (TranslationRequest request, MessageExtensionHandler handler) =>
+app.MapPost("/api/translate", async (HttpRequest httpRequest, TranslationRequest request, MessageExtensionHandler handler) =>
 {
-    var result = await handler.HandleTranslateAsync(request);
-    return Results.Json(result, options: jsonOptions);
+    if (!TryAuthorize(httpRequest, out var bearerToken, out var unauthorized))
+    {
+        return unauthorized!;
+    }
+
+    request.UserAssertion = bearerToken;
+
+    try
+    {
+        var result = await handler.HandleTranslateAsync(request);
+        return Results.Json(result, options: jsonOptions);
+    }
+    catch (AuthenticationException)
+    {
+        return Results.Unauthorized();
+    }
 });
 
 app.MapPost("/api/offline-draft", async (HttpRequest httpRequest, OfflineDraftRequest request, MessageExtensionHandler handler) =>
 {
-    if (!TryAuthorize(httpRequest, out var unauthorized))
+    if (!TryAuthorize(httpRequest, out var _, out var unauthorized))
     {
         return unauthorized!;
     }
@@ -192,7 +221,7 @@ app.MapPost("/api/offline-draft", async (HttpRequest httpRequest, OfflineDraftRe
 
 app.MapGet("/api/offline-draft", (HttpRequest httpRequest, OfflineDraftStore store) =>
 {
-    if (!TryAuthorize(httpRequest, out var unauthorized))
+    if (!TryAuthorize(httpRequest, out var _, out var unauthorized))
     {
         return unauthorized!;
     }
@@ -222,8 +251,15 @@ app.MapPost("/api/detect", (LanguageDetectionRequest request, LanguageDetector d
     return Results.Json(detection, options: jsonOptions);
 });
 
-app.MapPost("/api/rewrite", async (RewriteRequest request, RewriteService service, CancellationToken cancellationToken) =>
+app.MapPost("/api/rewrite", async (HttpRequest httpRequest, RewriteRequest request, RewriteService service, CancellationToken cancellationToken) =>
 {
+    if (!TryAuthorize(httpRequest, out var bearerToken, out var unauthorized))
+    {
+        return unauthorized!;
+    }
+
+    request.UserAssertion = bearerToken;
+
     try
     {
         var result = await service.RewriteAsync(request, cancellationToken);
@@ -269,7 +305,7 @@ app.MapPost("/api/apply-glossary", (GlossaryApplicationRequest request, Glossary
 
 app.MapGet("/mcp/tools/list", (HttpRequest request, McpServer server) =>
 {
-    if (!TryAuthorize(request, out var unauthorized))
+    if (!TryAuthorize(request, out var _, out var unauthorized))
     {
         return unauthorized!;
     }
@@ -280,7 +316,7 @@ app.MapGet("/mcp/tools/list", (HttpRequest request, McpServer server) =>
 
 app.MapPost("/mcp/tools/call", async (HttpRequest request, McpServer server, CancellationToken cancellationToken) =>
 {
-    if (!TryAuthorize(request, out var unauthorized))
+    if (!TryAuthorize(request, out var _, out var unauthorized))
     {
         return unauthorized!;
     }
@@ -352,8 +388,15 @@ app.MapPost("/mcp/tools/call", async (HttpRequest request, McpServer server, Can
     }
 });
 
-app.MapPost("/api/reply", async (ReplyRequest request, ReplyService service, CancellationToken cancellationToken) =>
+app.MapPost("/api/reply", async (HttpRequest httpRequest, ReplyRequest request, ReplyService service, CancellationToken cancellationToken) =>
 {
+    if (!TryAuthorize(httpRequest, out var bearerToken, out var unauthorized))
+    {
+        return unauthorized!;
+    }
+
+    request.UserAssertion = bearerToken;
+
     try
     {
         var result = await service.SendReplyAsync(request, cancellationToken);

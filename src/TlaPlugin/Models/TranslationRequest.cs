@@ -31,6 +31,8 @@ public class TranslationRequest
         = null;
     public string? UiLocale { get; set; }
         = null;
+    public string? UserAssertion { get; set; }
+        = null;
     public IDictionary<string, GlossaryDecision> GlossaryDecisions { get; set; }
         = new Dictionary<string, GlossaryDecision>(StringComparer.OrdinalIgnoreCase);
 

@@ -49,28 +49,43 @@ export async function detectLanguage(payload, fetchImpl = fetch) {
   return await parseJsonResponse(response, "语言检测失败");
 }
 
-export async function translateText(payload, fetchImpl = fetch) {
+export async function translateText(payload, fetchImpl = fetch, { authorization } = {}) {
+  const headers = { "Content-Type": "application/json" };
+  const headerValue = buildAuthorizationHeader(authorization);
+  if (headerValue) {
+    headers.Authorization = headerValue;
+  }
   const response = await fetchImpl("/api/translate", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(payload)
   });
   return await parseJsonResponse(response, "翻译接口失败");
 }
 
-export async function rewriteTranslation(payload, fetchImpl = fetch) {
+export async function rewriteTranslation(payload, fetchImpl = fetch, { authorization } = {}) {
+  const headers = { "Content-Type": "application/json" };
+  const headerValue = buildAuthorizationHeader(authorization);
+  if (headerValue) {
+    headers.Authorization = headerValue;
+  }
   const response = await fetchImpl("/api/rewrite", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(payload)
   });
   return await parseJsonResponse(response, "译文润色失败");
 }
 
-export async function sendReply(payload, fetchImpl = fetch) {
+export async function sendReply(payload, fetchImpl = fetch, { authorization } = {}) {
+  const headers = { "Content-Type": "application/json" };
+  const headerValue = buildAuthorizationHeader(authorization);
+  if (headerValue) {
+    headers.Authorization = headerValue;
+  }
   const response = await fetchImpl("/api/reply", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(payload)
   });
   return await parseJsonResponse(response, "发送回帖失败");

@@ -233,7 +233,8 @@ public class ContextRetrievalIntegrationTests
             TenantId = "contoso",
             UserId = "user",
             ChannelId = "general",
-            MaxMessages = 3
+            MaxMessages = 3,
+            UserAssertion = "assertion"
         }, CancellationToken.None);
 
         Assert.True(result.HasContext);
@@ -257,7 +258,8 @@ public class ContextRetrievalIntegrationTests
             TenantId = "contoso",
             UserId = "user",
             ChannelId = "general",
-            MaxMessages = 3
+            MaxMessages = 3,
+            UserAssertion = "assertion"
         }, CancellationToken.None);
 
         Assert.False(result.HasContext);
@@ -280,7 +282,8 @@ public class ContextRetrievalIntegrationTests
             TenantId = "contoso",
             UserId = "user",
             ChannelId = "general",
-            MaxMessages = 3
+            MaxMessages = 3,
+            UserAssertion = "assertion"
         }, CancellationToken.None);
 
         Assert.False(result.HasContext);
@@ -448,7 +451,7 @@ public class ContextRetrievalIntegrationTests
             int maxMessages,
             CancellationToken cancellationToken)
         {
-            return GetRecentMessagesAsync(tenantId, channelId, threadId, maxMessages, null, null, cancellationToken);
+            return GetRecentMessagesAsync(tenantId, channelId, threadId, maxMessages, null, null, null, cancellationToken);
         }
 
         public Task<IReadOnlyList<ContextMessage>> GetRecentMessagesAsync(
@@ -458,6 +461,7 @@ public class ContextRetrievalIntegrationTests
             int maxMessages,
             AccessToken? accessToken,
             string? userId,
+            string? userAssertion,
             CancellationToken cancellationToken)
         {
             LastAccessToken = accessToken;
@@ -501,7 +505,7 @@ public class ContextRetrievalIntegrationTests
 
         public int CallCount { get; private set; }
 
-        public Task<AccessToken> ExchangeOnBehalfOfAsync(string tenantId, string userId, CancellationToken cancellationToken)
+        public Task<AccessToken> ExchangeOnBehalfOfAsync(string tenantId, string userId, string? userAssertion, CancellationToken cancellationToken)
         {
             CallCount++;
             var token = _tokens[Math.Min(_index, _tokens.Count - 1)];

@@ -91,7 +91,7 @@ public class TranslationRouter
             sourceLanguage = detection.Language;
         }
 
-        var token = await AcquireTokenAsync(request.TenantId, request.UserId, cancellationToken);
+        var token = await AcquireTokenAsync(request.TenantId, request.UserId, request.UserAssertion, cancellationToken);
 
         var promptPrefix = _tones.GetPromptPrefix(request.Tone);
 
@@ -177,7 +177,7 @@ public class TranslationRouter
             throw new AuthenticationException("tenantId と userId は必須です。");
         }
 
-        var token = await AcquireTokenAsync(request.TenantId, request.UserId, cancellationToken);
+        var token = await AcquireTokenAsync(request.TenantId, request.UserId, request.UserAssertion, cancellationToken);
         _ = token; // トークン取得は成功の検証として使用する。
 
         var allowedProviders = 0;
@@ -234,7 +234,7 @@ public class TranslationRouter
             throw new AuthenticationException("tenantId と userId は必須です。");
         }
 
-        var token = await AcquireTokenAsync(request.TenantId, request.UserId, cancellationToken);
+        var token = await AcquireTokenAsync(request.TenantId, request.UserId, request.UserAssertion, cancellationToken);
         _ = token;
 
         var allowedProviders = 0;
@@ -303,7 +303,7 @@ public class TranslationRouter
             : DetectionResultExtensions.Merge(providerDetection, fallback);
     }
 
-    private async Task<AccessToken> AcquireTokenAsync(string tenantId, string userId, CancellationToken cancellationToken)
+    private async Task<AccessToken> AcquireTokenAsync(string tenantId, string userId, string? userAssertion, CancellationToken cancellationToken)
     {
         if (string.IsNullOrEmpty(userId))
         {
@@ -311,9 +311,15 @@ public class TranslationRouter
             throw new AuthenticationException("ユーザー ID が空のため、トークンを取得できません。");
         }
 
+        if (string.IsNullOrWhiteSpace(userAssertion))
+        {
+            _metrics.RecordFailure(tenantId, UsageMetricsService.FailureReasons.Authentication);
+            throw new AuthenticationException("缺少用户令牌。");
+        }
+
         try
         {
-            var token = await _tokenBroker.ExchangeOnBehalfOfAsync(tenantId, userId, cancellationToken);
+            var token = await _tokenBroker.ExchangeOnBehalfOfAsync(tenantId, userId, userAssertion, cancellationToken);
             if (token.ExpiresOn <= DateTimeOffset.UtcNow)
             {
                 _metrics.RecordFailure(tenantId, UsageMetricsService.FailureReasons.Authentication);

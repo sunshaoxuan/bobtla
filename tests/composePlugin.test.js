@@ -26,7 +26,7 @@ test("compose plugin translates and posts reply payload", async () => {
   const fetchCalls = [];
   const fakeFetch = async (url, options = {}) => {
     if (options.body) {
-      fetchCalls.push({ url, options: JSON.parse(options.body) });
+      fetchCalls.push({ url, headers: options.headers ?? {}, body: JSON.parse(options.body) });
     }
     return {
       ok: true,
@@ -88,16 +88,18 @@ test("compose plugin translates and posts reply payload", async () => {
   await toneToggle.trigger("change");
   await suggestButton.trigger("click");
   assert.equal(fetchCalls[0].url, "/api/translate");
-  assert.equal(fetchCalls[0].options.text, "hello");
+  assert.equal(fetchCalls[0].body.text, "hello");
+  assert.equal(fetchCalls[0].headers.Authorization, "Bearer u");
   assert.equal(state.detectedLanguage, "en");
   assert.equal(preview.value || preview.textContent, "hola");
   await applyButton.trigger("click");
   assert.equal(fetchCalls[1].url, "/api/reply");
-  assert.equal(fetchCalls[1].options.translation, "hola");
-  assert.equal(fetchCalls[1].options.sourceLanguage, "en");
-  assert.equal(fetchCalls[1].options.sourceLanguage, state.detectedLanguage);
-  assert.equal(fetchCalls[1].options.metadata.modelId, "model-a");
-  assert.equal(fetchCalls[1].options.metadata.tone, "formal");
+  assert.equal(fetchCalls[1].body.translation, "hola");
+  assert.equal(fetchCalls[1].body.sourceLanguage, "en");
+  assert.equal(fetchCalls[1].body.sourceLanguage, state.detectedLanguage);
+  assert.equal(fetchCalls[1].body.metadata.modelId, "model-a");
+  assert.equal(fetchCalls[1].body.metadata.tone, "formal");
+  assert.equal(fetchCalls[1].headers.Authorization, "Bearer u");
   assert.equal(state.tone, "formal");
   assert.deepEqual(teams.conversations.lastMessage.attachments[0].content, {
     type: "AdaptiveCard",
@@ -111,7 +113,7 @@ test("compose plugin sends additional target languages", async () => {
   const fetchCalls = [];
   const fakeFetch = async (url, options = {}) => {
     if (options.body) {
-      fetchCalls.push({ url, options: JSON.parse(options.body) });
+      fetchCalls.push({ url, headers: options.headers ?? {}, body: JSON.parse(options.body) });
     }
     return {
       ok: true,
@@ -188,8 +190,8 @@ test("compose plugin sends additional target languages", async () => {
   const replyCall = fetchCalls.find((call) => call.url === "/api/reply");
   assert.ok(translateCall, "expected translate call");
   assert.ok(replyCall, "expected reply call");
-  assert.deepEqual(translateCall.options.additionalTargetLanguages, ["fr", "ja"]);
-  assert.deepEqual(replyCall.options.additionalTargetLanguages, ["fr", "ja"]);
+  assert.deepEqual(translateCall.body.additionalTargetLanguages, ["fr", "ja"]);
+  assert.deepEqual(replyCall.body.additionalTargetLanguages, ["fr", "ja"]);
   assert.equal(
     teams.conversations.lastMessage.attachments[0].content.body[1].text,
     "bonjour"
@@ -205,7 +207,7 @@ test("compose plugin falls back to first non-auto target", async () => {
   const fetchCalls = [];
   const fakeFetch = async (url, options = {}) => {
     if (options.body) {
-      fetchCalls.push({ url, options: JSON.parse(options.body) });
+      fetchCalls.push({ url, headers: options.headers ?? {}, body: JSON.parse(options.body) });
     }
     return {
       ok: true,
@@ -256,14 +258,14 @@ test("compose plugin falls back to first non-auto target", async () => {
   assert.equal(state.targetLanguage, "fr");
   assert.equal(targetSelect.value, "fr");
   assert.equal(fetchCalls.length, 1);
-  assert.equal(fetchCalls[0].options.targetLanguage, "fr");
+  assert.equal(fetchCalls[0].body.targetLanguage, "fr");
 });
 
 test("compose plugin corrects target when locale missing from metadata", async () => {
   const fetchCalls = [];
   const fakeFetch = async (url, options = {}) => {
     if (options.body) {
-      fetchCalls.push({ url, options: JSON.parse(options.body) });
+      fetchCalls.push({ url, headers: options.headers ?? {}, body: JSON.parse(options.body) });
     }
     return {
       ok: true,
@@ -314,14 +316,14 @@ test("compose plugin corrects target when locale missing from metadata", async (
   assert.equal(state.targetLanguage, "ja");
   assert.equal(targetSelect.value, "ja");
   assert.equal(fetchCalls.length, 1);
-  assert.equal(fetchCalls[0].options.targetLanguage, "ja");
+  assert.equal(fetchCalls[0].body.targetLanguage, "ja");
 });
 
 test("compose plugin reports reply failure", async () => {
   const fetchCalls = [];
   const fakeFetch = async (url, options = {}) => {
     if (options.body) {
-      fetchCalls.push({ url, options: JSON.parse(options.body) });
+      fetchCalls.push({ url, headers: options.headers ?? {}, body: JSON.parse(options.body) });
     }
     if (url === "/api/reply") {
       return {
@@ -397,7 +399,7 @@ test("compose plugin uses concrete target when user locale is unavailable", asyn
   const fetchCalls = [];
   const fakeFetch = async (url, options = {}) => {
     if (options.body) {
-      fetchCalls.push({ url, options: JSON.parse(options.body) });
+      fetchCalls.push({ url, headers: options.headers ?? {}, body: JSON.parse(options.body) });
     }
     return {
       ok: true,
@@ -447,5 +449,5 @@ test("compose plugin uses concrete target when user locale is unavailable", asyn
   assert.equal(state.targetLanguage, "es");
   assert.equal(targetSelect.value, "es");
   assert.ok(translateCall, "expected translate call");
-  assert.equal(translateCall.options.targetLanguage, "es");
+  assert.equal(translateCall.body.targetLanguage, "es");
 });

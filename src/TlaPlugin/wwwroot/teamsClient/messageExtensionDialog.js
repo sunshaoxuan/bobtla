@@ -283,7 +283,8 @@ export async function initMessageExtensionDialog({ ui = resolveDialogUi(), teams
     try {
       updateError(ui, "");
       const payload = buildTranslatePayload(state, context);
-      const response = await translateText(payload, fetcher);
+      const authorization = await resolveAuthorization();
+      const response = await translateText(payload, fetcher, { authorization });
       if (response?.type === "glossaryConflict") {
         sdk.dialog?.submit?.({
           type: "glossaryConflict",
@@ -440,7 +441,8 @@ export async function initMessageExtensionDialog({ ui = resolveDialogUi(), teams
     if (edited?.trim()) {
       try {
         const rewritePayload = buildRewritePayload(state, context, edited);
-        const rewriteResult = await rewriteTranslation(rewritePayload, fetcher);
+        const authorization = await resolveAuthorization();
+        const rewriteResult = await rewriteTranslation(rewritePayload, fetcher, { authorization });
         finalText = rewriteResult.text ?? edited;
         state.translation = finalText;
         if (rewriteResult.metadata?.tone) {
@@ -459,8 +461,9 @@ export async function initMessageExtensionDialog({ ui = resolveDialogUi(), teams
     }
     if (finalText?.trim()) {
       try {
+        const authorization = await resolveAuthorization();
         const replyPayload = buildReplyPayload(state, context, finalText);
-        const replyResult = await sendReply(replyPayload, fetcher);
+        const replyResult = await sendReply(replyPayload, fetcher, { authorization });
         sdk.dialog?.submit?.({
           translation: finalText,
           targetLanguage: state.targetLanguage,

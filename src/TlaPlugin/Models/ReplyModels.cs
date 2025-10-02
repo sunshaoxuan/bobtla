@@ -32,6 +32,8 @@ public class ReplyRequest
         = null;
     public ReplyLanguagePolicy? LanguagePolicy { get; set; }
         = null;
+    public string? UserAssertion { get; set; }
+        = null;
 
     public IList<string> AdditionalTargetLanguages
     {
