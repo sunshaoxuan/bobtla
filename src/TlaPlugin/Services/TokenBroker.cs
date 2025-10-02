@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Concurrent;
-using System.Linq;
+using System.Collections.Generic;
 using System.Security.Authentication;
 using System.Security.Cryptography;
 using System.Text;
@@ -71,7 +71,7 @@ public class TokenBroker : ITokenBroker
             ? tenantOverride!.ClientId!
             : security.ClientId;
 
-        var scopes = security.GraphScopes?.Where(scope => !string.IsNullOrWhiteSpace(scope)).ToArray() ?? Array.Empty<string>();
+        var scopes = NormalizeScopes(security.GraphScopes);
         var useMsal = !security.UseHmacFallback && scopes.Length > 0;
 
         if (useMsal)
@@ -110,6 +110,33 @@ public class TokenBroker : ITokenBroker
         var fallbackToken = new AccessToken(value, expiresOn, audience);
         _cache[cacheKey] = fallbackToken;
         return fallbackToken;
+    }
+
+    private static string[] NormalizeScopes(IEnumerable<string>? scopes)
+    {
+        if (scopes is null)
+        {
+            return Array.Empty<string>();
+        }
+
+        var unique = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var scope in scopes)
+        {
+            if (string.IsNullOrWhiteSpace(scope))
+            {
+                continue;
+            }
+
+            var trimmed = scope.Trim();
+            if (seen.Add(trimmed))
+            {
+                unique.Add(trimmed);
+            }
+        }
+
+        return unique.ToArray();
     }
 
     private static string GenerateToken(string tenantId, string userId, string secret, DateTimeOffset expiresOn)

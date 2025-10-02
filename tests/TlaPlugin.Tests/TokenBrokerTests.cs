@@ -185,6 +185,45 @@ public class TokenBrokerTests
             broker.ExchangeOnBehalfOfAsync("contoso", "user-assertion", CancellationToken.None));
     }
 
+    [Fact]
+    public async Task RemovesDuplicateGraphScopesBeforeAcquireToken()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            Security = new SecurityOptions
+            {
+                ClientId = "obo-client",
+                ClientSecretName = "obo-secret",
+                UseHmacFallback = false,
+                GraphScopes = new List<string>
+                {
+                    " https://graph.microsoft.com/.default",
+                    "https://graph.microsoft.com/.default",
+                    "https://graph.microsoft.com/Chat.ReadWrite ",
+                    "https://graph.microsoft.com/Chat.ReadWrite"
+                },
+                SeedSecrets = new Dictionary<string, string>
+                {
+                    ["obo-secret"] = "obo-secret-value"
+                }
+            }
+        });
+
+        var resolver = new KeyVaultSecretResolver(options);
+        var fakeClient = new StubOnBehalfOfTokenClient();
+        fakeClient.Results.Enqueue(new OnBehalfOfTokenResult("obo-token", DateTimeOffset.UtcNow.AddMinutes(20)));
+        var broker = new TokenBroker(resolver, options, fakeClient);
+
+        await broker.ExchangeOnBehalfOfAsync("contoso", "user-assertion", CancellationToken.None);
+
+        var call = Assert.Single(fakeClient.Calls);
+        Assert.Equal(new[]
+        {
+            "https://graph.microsoft.com/.default",
+            "https://graph.microsoft.com/Chat.ReadWrite"
+        }, call.Scopes);
+    }
+
     private sealed class StubOnBehalfOfTokenClient : IOnBehalfOfTokenClient
     {
         public Queue<OnBehalfOfTokenResult> Results { get; } = new();
