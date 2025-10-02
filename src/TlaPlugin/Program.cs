@@ -28,6 +28,7 @@ builder.Services.Configure<PluginOptions>(builder.Configuration.GetSection("Plug
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton<IGraphRequestContextAccessor, GraphRequestContextAccessor>();
+builder.Services.AddSingleton<IOnBehalfOfTokenClient, MsalOnBehalfOfTokenClient>();
 builder.Services.AddSingleton<ITokenBroker, TokenBroker>();
 builder.Services.AddSingleton<IAuthenticationProvider>(provider =>
 {
@@ -35,10 +36,42 @@ builder.Services.AddSingleton<IAuthenticationProvider>(provider =>
     var contextAccessor = provider.GetRequiredService<IGraphRequestContextAccessor>();
     return new BrokeredGraphAuthenticationProvider(tokenBroker, contextAccessor);
 });
+builder.Services.AddHttpClient("GraphClient", (provider, client) =>
+{
+    var options = provider.GetService<IOptions<PluginOptions>>();
+    var security = options?.Value?.Security;
+    var baseUrl = string.IsNullOrWhiteSpace(security?.GraphBaseUrl)
+        ? "https://graph.microsoft.com/v1.0/"
+        : security!.GraphBaseUrl!;
+    client.BaseAddress = new Uri(baseUrl, UriKind.Absolute);
+
+    if (security is not null && security.GraphTimeout > TimeSpan.Zero)
+    {
+        client.Timeout = security.GraphTimeout;
+    }
+})
+.ConfigurePrimaryHttpMessageHandler(provider =>
+{
+    var options = provider.GetService<IOptions<PluginOptions>>();
+    var security = options?.Value?.Security;
+    if (security is not null && !string.IsNullOrWhiteSpace(security.GraphProxy))
+    {
+        return new HttpClientHandler
+        {
+            Proxy = new WebProxy(security.GraphProxy),
+            UseProxy = true
+        };
+    }
+
+    return new HttpClientHandler();
+});
+
 builder.Services.AddSingleton<GraphServiceClient>(provider =>
 {
     var authenticationProvider = provider.GetRequiredService<IAuthenticationProvider>();
-    return new GraphServiceClient(authenticationProvider);
+    var httpClientFactory = provider.GetRequiredService<IHttpClientFactory>();
+    var httpClient = httpClientFactory.CreateClient("GraphClient");
+    return new GraphServiceClient(httpClient, authenticationProvider);
 });
 builder.Services.AddSingleton<ITeamsMessageClient, GraphTeamsMessageClient>();
 builder.Services.AddHttpClient<ITeamsReplyClient, TeamsReplyClient>((provider, client) =>

@@ -1,11 +1,14 @@
 using System;
 using System.Collections.Concurrent;
+using System.Linq;
 using System.Security.Authentication;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.Identity.Client;
 using TlaPlugin.Configuration;
 
 namespace TlaPlugin.Services;
@@ -17,12 +20,20 @@ public class TokenBroker : ITokenBroker
 {
     private readonly KeyVaultSecretResolver _resolver;
     private readonly PluginOptions _options;
+    private readonly IOnBehalfOfTokenClient _onBehalfOfClient;
+    private readonly ILogger<TokenBroker>? _logger;
     private readonly ConcurrentDictionary<string, AccessToken> _cache = new();
 
-    public TokenBroker(KeyVaultSecretResolver resolver, IOptions<PluginOptions>? options = null)
+    public TokenBroker(
+        KeyVaultSecretResolver resolver,
+        IOptions<PluginOptions>? options = null,
+        IOnBehalfOfTokenClient? onBehalfOfClient = null,
+        ILogger<TokenBroker>? logger = null)
     {
         _resolver = resolver;
         _options = options?.Value ?? new PluginOptions();
+        _onBehalfOfClient = onBehalfOfClient ?? new MsalOnBehalfOfTokenClient();
+        _logger = logger;
     }
 
     public async Task<AccessToken> ExchangeOnBehalfOfAsync(string tenantId, string userId, CancellationToken cancellationToken)
@@ -33,9 +44,11 @@ public class TokenBroker : ITokenBroker
             return cached;
         }
 
-        var security = _options.Security;
+        var security = _options.Security ?? new SecurityOptions();
+
         TenantSecurityOverride? tenantOverride = null;
-        if (security.TenantOverrides.TryGetValue(tenantId, out var overrideOption))
+        if (security.TenantOverrides is not null
+            && security.TenantOverrides.TryGetValue(tenantId, out var overrideOption))
         {
             tenantOverride = overrideOption;
         }
@@ -44,23 +57,59 @@ public class TokenBroker : ITokenBroker
             ? tenantOverride!.ClientSecretName!
             : security.ClientSecretName;
 
-        var clientSecret = await _resolver.GetSecretAsync(clientSecretName, tenantId, cancellationToken);
+        var clientSecret = await _resolver.GetSecretAsync(clientSecretName, cancellationToken).ConfigureAwait(false);
         if (string.IsNullOrEmpty(clientSecret))
         {
             throw new AuthenticationException("无法获取客户端机密。");
         }
 
-        var lifetime = _options.Security.AccessTokenLifetime <= TimeSpan.Zero
-            ? TimeSpan.FromMinutes(30)
-            : _options.Security.AccessTokenLifetime;
-        var expiresOn = DateTimeOffset.UtcNow.Add(lifetime);
         var audience = !string.IsNullOrWhiteSpace(tenantOverride?.UserAssertionAudience)
             ? tenantOverride!.UserAssertionAudience!
             : security.UserAssertionAudience;
+
+        var effectiveClientId = !string.IsNullOrWhiteSpace(tenantOverride?.ClientId)
+            ? tenantOverride!.ClientId!
+            : security.ClientId;
+
+        var scopes = security.GraphScopes?.Where(scope => !string.IsNullOrWhiteSpace(scope)).ToArray() ?? Array.Empty<string>();
+        var useMsal = !security.UseHmacFallback && scopes.Length > 0;
+
+        if (useMsal)
+        {
+            if (string.IsNullOrWhiteSpace(userId))
+            {
+                throw new AuthenticationException("缺少用户断言，无法执行 OBO 交换。");
+            }
+
+            try
+            {
+                var result = await _onBehalfOfClient
+                    .AcquireTokenAsync(tenantId, effectiveClientId, clientSecret, userId, scopes, cancellationToken)
+                    .ConfigureAwait(false);
+                var token = new AccessToken(result.AccessToken, result.ExpiresOn, audience);
+                _cache[cacheKey] = token;
+                return token;
+            }
+            catch (MsalException ex)
+            {
+                _logger?.LogError(ex, "OBO 访问令牌获取失败 (tenant: {TenantId}).", tenantId);
+                throw new AuthenticationException("OBO 访问令牌获取失败。", ex);
+            }
+            catch (ArgumentException ex)
+            {
+                _logger?.LogError(ex, "OBO 访问令牌获取失败 (tenant: {TenantId}).", tenantId);
+                throw new AuthenticationException("OBO 访问令牌获取失败。", ex);
+            }
+        }
+
+        var lifetime = security.AccessTokenLifetime <= TimeSpan.Zero
+            ? TimeSpan.FromMinutes(30)
+            : security.AccessTokenLifetime;
+        var expiresOn = DateTimeOffset.UtcNow.Add(lifetime);
         var value = GenerateToken(tenantId, userId, clientSecret, expiresOn);
-        var token = new AccessToken(value, expiresOn, audience);
-        _cache[cacheKey] = token;
-        return token;
+        var fallbackToken = new AccessToken(value, expiresOn, audience);
+        _cache[cacheKey] = fallbackToken;
+        return fallbackToken;
     }
 
     private static string GenerateToken(string tenantId, string userId, string secret, DateTimeOffset expiresOn)

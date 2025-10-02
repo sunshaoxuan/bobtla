@@ -258,6 +258,11 @@ public class SecurityOptions
     public string ClientId { get; set; } = "00000000-0000-0000-0000-000000000000";
     public string ClientSecretName { get; set; } = "tla-client-secret";
     public string UserAssertionAudience { get; set; } = "api://tla-plugin";
+    public IList<string> GraphScopes { get; set; } = new List<string>
+    {
+        "https://graph.microsoft.com/.default"
+    };
+    public bool UseHmacFallback { get; set; } = true;
     public TimeSpan AccessTokenLifetime { get; set; } = TimeSpan.FromMinutes(30);
     public TimeSpan SecretCacheTtl { get; set; } = TimeSpan.FromMinutes(10);
     public IDictionary<string, string> SeedSecrets { get; set; } = new Dictionary<string, string>

@@ -350,9 +350,28 @@ static async Task<int> RunReplySmokeAsync(PluginOptions options, IReadOnlyDictio
         return 3;
     }
 
-    var useLiveGraph = GetFlag(parameters, "use-live-graph");
-    var graphTrace = new GraphRequestTrace();
-    using var httpClient = CreateGraphHttpClient(options, useLiveGraph, graphTrace);
+    var innerHandler = options.Security.UseHmacFallback
+        ? new StubGraphHandler()
+        : new HttpClientHandler();
+    if (!options.Security.UseHmacFallback
+        && innerHandler is HttpClientHandler httpHandler
+        && !string.IsNullOrWhiteSpace(options.Security.GraphProxy))
+    {
+        httpHandler.Proxy = new WebProxy(options.Security.GraphProxy);
+        httpHandler.UseProxy = true;
+    }
+    var handler = new RecordingGraphHandler(innerHandler);
+    var graphBase = string.IsNullOrWhiteSpace(options.Security.GraphBaseUrl)
+        ? "https://graph.microsoft.com/v1.0/"
+        : options.Security.GraphBaseUrl;
+    var httpClient = new HttpClient(handler)
+    {
+        BaseAddress = new Uri(graphBase!, UriKind.Absolute)
+    };
+    if (options.Security.GraphTimeout > TimeSpan.Zero)
+    {
+        httpClient.Timeout = options.Security.GraphTimeout;
+    }
     var teamsClient = new TeamsReplyClient(httpClient);
     var replyService = new ReplyService(rewrite, router, teamsClient, tokenBroker, metrics, Options.Create(options));
 
@@ -586,167 +605,44 @@ static string GetValue(IReadOnlyDictionary<string, string?> parameters, string k
 static string? GetOptionalValue(IReadOnlyDictionary<string, string?> parameters, string key)
     => parameters.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value) ? value : null;
 
-static bool GetFlag(IReadOnlyDictionary<string, string?> parameters, string key)
-    => parameters.TryGetValue(key, out var value)
-        ? string.IsNullOrWhiteSpace(value) || bool.TryParse(value, out var parsed) && parsed
-        : false;
-
-static HttpClient CreateGraphHttpClient(PluginOptions options, bool useLiveGraph, GraphRequestTrace trace)
+sealed class RecordingGraphHandler : DelegatingHandler
 {
-    var security = options.Security ?? new SecurityOptions();
-    var configuredBaseUrl = string.IsNullOrWhiteSpace(security.GraphBaseUrl)
-        ? "https://graph.microsoft.com/v1.0/"
-        : security.GraphBaseUrl;
-
-    if (!Uri.TryCreate(configuredBaseUrl, UriKind.Absolute, out var baseUri))
+    public RecordingGraphHandler(HttpMessageHandler innerHandler)
+        : base(innerHandler ?? throw new ArgumentNullException(nameof(innerHandler)))
     {
-        Console.Error.WriteLine($"配置的 GraphBaseUrl 无效: {configuredBaseUrl}，将使用默认地址 https://graph.microsoft.com/v1.0/。");
-        baseUri = new Uri("https://graph.microsoft.com/v1.0/", UriKind.Absolute);
     }
 
-    var innerHandler = new HttpClientHandler();
-    if (useLiveGraph && !string.IsNullOrWhiteSpace(security.GraphProxy))
-    {
-        innerHandler.Proxy = new WebProxy(security.GraphProxy);
-        innerHandler.UseProxy = true;
-    }
-
-    var loggingHandler = new GraphLoggingHandler(innerHandler, simulate: !useLiveGraph, trace);
-
-    var timeout = security.GraphTimeout > TimeSpan.Zero
-        ? security.GraphTimeout
-        : TimeSpan.FromSeconds(100);
-
-    return new HttpClient(loggingHandler)
-    {
-        BaseAddress = baseUri,
-        Timeout = timeout
-    };
-}
-
-static void PrintGraphDiagnostics(GraphRequestTrace trace, bool useLiveGraph)
-{
-    Console.WriteLine();
-    Console.WriteLine("Graph 请求回显:");
-    Console.WriteLine($"  Path:        {trace.RequestPath}");
-    Console.WriteLine($"  Authorization: {trace.Authorization}");
-    var payload = string.IsNullOrWhiteSpace(trace.RequestBody) ? "<empty>" : trace.RequestBody;
-    Console.WriteLine($"  Payload:     {payload}");
-
-    if (useLiveGraph)
-    {
-        var statusDisplay = trace.StatusCode is null
-            ? "<unknown>"
-            : $"{(int)trace.StatusCode} {trace.StatusCode}";
-        Console.WriteLine($"  StatusCode:  {statusDisplay}");
-        var responseText = string.IsNullOrWhiteSpace(trace.ResponseBody) ? "<empty>" : trace.ResponseBody;
-        Console.WriteLine($"  Response:    {responseText}");
-    }
-
-    Console.WriteLine();
-}
-
-static async Task<T> ExecuteWithRetryAsync<T>(Func<CancellationToken, Task<T>> operation, int maxAttempts, TimeSpan delay, CancellationToken cancellationToken, Func<Exception, bool> shouldRetry)
-{
-    if (maxAttempts <= 0)
-    {
-        throw new ArgumentOutOfRangeException(nameof(maxAttempts));
-    }
-
-    for (var attempt = 1; attempt <= maxAttempts; attempt++)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        try
-        {
-            return await operation(cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            if (attempt >= maxAttempts || !shouldRetry(ex))
-            {
-                throw;
-            }
-
-            await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
-        }
-    }
-
-    throw new InvalidOperationException("重试逻辑未返回结果。");
-}
-
-static bool ShouldRetryGraph(Exception exception)
-    => exception switch
-    {
-        TeamsReplyException teamsException =>
-            (int)teamsException.StatusCode == 429 || (int)teamsException.StatusCode >= 500,
-        HttpRequestException => true,
-        TaskCanceledException => true,
-        _ => false
-    };
-
-sealed class GraphRequestTrace
-{
-    public int CallCount { get; set; }
-    public string? RequestPath { get; set; }
-    public string? Authorization { get; set; }
-    public string? RequestBody { get; set; }
-    public HttpStatusCode? StatusCode { get; set; }
-    public string? ResponseBody { get; set; }
-}
-
-sealed class GraphLoggingHandler : DelegatingHandler
-{
-    private readonly bool _simulate;
-    private readonly GraphRequestTrace _trace;
-
-    public GraphLoggingHandler(HttpMessageHandler innerHandler, bool simulate, GraphRequestTrace trace)
-        : base(innerHandler)
-    {
-        _simulate = simulate;
-        _trace = trace ?? throw new ArgumentNullException(nameof(trace));
-    }
+    public int CallCount { get; private set; }
+    public string? LastPath { get; private set; }
+    public string? LastAuthorization { get; private set; }
+    public string? LastBody { get; private set; }
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
-        if (request is null)
-        {
-            throw new ArgumentNullException(nameof(request));
-        }
-
-        _trace.CallCount++;
-        _trace.RequestPath = request.RequestUri?.ToString();
-        _trace.Authorization = request.Headers.Authorization?.ToString();
-        _trace.RequestBody = request.Content is null
+        CallCount++;
+        LastPath = request.RequestUri is null
+            ? null
+            : (string.IsNullOrEmpty(request.RequestUri.PathAndQuery)
+                ? request.RequestUri.ToString()
+                : request.RequestUri.PathAndQuery);
+        LastAuthorization = request.Headers.Authorization?.ToString();
+        LastBody = request.Content is null
             ? null
             : await request.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
 
-        if (_simulate)
-        {
-            var payload = $"{{\"id\":\"smoke-{Guid.NewGuid():N}\",\"createdDateTime\":\"{DateTimeOffset.UtcNow:O}\"}}";
-            _trace.StatusCode = HttpStatusCode.Created;
-            _trace.ResponseBody = payload;
-            return new HttpResponseMessage(HttpStatusCode.Created)
-            {
-                Content = new StringContent(payload, Encoding.UTF8, "application/json")
-            };
-        }
+        return await base.SendAsync(request, cancellationToken).ConfigureAwait(false);
+    }
+}
 
-        var response = await base.SendAsync(request, cancellationToken).ConfigureAwait(false);
-        _trace.StatusCode = response.StatusCode;
-
-        if (response.Content is not null)
+sealed class StubGraphHandler : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        var response = new HttpResponseMessage(HttpStatusCode.Created)
         {
-            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            _trace.ResponseBody = responseBody;
-            var mediaType = response.Content.Headers.ContentType?.MediaType ?? "application/json";
-            response.Content = new StringContent(responseBody, Encoding.UTF8, mediaType);
-        }
-        else
-        {
-            _trace.ResponseBody = null;
-        }
-
-        return response;
+            Content = new StringContent($"{{\"id\":\"smoke-{Guid.NewGuid():N}\",\"createdDateTime\":\"{DateTimeOffset.UtcNow:O}\"}}", Encoding.UTF8, "application/json")
+        };
+        return Task.FromResult(response);
     }
 }
 
