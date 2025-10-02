@@ -116,6 +116,9 @@ public class ReplyServiceTests
         Assert.True(additional.ContainsKey("en"));
         Assert.True(additional.ContainsKey("de"));
         Assert.NotNull(teamsClient.LastRequest!.AdaptiveCard);
+        Assert.Equal(result.FinalText, teamsClient.LastRequest!.FinalText);
+        Assert.Contains("[en]", result.FinalText, StringComparison.Ordinal);
+        Assert.Contains("[de]", result.FinalText, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -252,6 +255,7 @@ public class ReplyServiceTests
         Assert.Contains("fr", extras.GetProperty("fr").GetString());
         var html = root.GetProperty("body").GetProperty("content").GetString();
         Assert.Contains("グラフ投稿", html, StringComparison.Ordinal);
+        Assert.Contains("[fr]", html, StringComparison.Ordinal);
         var attachments = root.GetProperty("attachments");
         var card = attachments[0].GetProperty("content");
         Assert.Equal("application/vnd.microsoft.card.adaptive", attachments[0].GetProperty("contentType").GetString());
