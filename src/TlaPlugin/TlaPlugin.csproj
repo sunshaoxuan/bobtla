@@ -3,15 +3,43 @@
     <TargetFramework>net7.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <NodeCommand Condition="'$(NodeCommand)' == ''">node</NodeCommand>
+    <BuildWebAppScript>$(MSBuildProjectDirectory)/../../scripts/build-webapp.js</BuildWebAppScript>
+    <WebAppOutputDir>$(MSBuildProjectDirectory)/wwwroot</WebAppOutputDir>
   </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="7.0.20" />
     <PackageReference Include="Microsoft.Graph" Version="5.53.0" />
   </ItemGroup>
+
+  <ItemGroup>
+    <WebAppSourceFiles Include="$(MSBuildProjectDirectory)/../webapp/**/*" />
+    <WebAppSourceFiles Include="$(MSBuildProjectDirectory)/../teamsClient/**/*" />
+  </ItemGroup>
+
   <ItemGroup>
     <Content Include="wwwroot\**\*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
   </ItemGroup>
+
+  <Target Name="EnsureNode">
+    <Exec Command="&quot;$(NodeCommand)&quot; --version" IgnoreExitCode="true">
+      <Output TaskParameter="ExitCode" PropertyName="NodeExitCode" />
+    </Exec>
+    <Error Condition="'$(NodeExitCode)' != '0'" Text="Node.js is required to build the web assets. Please install Node.js and ensure it is available on the PATH." />
+  </Target>
+
+  <Target Name="BuildWebApp" DependsOnTargets="EnsureNode" Inputs="@(WebAppSourceFiles);$(BuildWebAppScript)" Outputs="$(WebAppOutputDir)/build.stamp">
+    <Message Text="Building web assets..." Importance="high" />
+    <Exec Command="&quot;$(NodeCommand)&quot; &quot;$(BuildWebAppScript)&quot;" />
+    <WriteLinesToFile File="$(WebAppOutputDir)/build.stamp" Lines="Built $(MSBuildProjectName) web assets." Overwrite="true" />
+  </Target>
+
+  <PropertyGroup>
+    <BuildDependsOn>BuildWebApp;$(BuildDependsOn)</BuildDependsOn>
+    <PublishDependsOn>BuildWebApp;$(PublishDependsOn)</PublishDependsOn>
+  </PropertyGroup>
 </Project>
