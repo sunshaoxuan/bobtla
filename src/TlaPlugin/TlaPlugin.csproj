@@ -6,6 +6,7 @@
     <NodeCommand Condition="'$(NodeCommand)' == ''">node</NodeCommand>
     <BuildWebAppScript>$(MSBuildProjectDirectory)/../../scripts/build-webapp.js</BuildWebAppScript>
     <WebAppOutputDir>$(MSBuildProjectDirectory)/wwwroot</WebAppOutputDir>
+    <WebAppBuildStamp>$(WebAppOutputDir)/build.stamp</WebAppBuildStamp>
   </PropertyGroup>
 
   <ItemGroup>
@@ -29,16 +30,16 @@
     <Exec Command="&quot;$(NodeCommand)&quot; --version" IgnoreExitCode="true">
       <Output TaskParameter="ExitCode" PropertyName="NodeExitCode" />
     </Exec>
-    <Error Condition="'$(NodeExitCode)' != '0'" Text="Node.js is required to build the web assets. Please install Node.js and ensure it is available on the PATH." />
+    <Error Condition="'$(NodeExitCode)' != '0'" Text="Node.js is required to build the web assets. Please install Node.js, ensure it is available on the PATH, or set the NodeCommand MSBuild property to the Node executable." />
   </Target>
 
   <Target Name="BuildWebApp"
           BeforeTargets="Build;Publish"
           DependsOnTargets="EnsureNode"
-          Inputs="@(WebAppSourceFiles);$(BuildWebAppScript)"
-          Outputs="$(WebAppOutputDir)/build.stamp">
+          Inputs="@(WebAppSourceFiles -> '%(FullPath)');$(BuildWebAppScript)"
+          Outputs="$(WebAppBuildStamp)">
     <Message Text="Building web assets..." Importance="high" />
     <Exec Command="&quot;$(NodeCommand)&quot; &quot;$(BuildWebAppScript)&quot;" />
-    <WriteLinesToFile File="$(WebAppOutputDir)/build.stamp" Lines="Built $(MSBuildProjectName) web assets." Overwrite="true" />
+    <WriteLinesToFile File="$(WebAppBuildStamp)" Lines="Built $(MSBuildProjectName) web assets." Overwrite="true" />
   </Target>
 </Project>
