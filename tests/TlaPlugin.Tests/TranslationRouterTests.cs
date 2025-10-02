@@ -122,6 +122,70 @@ public class TranslationRouterTests
     }
 
     [Fact]
+    public async Task MetricsReportMatchesFallbackSuccessWithAdditionalLanguages()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            Providers = new List<ModelProviderOptions>
+            {
+                new()
+                {
+                    Id = "flaky",
+                    SimulatedFailures = 1,
+                    CostPerCharUsd = 0.0005m,
+                    Regions = new List<string> { "japan" },
+                    Certifications = new List<string> { "iso27001" }
+                },
+                new()
+                {
+                    Id = "reliable",
+                    SimulatedFailures = 0,
+                    CostPerCharUsd = 0.0005m,
+                    Regions = new List<string> { "japan" },
+                    Certifications = new List<string> { "iso27001" }
+                }
+            },
+            Compliance = new CompliancePolicyOptions
+            {
+                RequiredRegionTags = new List<string> { "japan" },
+                RequiredCertifications = new List<string> { "iso27001" }
+            }
+        });
+
+        var metrics = new UsageMetricsService();
+        var router = new TranslationRouter(new ModelProviderFactory(options), new ComplianceGateway(options), new BudgetGuard(options.Value), new AuditLogger(), new ToneTemplateService(), new RecordingTokenBroker(), metrics, new LocalizationCatalogService(), options);
+
+        var request = new TranslationRequest
+        {
+            Text = "metrics check",
+            TenantId = "contoso",
+            UserId = "user",
+            UserAssertion = "assertion",
+            TargetLanguage = "ja",
+            SourceLanguage = "en",
+            AdditionalTargetLanguages = new List<string> { "fr", "de" }
+        };
+
+        var result = await router.TranslateAsync(request, CancellationToken.None);
+
+        Assert.Equal("reliable", result.ModelId);
+
+        var report = metrics.GetReport();
+        var tenant = Assert.Single(report.Tenants);
+        Assert.Equal(3, tenant.Translations);
+        Assert.Equal(decimal.Round(result.CostUsd, 4), tenant.TotalCostUsd);
+        var model = Assert.Single(tenant.Models);
+        Assert.Equal(result.ModelId, model.ModelId);
+        Assert.Equal(decimal.Round(result.CostUsd, 4), model.TotalCostUsd);
+        Assert.Empty(tenant.Failures);
+
+        var overall = report.Overall;
+        Assert.Equal(3, overall.Translations);
+        Assert.Equal(decimal.Round(result.CostUsd, 4), overall.TotalCostUsd);
+        Assert.Empty(overall.Failures);
+    }
+
+    [Fact]
     public async Task IncludesContextInTranslationWhenRagEnabled()
     {
         var options = Options.Create(new PluginOptions
@@ -219,6 +283,67 @@ public class TranslationRouterTests
         Assert.Equal(UsageMetricsService.FailureReasons.Provider, failure.Reason);
         Assert.Equal(1, failure.Count);
         Assert.Empty(tenant.Models);
+    }
+
+    [Fact]
+    public async Task MetricsReportCountsSingleFailureWhenAllProvidersExhausted()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            DailyBudgetUsd = 100m,
+            Providers = new List<ModelProviderOptions>
+            {
+                new()
+                {
+                    Id = "primary",
+                    SimulatedFailures = 5,
+                    CostPerCharUsd = 0.001m,
+                    Regions = new List<string> { "japan" },
+                    Certifications = new List<string> { "iso27001" }
+                },
+                new()
+                {
+                    Id = "secondary",
+                    SimulatedFailures = 5,
+                    CostPerCharUsd = 0.001m,
+                    Regions = new List<string> { "japan" },
+                    Certifications = new List<string> { "iso27001" }
+                }
+            },
+            Compliance = new CompliancePolicyOptions
+            {
+                RequiredRegionTags = new List<string> { "japan" },
+                RequiredCertifications = new List<string> { "iso27001" }
+            }
+        });
+
+        var metrics = new UsageMetricsService();
+        var router = new TranslationRouter(new ModelProviderFactory(options), new ComplianceGateway(options), new BudgetGuard(options.Value), new AuditLogger(), new ToneTemplateService(), new RecordingTokenBroker(), metrics, new LocalizationCatalogService(), options);
+
+        await Assert.ThrowsAsync<TranslationException>(() => router.TranslateAsync(new TranslationRequest
+        {
+            Text = "persistent failure",
+            TenantId = "contoso",
+            UserId = "user",
+            UserAssertion = "assertion",
+            TargetLanguage = "ja",
+            SourceLanguage = "en"
+        }, CancellationToken.None));
+
+        var report = metrics.GetReport();
+        var tenant = Assert.Single(report.Tenants);
+        Assert.Equal(0, tenant.Translations);
+        Assert.Equal(0m, tenant.TotalCostUsd);
+        var failure = Assert.Single(tenant.Failures);
+        Assert.Equal(UsageMetricsService.FailureReasons.Provider, failure.Reason);
+        Assert.Equal(1, failure.Count);
+
+        var overall = report.Overall;
+        Assert.Equal(0, overall.Translations);
+        Assert.Equal(0m, overall.TotalCostUsd);
+        var overallFailure = Assert.Single(overall.Failures);
+        Assert.Equal(UsageMetricsService.FailureReasons.Provider, overallFailure.Reason);
+        Assert.Equal(1, overallFailure.Count);
     }
 
     [Fact]

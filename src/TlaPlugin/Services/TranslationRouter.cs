@@ -96,6 +96,7 @@ public class TranslationRouter
         var promptPrefix = _tones.GetPromptPrefix(request.Tone);
 
         var allowedProviders = 0;
+        var translationCount = 1 + request.AdditionalTargetLanguages.Count;
         foreach (var provider in _providers)
         {
             var report = _compliance.Evaluate(request.Text, provider.Options);
@@ -105,19 +106,11 @@ public class TranslationRouter
             }
 
             allowedProviders++;
-            var translationCount = 1 + request.AdditionalTargetLanguages.Count;
             var estimatedCost = request.Text.Length * provider.Options.CostPerCharUsd * translationCount;
-            if (!_budget.TryReserve(request.TenantId, estimatedCost, out var reservation))
+            using var reservation = ReserveBudgetOrThrow(request.TenantId, estimatedCost, "本日の翻訳予算を使い切りました。");
+            try
             {
-                _metrics.RecordFailure(request.TenantId, UsageMetricsService.FailureReasons.Budget);
-                throw new BudgetExceededException("本日の翻訳予算を使い切りました。");
-            }
-
-            using (reservation)
-            {
-                try
-                {
-                    var result = await provider.TranslateAsync(request.Text, sourceLanguage!, request.TargetLanguage, promptPrefix, cancellationToken);
+                var result = await provider.TranslateAsync(request.Text, sourceLanguage!, request.TargetLanguage, promptPrefix, cancellationToken);
                     var rewritten = await provider.RewriteAsync(result.Text, request.Tone, cancellationToken);
 
                     var additional = new Dictionary<string, string>();
@@ -149,11 +142,10 @@ public class TranslationRouter
                         AdditionalTranslations = additional,
                         AdaptiveCard = BuildAdaptiveCard(catalog, rewritten, sourceLanguage!, request.TargetLanguage, result.ModelId, estimatedCost, result.LatencyMs, additional)
                     };
-                }
-                catch (Exception ex) when (ex is InvalidOperationException or TaskCanceledException)
-                {
-                    // 他のモデルを継続的に試行する。
-                }
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or TaskCanceledException)
+            {
+                // 他のモデルを継続的に試行する。
             }
         }
 
@@ -195,26 +187,18 @@ public class TranslationRouter
 
             allowedProviders++;
             var estimatedCost = request.Text.Length * provider.Options.CostPerCharUsd;
-            if (!_budget.TryReserve(request.TenantId, estimatedCost, out var reservation))
+            using var reservation = ReserveBudgetOrThrow(request.TenantId, estimatedCost, "本日の翻訳予算を超過しています。");
+            try
             {
-                _metrics.RecordFailure(request.TenantId, UsageMetricsService.FailureReasons.Budget);
-                throw new BudgetExceededException("本日の翻訳予算を超過しています。");
-            }
-
-            using (reservation)
-            {
-                try
-                {
-                    var rewritten = await provider.RewriteAsync(request.Text, request.Tone, cancellationToken);
+                var rewritten = await provider.RewriteAsync(request.Text, request.Tone, cancellationToken);
                     var latency = provider.Options.LatencyTargetMs;
                     _metrics.RecordSuccess(request.TenantId, provider.Options.Id, estimatedCost, latency, 1);
                     reservation.Commit();
                     return new RewriteResult(rewritten, provider.Options.Id, estimatedCost, latency);
-                }
-                catch (Exception ex) when (ex is InvalidOperationException or TaskCanceledException)
-                {
-                    continue;
-                }
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or TaskCanceledException)
+            {
+                continue;
             }
         }
 
@@ -256,26 +240,18 @@ public class TranslationRouter
 
             allowedProviders++;
             var estimatedCost = request.Context.Length * provider.Options.CostPerCharUsd;
-            if (!_budget.TryReserve(request.TenantId, estimatedCost, out var reservation))
+            using var reservation = ReserveBudgetOrThrow(request.TenantId, estimatedCost, "本日の翻訳予算を超過しています。");
+            try
             {
-                _metrics.RecordFailure(request.TenantId, UsageMetricsService.FailureReasons.Budget);
-                throw new BudgetExceededException("本日の翻訳予算を超過しています。");
-            }
-
-            using (reservation)
-            {
-                try
-                {
-                    var summary = await provider.SummarizeAsync(request.Context, cancellationToken);
+                var summary = await provider.SummarizeAsync(request.Context, cancellationToken);
                     var latency = provider.Options.LatencyTargetMs;
                     _metrics.RecordSuccess(request.TenantId, provider.Options.Id, estimatedCost, latency, 1);
                     reservation.Commit();
                     return new SummarizeResult(summary, provider.Options.Id, estimatedCost, latency);
-                }
-                catch (Exception ex) when (ex is InvalidOperationException or TaskCanceledException)
-                {
-                    continue;
-                }
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or TaskCanceledException)
+            {
+                continue;
             }
         }
 
@@ -345,6 +321,17 @@ public class TranslationRouter
             _metrics.RecordFailure(tenantId, UsageMetricsService.FailureReasons.Authentication);
             throw;
         }
+    }
+
+    private BudgetGuard.BudgetReservation ReserveBudgetOrThrow(string tenantId, decimal estimatedCost, string errorMessage)
+    {
+        if (!_budget.TryReserve(tenantId, estimatedCost, out var reservation))
+        {
+            _metrics.RecordFailure(tenantId, UsageMetricsService.FailureReasons.Budget);
+            throw new BudgetExceededException(errorMessage);
+        }
+
+        return reservation;
     }
 
     private JsonObject BuildAdaptiveCard(
