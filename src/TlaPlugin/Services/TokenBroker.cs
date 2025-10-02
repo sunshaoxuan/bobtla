@@ -38,12 +38,6 @@ public class TokenBroker : ITokenBroker
 
 public async Task<AccessToken> ExchangeOnBehalfOfAsync(string tenantId, string userId, string? userAssertion, CancellationToken cancellationToken)
     {
-        var cacheKey = $"{tenantId}:{userId}";
-        if (_cache.TryGetValue(cacheKey, out var cached) && cached.ExpiresOn > DateTimeOffset.UtcNow.AddMinutes(-1))
-        {
-            return cached;
-        }
-
         var security = _options.Security ?? new SecurityOptions();
 
         TenantSecurityOverride? tenantOverride = null;
@@ -57,7 +51,13 @@ public async Task<AccessToken> ExchangeOnBehalfOfAsync(string tenantId, string u
             ? tenantOverride!.ClientSecretName!
             : security.ClientSecretName;
 
-        var clientSecret = await _resolver.GetSecretAsync(clientSecretName, cancellationToken).ConfigureAwait(false);
+        var cacheKey = $"{tenantId}:{clientSecretName}:{userId}";
+        if (_cache.TryGetValue(cacheKey, out var cached) && cached.ExpiresOn > DateTimeOffset.UtcNow.AddMinutes(-1))
+        {
+            return cached;
+        }
+
+        var clientSecret = await _resolver.GetSecretAsync(clientSecretName, tenantId, cancellationToken).ConfigureAwait(false);
         if (string.IsNullOrEmpty(clientSecret))
         {
             throw new AuthenticationException("无法获取客户端机密。");

@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -155,6 +156,7 @@ static async Task<int> RunSecretCheckAsync(PluginOptions options, CancellationTo
 {
     var resolver = new KeyVaultSecretResolver(Options.Create(options));
     var probes = BuildSecretProbes(options);
+    var probeResults = new List<SecretProbeResult>();
 
     if (probes.Count == 0)
     {
@@ -177,6 +179,7 @@ static async Task<int> RunSecretCheckAsync(PluginOptions options, CancellationTo
             else
             {
                 success.Add($"{FormatProbe(probe)} => 长度 {value.Length}");
+                probeResults.Add(new SecretProbeResult(probe.TenantId, probe.SecretName, ComputeFingerprint(value)));
             }
         }
         catch (SecretRetrievalException ex)
@@ -205,6 +208,7 @@ static async Task<int> RunSecretCheckAsync(PluginOptions options, CancellationTo
     Console.WriteLine();
     Console.WriteLine($"成功: {success.Count}, 失败: {failures.Count}");
     Console.WriteLine();
+    PrintTenantOverrideSummary(options, probeResults);
     PrintGraphScopeReminder(options);
     return failures.Count == 0 ? 0 : 2;
 }
@@ -251,6 +255,90 @@ static string FormatProbe(SecretProbe probe)
     => string.IsNullOrWhiteSpace(probe.TenantId) ? probe.SecretName : $"{probe.TenantId}/{probe.SecretName}";
 
 private readonly record struct SecretProbe(string? TenantId, string SecretName);
+private readonly record struct SecretProbeResult(string? TenantId, string SecretName, string Fingerprint);
+
+static void PrintTenantOverrideSummary(PluginOptions options, IReadOnlyList<SecretProbeResult> results)
+{
+    var overrides = options.Security.TenantOverrides
+        .Where(kvp => !string.IsNullOrWhiteSpace(kvp.Value.KeyVaultUri))
+        .Select(kvp => new
+        {
+            TenantId = kvp.Key,
+            SecretName = !string.IsNullOrWhiteSpace(kvp.Value.ClientSecretName)
+                ? kvp.Value.ClientSecretName!
+                : options.Security.ClientSecretName
+        })
+        .ToList();
+
+    if (overrides.Count == 0 || results.Count == 0)
+    {
+        return;
+    }
+
+    var lookup = new Dictionary<string, SecretProbeResult>(StringComparer.OrdinalIgnoreCase);
+    foreach (var result in results)
+    {
+        var key = BuildResultKey(result.TenantId, result.SecretName);
+        lookup[key] = result;
+    }
+
+    Console.WriteLine("[KeyVaultSecretResolver] 租户 KeyVaultUri 覆盖检查:");
+
+    foreach (var group in overrides.GroupBy(o => o.SecretName, StringComparer.OrdinalIgnoreCase))
+    {
+        var candidates = new List<SecretProbeResult>();
+        if (lookup.TryGetValue(BuildResultKey(null, group.Key), out var defaultResult))
+        {
+            candidates.Add(defaultResult);
+        }
+
+        foreach (var entry in group)
+        {
+            if (lookup.TryGetValue(BuildResultKey(entry.TenantId, entry.SecretName), out var tenantResult))
+            {
+                candidates.Add(tenantResult);
+            }
+        }
+
+        if (candidates.Count < 2)
+        {
+            Console.WriteLine($"  ⚠️ {group.Key} => 缺少默认或租户特定的密钥值，无法对比。");
+            continue;
+        }
+
+        var distinct = candidates
+            .Select(result => result.Fingerprint)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count();
+
+        if (distinct > 1)
+        {
+            Console.WriteLine($"  ✔ {group.Key} => {candidates.Count} 个环境返回 {distinct} 个不同值。");
+        }
+        else
+        {
+            Console.WriteLine($"  ⚠️ {group.Key} => 所有环境返回相同的值，请确认 KeyVaultUri 覆盖是否生效。");
+        }
+    }
+
+    Console.WriteLine();
+}
+
+static string BuildResultKey(string? tenantId, string secretName)
+    => $"{tenantId ?? "__default__"}::{secretName}";
+
+static string ComputeFingerprint(string value)
+{
+    if (string.IsNullOrEmpty(value))
+    {
+        return string.Empty;
+    }
+
+    using var sha256 = SHA256.Create();
+    var hash = sha256.ComputeHash(Encoding.UTF8.GetBytes(value));
+    var fingerprint = BitConverter.ToString(hash, 0, Math.Min(6, hash.Length));
+    return fingerprint.Replace("-", string.Empty);
+}
 
 static void PrintGraphScopeReminder(PluginOptions options)
 {

@@ -79,6 +79,34 @@ public class KeyVaultSecretResolverTests
     }
 
     [Fact]
+    public async Task MaintainsSeparateCachePerTenant()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            Security = new SecurityOptions
+            {
+                SeedSecrets = new Dictionary<string, string>
+                {
+                    ["shared-secret"] = "tenant-a-value"
+                },
+                SecretCacheTtl = TimeSpan.FromMinutes(10)
+            }
+        });
+
+        var resolver = new KeyVaultSecretResolver(options);
+        var tenantAValue = await resolver.GetSecretAsync("shared-secret", "tenant-a", CancellationToken.None);
+        Assert.Equal("tenant-a-value", tenantAValue);
+
+        options.Value.Security.SeedSecrets["shared-secret"] = "tenant-b-value";
+
+        var tenantBValue = await resolver.GetSecretAsync("shared-secret", "tenant-b", CancellationToken.None);
+        var tenantAFromCache = await resolver.GetSecretAsync("shared-secret", "tenant-a", CancellationToken.None);
+
+        Assert.Equal("tenant-b-value", tenantBValue);
+        Assert.Equal("tenant-a-value", tenantAFromCache);
+    }
+
+    [Fact]
     public async Task ThrowsWhenSecretMissing()
     {
         var resolver = new KeyVaultSecretResolver();
