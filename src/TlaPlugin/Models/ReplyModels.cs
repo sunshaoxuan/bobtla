@@ -16,6 +16,8 @@ public class ReplyLanguagePolicy
 /// </summary>
 public class ReplyRequest
 {
+    private IList<string> _additionalTargetLanguages = new List<string>();
+
     public string ThreadId { get; set; } = string.Empty;
     public string ReplyText { get; set; } = string.Empty;
     public string Text { get; set; } = string.Empty;
@@ -30,7 +32,12 @@ public class ReplyRequest
         = null;
     public ReplyLanguagePolicy? LanguagePolicy { get; set; }
         = null;
-    public IList<string> AdditionalTargetLanguages { get; set; } = new List<string>();
+
+    public IList<string> AdditionalTargetLanguages
+    {
+        get => _additionalTargetLanguages;
+        set => _additionalTargetLanguages = value ?? new List<string>();
+    }
 }
 
 /// <summary>

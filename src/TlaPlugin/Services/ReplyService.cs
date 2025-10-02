@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Text.Json.Nodes;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Options;
@@ -159,6 +160,7 @@ public class ReplyService
         var metadataTone = toneApplied ?? context.Tone ?? TranslationRequest.DefaultTone;
 
         var additionalTranslations = await TranslateAdditionalLanguagesAsync(context, finalText, cancellationToken).ConfigureAwait(false);
+        var finalMessage = BuildMultilingualMessage(finalText, additionalTranslations, context.AdditionalTargetLanguages);
         var adaptiveCard = BuildAdaptiveCard(finalText, context.TargetLanguage, additionalTranslations);
 
         try
@@ -167,14 +169,14 @@ public class ReplyService
                 context.ThreadId,
                 context.ChannelId,
                 context.TenantId,
-                finalText,
+                finalMessage,
                 context.TargetLanguage,
                 metadataTone,
                 token.Value,
                 additionalTranslations,
                 adaptiveCard), cancellationToken).ConfigureAwait(false);
 
-            return new ReplyResult(response.MessageId, response.Status, finalText, toneApplied)
+            return new ReplyResult(response.MessageId, response.Status, finalMessage, toneApplied)
             {
                 Language = context.TargetLanguage,
                 PostedAt = response.SentAt
@@ -230,6 +232,42 @@ public class ReplyService
         }
 
         return results;
+    }
+
+    private static string BuildMultilingualMessage(
+        string primaryText,
+        IReadOnlyDictionary<string, string> additionalTranslations,
+        IReadOnlyList<string> languageOrder)
+    {
+        if (additionalTranslations.Count == 0)
+        {
+            return primaryText;
+        }
+
+        var builder = new StringBuilder();
+        builder.Append(primaryText);
+
+        foreach (var language in languageOrder)
+        {
+            if (!additionalTranslations.TryGetValue(language, out var translation))
+            {
+                continue;
+            }
+
+            if (builder.Length > 0)
+            {
+                builder.AppendLine();
+                builder.AppendLine();
+            }
+
+            builder.Append('[')
+                .Append(language)
+                .Append(']')
+                .AppendLine();
+            builder.Append(translation);
+        }
+
+        return builder.ToString().TrimEnd();
     }
 
     private static JsonObject? BuildAdaptiveCard(string finalText, string primaryLanguage, IReadOnlyDictionary<string, string> additionalTranslations)
