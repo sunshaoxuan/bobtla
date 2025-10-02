@@ -50,8 +50,10 @@
 
    - 读取配置并调用 `TokenBroker.ExchangeOnBehalfOfAsync`；
    - 使用内置 `TranslationRouter` 生成译文，触发审计与成本指标；
-   - 通过 `TeamsReplyClient.SendReplyAsync` 发送模拟回帖，并回显 Graph 请求；
+   - 通过 `TeamsReplyClient.SendReplyAsync` 发起 Graph 请求（可模拟或直连）；
    - 输出 `/api/metrics` 中同源的数据结构与审计日志样例。
+
+   **默认（模拟 Graph）** – 适合验证 Token 链路与审计指标而不触发真实 Graph 调用：
 
    ```bash
    dotnet run --project scripts/SmokeTests/Stage5SmokeTests -- reply \
@@ -64,9 +66,23 @@
      --text "Stage 5 手动联调验证"
    ```
 
-   命令成功会打印 Graph 调用路径、Authorization 头、请求体，以及指标/审计 JSON 快照；若返回码非零，可按日志排查 Token、权限或配置缺失。【F:scripts/SmokeTests/Stage5SmokeTests/Program.cs†L214-L356】
+   **真实 Graph 调用** – 当 Stage 环境已具备可用的 AAD Token 与网络出口时，追加 `--use-live-graph`。脚本将读取 `Plugin.Security.GraphBaseUrl`/`GraphTimeout`/`GraphProxy` 配置实例化 `HttpClient`，并在失败时按 2 秒间隔重试最多三次：
 
-3. **若需对接真实 Graph** – 将 Stage 服务的反向代理或网络安全组打开至 Graph 端点，并在部署主机上替换 `SeedSecrets` 为 Key Vault 引用。由于当前实现的 Token 为 HMAC 模拟值，若要对接真实 Graph，可在 Stage 环境扩展 `TokenBroker` 以使用 AAD 访问令牌，再复用上述命令验证 `ReplyService` 行为。
+   ```bash
+   dotnet run --project scripts/SmokeTests/Stage5SmokeTests -- reply \
+     --tenant contoso.onmicrosoft.com \
+     --user stage-user \
+     --thread 19:stage-thread@thread.tacv2 \
+     --channel 19:stage-channel \
+     --language ja \
+     --tone business \
+     --text "Stage 5 手动联调验证" \
+     --use-live-graph
+   ```
+
+   模式无论真假都会打印 Graph 请求路径、Authorization 头与负载；在真实模式下还会追加 `StatusCode` 与响应 JSON，便于现场工程师对照 Graph 诊断信息定位权限或配额问题。若命令返回非零退出码，请根据控制台中输出的 Graph 错误消息与错误代码排查 Token、权限或配置缺失。【F:scripts/SmokeTests/Stage5SmokeTests/Program.cs†L322-L382】【F:scripts/SmokeTests/Stage5SmokeTests/Program.cs†L563-L653】
+
+3. **网络与凭据准备** – 对接真实 Graph 前需确保 Stage 服务的反向代理或网络安全组允许访问 Graph 端点，并将 `SeedSecrets` 替换为 Key Vault 引用。若当前环境仍使用模拟 Token，可在 Stage 实现中扩展 `TokenBroker` 以获取 AAD 访问令牌，再复用上述命令验证 `ReplyService` 行为。
 
 ## 3. 指标与审计观测
 
