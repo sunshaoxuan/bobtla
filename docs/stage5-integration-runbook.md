@@ -53,6 +53,8 @@
    - 通过 `TeamsReplyClient.SendReplyAsync` 发送模拟回帖，并回显 Graph 请求；
    - 输出 `/api/metrics` 中同源的数据结构与审计日志样例。
 
+   > 提示：`TokenBroker` 在默认配置下继续使用 HMAC 令牌便于单元测试。若要打通真实 Graph OBO，请在 `Plugin.Security` 中将 `UseHmacFallback` 设置为 `false`，填充所需的 `GraphScopes`，并按租户覆盖 `ClientId`/`ClientSecretName`。冒烟脚本会记录成功调用时的 Authorization 头部，便于比对 AAD 返回的访问令牌。
+
    ```bash
    dotnet run --project scripts/SmokeTests/Stage5SmokeTests -- reply \
      --tenant contoso.onmicrosoft.com \

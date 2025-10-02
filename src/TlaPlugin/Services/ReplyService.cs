@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Net;
+using System.Security.Authentication;
 using System.Text.Json.Nodes;
 using System.Text;
 using System.Threading;
@@ -155,7 +156,18 @@ public class ReplyService
 
     private async Task<ReplyResult> PostAsync(ReplyExecutionContext context, string finalText, string? toneApplied, CancellationToken cancellationToken)
     {
-        var token = await _tokenBroker.ExchangeOnBehalfOfAsync(context.TenantId, context.UserId, cancellationToken).ConfigureAwait(false);
+        AccessToken token;
+        try
+        {
+            token = await _tokenBroker
+                .ExchangeOnBehalfOfAsync(context.TenantId, context.UserId, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (AuthenticationException)
+        {
+            _metrics.RecordFailure(context.TenantId, UsageMetricsService.FailureReasons.Authentication);
+            throw;
+        }
 
         var metadataTone = toneApplied ?? context.Tone ?? TranslationRequest.DefaultTone;
 

@@ -318,11 +318,28 @@ static async Task<int> RunReplySmokeAsync(PluginOptions options, IReadOnlyDictio
         return 3;
     }
 
-    var handler = new FakeGraphHandler();
+    var innerHandler = options.Security.UseHmacFallback
+        ? new StubGraphHandler()
+        : new HttpClientHandler();
+    if (!options.Security.UseHmacFallback
+        && innerHandler is HttpClientHandler httpHandler
+        && !string.IsNullOrWhiteSpace(options.Security.GraphProxy))
+    {
+        httpHandler.Proxy = new WebProxy(options.Security.GraphProxy);
+        httpHandler.UseProxy = true;
+    }
+    var handler = new RecordingGraphHandler(innerHandler);
+    var graphBase = string.IsNullOrWhiteSpace(options.Security.GraphBaseUrl)
+        ? "https://graph.microsoft.com/v1.0/"
+        : options.Security.GraphBaseUrl;
     var httpClient = new HttpClient(handler)
     {
-        BaseAddress = new Uri("https://graph.microsoft.com/v1.0/", UriKind.Absolute)
+        BaseAddress = new Uri(graphBase!, UriKind.Absolute)
     };
+    if (options.Security.GraphTimeout > TimeSpan.Zero)
+    {
+        httpClient.Timeout = options.Security.GraphTimeout;
+    }
     var teamsClient = new TeamsReplyClient(httpClient);
     var replyService = new ReplyService(rewrite, router, teamsClient, tokenBroker, metrics, Options.Create(options));
 
@@ -543,8 +560,13 @@ static string GetValue(IReadOnlyDictionary<string, string?> parameters, string k
 static string? GetOptionalValue(IReadOnlyDictionary<string, string?> parameters, string key)
     => parameters.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value) ? value : null;
 
-sealed class FakeGraphHandler : HttpMessageHandler
+sealed class RecordingGraphHandler : DelegatingHandler
 {
+    public RecordingGraphHandler(HttpMessageHandler innerHandler)
+        : base(innerHandler ?? throw new ArgumentNullException(nameof(innerHandler)))
+    {
+    }
+
     public int CallCount { get; private set; }
     public string? LastPath { get; private set; }
     public string? LastAuthorization { get; private set; }
@@ -553,17 +575,29 @@ sealed class FakeGraphHandler : HttpMessageHandler
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         CallCount++;
-        LastPath = request.RequestUri?.ToString();
+        LastPath = request.RequestUri is null
+            ? null
+            : (string.IsNullOrEmpty(request.RequestUri.PathAndQuery)
+                ? request.RequestUri.ToString()
+                : request.RequestUri.PathAndQuery);
         LastAuthorization = request.Headers.Authorization?.ToString();
         LastBody = request.Content is null
             ? null
             : await request.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
 
+        return await base.SendAsync(request, cancellationToken).ConfigureAwait(false);
+    }
+}
+
+sealed class StubGraphHandler : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
         var response = new HttpResponseMessage(HttpStatusCode.Created)
         {
             Content = new StringContent($"{{\"id\":\"smoke-{Guid.NewGuid():N}\",\"createdDateTime\":\"{DateTimeOffset.UtcNow:O}\"}}", Encoding.UTF8, "application/json")
         };
-        return response;
+        return Task.FromResult(response);
     }
 }
 
