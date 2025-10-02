@@ -107,49 +107,53 @@ public class TranslationRouter
             allowedProviders++;
             var translationCount = 1 + request.AdditionalTargetLanguages.Count;
             var estimatedCost = request.Text.Length * provider.Options.CostPerCharUsd * translationCount;
-            if (!_budget.TryReserve(request.TenantId, estimatedCost))
+            if (!_budget.TryReserve(request.TenantId, estimatedCost, out var reservation))
             {
                 _metrics.RecordFailure(request.TenantId, UsageMetricsService.FailureReasons.Budget);
                 throw new BudgetExceededException("本日の翻訳予算を使い切りました。");
             }
 
-            try
+            using (reservation)
             {
-                var result = await provider.TranslateAsync(request.Text, sourceLanguage!, request.TargetLanguage, promptPrefix, cancellationToken);
-                var rewritten = await provider.RewriteAsync(result.Text, request.Tone, cancellationToken);
-
-                var additional = new Dictionary<string, string>();
-                foreach (var extraLanguage in request.AdditionalTargetLanguages)
+                try
                 {
-                    var extraResult = await provider.TranslateAsync(request.Text, sourceLanguage!, extraLanguage, promptPrefix, cancellationToken);
-                    var extraRewritten = await provider.RewriteAsync(extraResult.Text, request.Tone, cancellationToken);
-                    additional[extraLanguage] = extraRewritten;
+                    var result = await provider.TranslateAsync(request.Text, sourceLanguage!, request.TargetLanguage, promptPrefix, cancellationToken);
+                    var rewritten = await provider.RewriteAsync(result.Text, request.Tone, cancellationToken);
+
+                    var additional = new Dictionary<string, string>();
+                    foreach (var extraLanguage in request.AdditionalTargetLanguages)
+                    {
+                        var extraResult = await provider.TranslateAsync(request.Text, sourceLanguage!, extraLanguage, promptPrefix, cancellationToken);
+                        var extraRewritten = await provider.RewriteAsync(extraResult.Text, request.Tone, cancellationToken);
+                        additional[extraLanguage] = extraRewritten;
+                    }
+
+                    _audit.Record(request.TenantId, request.UserId, result.ModelId, request.Text, rewritten, estimatedCost, result.LatencyMs, token.Audience, additional);
+                    _metrics.RecordSuccess(request.TenantId, result.ModelId, estimatedCost, result.LatencyMs, translationCount);
+                    reservation.Commit();
+
+                    var resolvedLocale = request.UiLocale ?? Options.DefaultUiLocale;
+                    var catalog = _localization.GetCatalog(resolvedLocale);
+
+                    return new TranslationResult
+                    {
+                        RawTranslatedText = result.Text,
+                        TranslatedText = rewritten,
+                        SourceLanguage = sourceLanguage!,
+                        TargetLanguage = request.TargetLanguage,
+                        ModelId = result.ModelId,
+                        Confidence = result.Confidence,
+                        LatencyMs = result.LatencyMs,
+                        CostUsd = estimatedCost,
+                        UiLocale = catalog.Locale,
+                        AdditionalTranslations = additional,
+                        AdaptiveCard = BuildAdaptiveCard(catalog, rewritten, sourceLanguage!, request.TargetLanguage, result.ModelId, estimatedCost, result.LatencyMs, additional)
+                    };
                 }
-
-                _audit.Record(request.TenantId, request.UserId, result.ModelId, request.Text, rewritten, estimatedCost, result.LatencyMs, token.Audience, additional);
-                _metrics.RecordSuccess(request.TenantId, result.ModelId, estimatedCost, result.LatencyMs, translationCount);
-
-                var resolvedLocale = request.UiLocale ?? Options.DefaultUiLocale;
-                var catalog = _localization.GetCatalog(resolvedLocale);
-
-                return new TranslationResult
+                catch (Exception ex) when (ex is InvalidOperationException or TaskCanceledException)
                 {
-                    RawTranslatedText = result.Text,
-                    TranslatedText = rewritten,
-                    SourceLanguage = sourceLanguage!,
-                    TargetLanguage = request.TargetLanguage,
-                    ModelId = result.ModelId,
-                    Confidence = result.Confidence,
-                    LatencyMs = result.LatencyMs,
-                    CostUsd = estimatedCost,
-                    UiLocale = catalog.Locale,
-                    AdditionalTranslations = additional,
-                    AdaptiveCard = BuildAdaptiveCard(catalog, rewritten, sourceLanguage!, request.TargetLanguage, result.ModelId, estimatedCost, result.LatencyMs, additional)
-                };
-            }
-            catch (Exception ex) when (ex is InvalidOperationException or TaskCanceledException)
-            {
-                // 他のモデルを継続的に試行する。
+                    // 他のモデルを継続的に試行する。
+                }
             }
         }
 
@@ -191,22 +195,26 @@ public class TranslationRouter
 
             allowedProviders++;
             var estimatedCost = request.Text.Length * provider.Options.CostPerCharUsd;
-            if (!_budget.TryReserve(request.TenantId, estimatedCost))
+            if (!_budget.TryReserve(request.TenantId, estimatedCost, out var reservation))
             {
                 _metrics.RecordFailure(request.TenantId, UsageMetricsService.FailureReasons.Budget);
                 throw new BudgetExceededException("本日の翻訳予算を超過しています。");
             }
 
-            try
+            using (reservation)
             {
-                var rewritten = await provider.RewriteAsync(request.Text, request.Tone, cancellationToken);
-                var latency = provider.Options.LatencyTargetMs;
-                _metrics.RecordSuccess(request.TenantId, provider.Options.Id, estimatedCost, latency, 1);
-                return new RewriteResult(rewritten, provider.Options.Id, estimatedCost, latency);
-            }
-            catch (Exception ex) when (ex is InvalidOperationException or TaskCanceledException)
-            {
-                continue;
+                try
+                {
+                    var rewritten = await provider.RewriteAsync(request.Text, request.Tone, cancellationToken);
+                    var latency = provider.Options.LatencyTargetMs;
+                    _metrics.RecordSuccess(request.TenantId, provider.Options.Id, estimatedCost, latency, 1);
+                    reservation.Commit();
+                    return new RewriteResult(rewritten, provider.Options.Id, estimatedCost, latency);
+                }
+                catch (Exception ex) when (ex is InvalidOperationException or TaskCanceledException)
+                {
+                    continue;
+                }
             }
         }
 
@@ -248,22 +256,26 @@ public class TranslationRouter
 
             allowedProviders++;
             var estimatedCost = request.Context.Length * provider.Options.CostPerCharUsd;
-            if (!_budget.TryReserve(request.TenantId, estimatedCost))
+            if (!_budget.TryReserve(request.TenantId, estimatedCost, out var reservation))
             {
                 _metrics.RecordFailure(request.TenantId, UsageMetricsService.FailureReasons.Budget);
                 throw new BudgetExceededException("本日の翻訳予算を超過しています。");
             }
 
-            try
+            using (reservation)
             {
-                var summary = await provider.SummarizeAsync(request.Context, cancellationToken);
-                var latency = provider.Options.LatencyTargetMs;
-                _metrics.RecordSuccess(request.TenantId, provider.Options.Id, estimatedCost, latency, 1);
-                return new SummarizeResult(summary, provider.Options.Id, estimatedCost, latency);
-            }
-            catch (Exception ex) when (ex is InvalidOperationException or TaskCanceledException)
-            {
-                continue;
+                try
+                {
+                    var summary = await provider.SummarizeAsync(request.Context, cancellationToken);
+                    var latency = provider.Options.LatencyTargetMs;
+                    _metrics.RecordSuccess(request.TenantId, provider.Options.Id, estimatedCost, latency, 1);
+                    reservation.Commit();
+                    return new SummarizeResult(summary, provider.Options.Id, estimatedCost, latency);
+                }
+                catch (Exception ex) when (ex is InvalidOperationException or TaskCanceledException)
+                {
+                    continue;
+                }
             }
         }
 
