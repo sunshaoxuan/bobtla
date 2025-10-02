@@ -965,7 +965,7 @@ public class TranslationPipelineTests
         var glossary = new GlossaryService();
         var cache = new TranslationCache(options);
         var rewrite = new RewriteService(router, throttle);
-        var reply = new ReplyService(rewrite, new NoopTeamsReplyClient(), tokenBroker, metrics, options);
+        var reply = new ReplyService(rewrite, router, new NoopTeamsReplyClient(), tokenBroker, metrics, options);
 
         var context = new ContextRetrievalService(new NullTeamsMessageClient(), new MemoryCache(new MemoryCacheOptions()), tokenBroker, options);
 
@@ -1002,7 +1002,7 @@ public class TranslationPipelineTests
         var cache = new TranslationCache(options);
         var throttle = new TranslationThrottle(options);
         var rewrite = new RewriteService(router, throttle);
-        var reply = new ReplyService(rewrite, options);
+        var reply = new ReplyService(rewrite, router, new NoopTeamsReplyClient(), tokenBroker, metrics, options);
         var context = contextOverride ?? new ContextRetrievalService(teamsClient ?? new NullTeamsMessageClient(), memoryCache ?? new MemoryCache(new MemoryCacheOptions()), tokenBroker, options);
         return new TranslationPipeline(router, glossary, new OfflineDraftStore(options), new LanguageDetector(), cache, throttle, context, rewrite, reply, options);
     }
@@ -1036,6 +1036,12 @@ public class TranslationPipelineTests
     {
         public Task<AccessToken> ExchangeOnBehalfOfAsync(string tenantId, string userId, CancellationToken cancellationToken)
             => Task.FromResult(new AccessToken("token", DateTimeOffset.UtcNow.AddMinutes(5), "api://audience"));
+    }
+
+    private sealed class NoopTeamsReplyClient : ITeamsReplyClient
+    {
+        public Task<TeamsReplyResponse> SendReplyAsync(TeamsReplyRequest request, CancellationToken cancellationToken)
+            => Task.FromResult(new TeamsReplyResponse("noop", DateTimeOffset.UtcNow, "skipped"));
     }
 
     private sealed class FakeTeamsMessageClient : ITeamsMessageClient

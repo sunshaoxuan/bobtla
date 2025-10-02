@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Net;
+using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Options;
@@ -14,6 +16,7 @@ namespace TlaPlugin.Services;
 public class ReplyService
 {
     private readonly RewriteService _rewriteService;
+    private readonly TranslationRouter _translationRouter;
     private readonly ITeamsReplyClient _teamsClient;
     private readonly ITokenBroker _tokenBroker;
     private readonly UsageMetricsService _metrics;
@@ -21,12 +24,14 @@ public class ReplyService
 
     public ReplyService(
         RewriteService rewriteService,
+        TranslationRouter translationRouter,
         ITeamsReplyClient teamsClient,
         ITokenBroker tokenBroker,
         UsageMetricsService metrics,
         IOptions<PluginOptions>? options = null)
     {
         _rewriteService = rewriteService;
+        _translationRouter = translationRouter;
         _teamsClient = teamsClient;
         _tokenBroker = tokenBroker;
         _metrics = metrics;
@@ -111,6 +116,29 @@ public class ReplyService
         var tone = request.LanguagePolicy?.Tone;
         var targetLanguage = request.LanguagePolicy?.TargetLang ?? request.Language ?? string.Empty;
 
+        var normalizedAdditionalLanguages = new List<string>();
+        if (request.AdditionalTargetLanguages is not null)
+        {
+            var deduplicated = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var language in request.AdditionalTargetLanguages)
+            {
+                if (string.IsNullOrWhiteSpace(language))
+                {
+                    continue;
+                }
+
+                if (language.Equals(targetLanguage, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (deduplicated.Add(language))
+                {
+                    normalizedAdditionalLanguages.Add(language);
+                }
+            }
+        }
+
         return new ReplyExecutionContext(
             request.ThreadId,
             request.TenantId,
@@ -120,7 +148,8 @@ public class ReplyService
             initialText,
             request.UiLocale,
             targetLanguage,
-            tone);
+            tone,
+            normalizedAdditionalLanguages);
     }
 
     private async Task<ReplyResult> PostAsync(ReplyExecutionContext context, string finalText, string? toneApplied, CancellationToken cancellationToken)
@@ -128,6 +157,9 @@ public class ReplyService
         var token = await _tokenBroker.ExchangeOnBehalfOfAsync(context.TenantId, context.UserId, cancellationToken).ConfigureAwait(false);
 
         var metadataTone = toneApplied ?? context.Tone ?? TranslationRequest.DefaultTone;
+
+        var additionalTranslations = await TranslateAdditionalLanguagesAsync(context, finalText, cancellationToken).ConfigureAwait(false);
+        var adaptiveCard = BuildAdaptiveCard(finalText, context.TargetLanguage, additionalTranslations);
 
         try
         {
@@ -138,7 +170,9 @@ public class ReplyService
                 finalText,
                 context.TargetLanguage,
                 metadataTone,
-                token.Value), cancellationToken).ConfigureAwait(false);
+                token.Value,
+                additionalTranslations,
+                adaptiveCard), cancellationToken).ConfigureAwait(false);
 
             return new ReplyResult(response.MessageId, response.Status, finalText, toneApplied)
             {
@@ -167,6 +201,82 @@ public class ReplyService
         }
     }
 
+    private async Task<IReadOnlyDictionary<string, string>> TranslateAdditionalLanguagesAsync(ReplyExecutionContext context, string finalText, CancellationToken cancellationToken)
+    {
+        if (context.AdditionalTargetLanguages.Count == 0)
+        {
+            return new Dictionary<string, string>();
+        }
+
+        var results = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var language in context.AdditionalTargetLanguages)
+        {
+            var translation = await _translationRouter.TranslateAsync(new TranslationRequest
+            {
+                Text = finalText,
+                SourceLanguage = context.TargetLanguage,
+                TargetLanguage = language,
+                TenantId = context.TenantId,
+                UserId = context.UserId,
+                ChannelId = context.ChannelId,
+                ThreadId = context.ThreadId,
+                Tone = context.Tone ?? TranslationRequest.DefaultTone,
+                UiLocale = context.UiLocale,
+                AdditionalTargetLanguages = new List<string>()
+            }, cancellationToken).ConfigureAwait(false);
+
+            results[language] = translation.TranslatedText;
+        }
+
+        return results;
+    }
+
+    private static JsonObject? BuildAdaptiveCard(string finalText, string primaryLanguage, IReadOnlyDictionary<string, string> additionalTranslations)
+    {
+        if (additionalTranslations.Count == 0)
+        {
+            return null;
+        }
+
+        var body = new JsonArray
+        {
+            new JsonObject
+            {
+                ["type"] = "TextBlock",
+                ["text"] = finalText,
+                ["wrap"] = true,
+                ["weight"] = "Bolder"
+            },
+            new JsonObject
+            {
+                ["type"] = "TextBlock",
+                ["text"] = string.Format(System.Globalization.CultureInfo.InvariantCulture, "Primary language: {0}", primaryLanguage),
+                ["wrap"] = true,
+                ["spacing"] = "None",
+                ["isSubtle"] = true
+            }
+        };
+
+        foreach (var kvp in additionalTranslations)
+        {
+            body.Add(new JsonObject
+            {
+                ["type"] = "TextBlock",
+                ["text"] = string.Format(System.Globalization.CultureInfo.InvariantCulture, "{0}: {1}", kvp.Key, kvp.Value),
+                ["wrap"] = true,
+                ["spacing"] = "Medium"
+            });
+        }
+
+        return new JsonObject
+        {
+            ["type"] = "AdaptiveCard",
+            ["version"] = "1.4",
+            ["body"] = body
+        };
+    }
+
     private sealed record ReplyExecutionContext(
         string ThreadId,
         string TenantId,
@@ -176,5 +286,6 @@ public class ReplyService
         string InitialText,
         string? UiLocale,
         string TargetLanguage,
-        string? Tone);
+        string? Tone,
+        IReadOnlyList<string> AdditionalTargetLanguages);
 }

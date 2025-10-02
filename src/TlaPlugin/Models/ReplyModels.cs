@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace TlaPlugin.Models;
 
 /// <summary>
@@ -28,6 +30,7 @@ public class ReplyRequest
         = null;
     public ReplyLanguagePolicy? LanguagePolicy { get; set; }
         = null;
+    public IList<string> AdditionalTargetLanguages { get; set; } = new List<string>();
 }
 
 /// <summary>
