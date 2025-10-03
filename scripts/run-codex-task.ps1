@@ -3,25 +3,18 @@ param([Parameter(Mandatory=$true)][string]$TaskId)
 switch ($TaskId) {
 
   "T-0001" {
-    # 示例：创建 hello 脚本 + workflow（你已经跑通）
+    # 只生成文件，不碰 .github/workflows/**
     New-Item -ItemType Directory -Force -Path "scripts" | Out-Null
     @'
-Write-Output "Hello from codex"
-'@ | Set-Content -Encoding UTF8 "scripts\say-hello.ps1"
-
-    New-Item -ItemType Directory -Force -Path ".github\workflows" | Out-Null
-    @'
-name: hello
-on: { workflow_dispatch: {} }
-jobs:
-  hello:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: say Hello
-        shell: pwsh
-        run: pwsh ./scripts/say-hello.ps1
-'@ | Set-Content -Encoding UTF8 ".github\workflows\hello.yml"
+  # PowerShell demo
+  Write-Output "Hello from codex"
+  '@ | Set-Content -Encoding UTF8 "scripts\say-hello.ps1"
+  
+    # 可选：加一份说明，方便在 PR 里看到改动
+    New-Item -ItemType Directory -Force -Path "docs" | Out-Null
+    @"# Hello demo
+  This file is created by the PM executor for task T-0001.
+  "@ | Set-Content -Encoding UTF8 "docs\hello-demo.md"
   }
 
   "T-0101" {
