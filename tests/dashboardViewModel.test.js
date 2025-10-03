@@ -20,10 +20,13 @@ test("groupStagesForTimeline marks active stage and progress", () => {
 test("buildStatusCards merges roadmap and status information", () => {
   const status = {
     currentStageId: "phase5",
-    overallCompletionPercent: 80,
-    frontend: { completionPercent: 80, dataPlaneReady: true, uiImplemented: true, integrationReady: true },
-    nextSteps: ["密钥映射"],
-    stages: [{ id: "phase1", name: "阶段 1", completed: true }]
+    overallCompletionPercent: 100,
+    frontend: { completionPercent: 100, dataPlaneReady: true, uiImplemented: true, integrationReady: true },
+    nextSteps: ["发布清单"],
+    stages: [
+      { id: "phase1", name: "阶段 1", completed: true },
+      { id: "phase5", name: "阶段 5", completed: true }
+    ]
   };
   const roadmap = {
     activeStageId: "phase5",
@@ -40,6 +43,11 @@ test("buildStatusCards merges roadmap and status information", () => {
   assert.equal(cards.activeStage.name, "阶段 5");
   assert.equal(cards.frontend.uiImplemented, true);
   assert.equal(cards.tests[0].id, "dashboard");
+  const phase5 = cards.timeline.find((stage) => stage.id === "phase5");
+  assert.ok(phase5?.completed);
+  assert.equal(phase5.progress, 100);
+  assert.deepEqual(cards.nextSteps, ["发布清单"]);
+  assert.equal(cards.overallPercent, 100);
 });
 
 test("formatLocaleOptions sorts locales alphabetically", () => {

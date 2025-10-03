@@ -1,4 +1,5 @@
 import { buildStatusCards, formatLocaleOptions } from "./viewModel.js";
+export { handleGlossaryUpload, renderGlossaryUploadFeedback, renderGlossaryEntries } from "./settingsTab.js";
 
 const FALLBACK_STATUS = {
   currentStageId: "phase5",
@@ -19,7 +20,7 @@ const FALLBACK_STATUS = {
     completionPercent: 80,
     dataPlaneReady: true,
     uiImplemented: true,
-    integrationReady: true
+    integrationReady: false
   }
 };
 

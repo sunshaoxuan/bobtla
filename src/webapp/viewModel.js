@@ -36,9 +36,30 @@ export function groupStagesForTimeline(stages, activeStageId) {
 export function buildStatusCards(status, roadmap) {
   const safeStatus = status ?? {};
   const safeRoadmap = roadmap ?? {};
-  const stages = safeRoadmap.stages ?? safeStatus.stages ?? [];
+  const normalizedStatusStages = normalizeStages(safeStatus.stages ?? []);
+  const statusCompletion = new Map(normalizedStatusStages.map((stage) => [stage.id, stage.completed]));
+  const roadmapStages = Array.isArray(safeRoadmap.stages) ? safeRoadmap.stages : [];
+  const useRoadmapStages = roadmapStages.length > 0;
+  const sourceStages = useRoadmapStages ? roadmapStages : normalizedStatusStages;
+  const mergedStages = sourceStages.map((stage, index) => {
+    const id = stage?.id ?? stage?.Id ?? normalizedStatusStages[index]?.id ?? "";
+    if (!id) {
+      return stage;
+    }
+
+    const completionOverride = statusCompletion.get(id);
+    if (typeof completionOverride === "undefined") {
+      return stage;
+    }
+
+    return {
+      ...stage,
+      completed: completionOverride,
+      Completed: completionOverride
+    };
+  });
   const activeStageId = safeStatus.currentStageId ?? safeRoadmap.activeStageId;
-  const timeline = groupStagesForTimeline(stages, activeStageId);
+  const timeline = groupStagesForTimeline(mergedStages, activeStageId);
   const completedCount = timeline.filter((stage) => stage.completed).length;
   const overallPercent = typeof safeStatus.overallCompletionPercent === "number"
     ? safeStatus.overallCompletionPercent
