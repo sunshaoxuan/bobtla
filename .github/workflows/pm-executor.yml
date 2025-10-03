@@ -67,20 +67,34 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          $br    = "${{ steps.prep.outputs.BR }}"
           $title = "[${{ steps.prep.outputs.TASK }}] automated"
           $body  = (Get-Content .pm/templates/pr.md -Raw).Replace('{{TASK}}','${{ steps.prep.outputs.TASK }}')
 
-          # 创建 PR（如果已存在就继续，不当成失败）
-          gh pr create --title $title --body $body --base main --head "${{ steps.prep.outputs.BR }}"
-          if ($LASTEXITCODE -ne 0) {
-            Write-Host "gh pr create failed (maybe PR already exists). Continuing..."
+          # 1) 没有差异就直接跳过（避免 “No commits between main and $br”）
+          git fetch origin --prune
+          $ahead = (& git rev-list --count "origin/main..$br")
+          if ([int]$ahead -eq 0) {
+            Write-Host "No commits between main and $br; skip PR."
+            exit 0
           }
 
-          # 尝试开启自动合并（未开启/检查未过也不当失败）
+          # 2) 创建 PR：失败也继续（例如已存在）
+          gh pr create --title $title --body $body --base main --head $br
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "gh pr create failed (maybe PR already exists). Continuing..."
+            $global:LASTEXITCODE = 0
+          }
+
+          # 3) 开启自动合并：失败也继续（未开启/检查未过）
           gh pr merge --auto --squash
           if ($LASTEXITCODE -ne 0) {
             Write-Host "Auto-merge not enabled or checks pending. Continuing..."
+            $global:LASTEXITCODE = 0
           }
+
+          # 4) 明确归零，避免上面命令的退出码“粘”住
+          exit 0
 
   update-state:
     needs: run-task
