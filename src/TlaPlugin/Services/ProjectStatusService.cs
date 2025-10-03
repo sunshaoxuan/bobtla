@@ -34,15 +34,18 @@ public class ProjectStatusService
     private readonly PluginOptions _options;
     private readonly UsageMetricsService _usageMetrics;
     private readonly DevelopmentRoadmapService _roadmapService;
+    private readonly IStageReadinessStore _stageReadinessStore;
 
     public ProjectStatusService(
         IOptions<PluginOptions> options,
         UsageMetricsService usageMetrics,
-        DevelopmentRoadmapService roadmapService)
+        DevelopmentRoadmapService roadmapService,
+        IStageReadinessStore stageReadinessStore)
     {
         _options = options?.Value ?? new PluginOptions();
         _usageMetrics = usageMetrics ?? throw new ArgumentNullException(nameof(usageMetrics));
         _roadmapService = roadmapService ?? throw new ArgumentNullException(nameof(roadmapService));
+        _stageReadinessStore = stageReadinessStore ?? throw new ArgumentNullException(nameof(stageReadinessStore));
     }
 
     /// <summary>
@@ -144,13 +147,23 @@ public class ProjectStatusService
 
     private bool HasRecentSmokeSuccess()
     {
+        var now = DateTimeOffset.UtcNow;
+        var persisted = _stageReadinessStore.ReadLastSuccess();
+        if (persisted.HasValue)
+        {
+            var timestamp = persisted.Value <= now ? persisted.Value : now;
+            if (now - timestamp <= SmokeSuccessWindow)
+            {
+                return true;
+            }
+        }
+
         var report = _usageMetrics.GetReport();
         if (report.Tenants.Count == 0)
         {
             return false;
         }
 
-        var now = DateTimeOffset.UtcNow;
         return report.Tenants.Any(snapshot =>
             snapshot.Translations > 0
             && now - snapshot.LastUpdated <= SmokeSuccessWindow);
