@@ -122,6 +122,7 @@ public class KeyVaultSecretResolverTests
             Security = new SecurityOptions
             {
                 KeyVaultUri = "https://contoso.vault.azure.net/",
+                UseHmacFallback = true,
                 SeedSecrets = new Dictionary<string, string> { ["custom-secret"] = "seed-value" }
             }
         });
@@ -130,5 +131,41 @@ public class KeyVaultSecretResolverTests
         var value = await resolver.GetSecretAsync("custom-secret", CancellationToken.None);
 
         Assert.Equal("seed-value", value);
+    }
+
+    [Fact]
+    public async Task ThrowsWhenHmacFallbackDisabled()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            Security = new SecurityOptions
+            {
+                KeyVaultUri = "https://contoso.vault.azure.net/",
+                UseHmacFallback = false,
+                SeedSecrets = new Dictionary<string, string> { ["custom-secret"] = "seed-value" }
+            }
+        });
+
+        var resolver = new KeyVaultSecretResolver(options);
+
+        await Assert.ThrowsAsync<SecretRetrievalException>(() => resolver.GetSecretAsync("custom-secret", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ThrowsWhenRequireVaultSecretsEnabled()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            Security = new SecurityOptions
+            {
+                KeyVaultUri = "https://contoso.vault.azure.net/",
+                RequireVaultSecrets = true,
+                SeedSecrets = new Dictionary<string, string> { ["custom-secret"] = "seed-value" }
+            }
+        });
+
+        var resolver = new KeyVaultSecretResolver(options);
+
+        await Assert.ThrowsAsync<SecretRetrievalException>(() => resolver.GetSecretAsync("custom-secret", CancellationToken.None));
     }
 }
