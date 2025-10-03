@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
@@ -38,6 +39,7 @@ public class MessageExtensionHandlerTests
             Text = "hello",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "sso-token",
             TargetLanguage = "ja",
             SourceLanguage = "en"
         });
@@ -78,6 +80,7 @@ public class MessageExtensionHandlerTests
             Text = "Hello team",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "sso-token",
             TargetLanguage = "ja"
         });
 
@@ -111,6 +114,7 @@ public class MessageExtensionHandlerTests
             Text = "hello",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "sso-token",
             TargetLanguage = "ja",
             SourceLanguage = "en",
             AdditionalTargetLanguages = new List<string> { "fr" }
@@ -147,6 +151,7 @@ public class MessageExtensionHandlerTests
             Text = new string('a', 200),
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "sso-token",
             TargetLanguage = "ja",
             SourceLanguage = "en"
         });
@@ -184,9 +189,10 @@ public class MessageExtensionHandlerTests
 
         var response = await handler.HandleTranslateAsync(new TranslationRequest
         {
-            Text = "GPU", 
+            Text = "GPU",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "sso-token",
             TargetLanguage = "ja",
             SourceLanguage = "en",
             ChannelId = "finance"
@@ -249,6 +255,7 @@ public class MessageExtensionHandlerTests
             Text = "GPU",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "sso-token",
             TargetLanguage = "ja",
             SourceLanguage = "en",
             ChannelId = "finance"
@@ -304,6 +311,7 @@ public class MessageExtensionHandlerTests
             Text = new string('a', 200),
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "sso-token",
             TargetLanguage = "ja",
             SourceLanguage = "en",
             UiLocale = "zh-CN"
@@ -339,6 +347,7 @@ public class MessageExtensionHandlerTests
             Text = "first",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "sso-token",
             TargetLanguage = "ja",
             SourceLanguage = "en"
         });
@@ -348,6 +357,7 @@ public class MessageExtensionHandlerTests
             Text = "second",
             TenantId = "contoso",
             UserId = "user",
+            UserAssertion = "sso-token",
             TargetLanguage = "ja",
             SourceLanguage = "en"
         });
@@ -381,6 +391,7 @@ public class MessageExtensionHandlerTests
             TenantId = "contoso",
             UserId = "user",
             ChannelId = "general",
+            UserAssertion = "sso-token",
             LanguagePolicy = new ReplyLanguagePolicy { TargetLang = "ja", Tone = ToneTemplateService.Business }
         });
 
@@ -412,6 +423,7 @@ public class MessageExtensionHandlerTests
             TenantId = "contoso",
             UserId = "user",
             ChannelId = "general",
+            UserAssertion = "sso-token",
             LanguagePolicy = new ReplyLanguagePolicy { TargetLang = "ja", Tone = ToneTemplateService.Business }
         });
 
@@ -421,6 +433,42 @@ public class MessageExtensionHandlerTests
         Assert.Equal("reply-001", response["messageId"]?.GetValue<string>());
         Assert.Equal("sent", response["status"]?.GetValue<string>());
         Assert.Equal(new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero).ToString("O"), response["postedAt"]?.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task HandleReplyAsyncReusesUserAssertionWhenPostingReply()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            Providers = new List<ModelProviderOptions>
+            {
+                new() { Id = "primary", Regions = new List<string>{"japan"}, Certifications = new List<string>{"iso"} }
+            },
+            Compliance = new CompliancePolicyOptions
+            {
+                RequiredRegionTags = new List<string> { "japan" },
+                RequiredCertifications = new List<string> { "iso" }
+            }
+        });
+
+        var tokenBroker = new CapturingTokenBroker();
+        var handler = BuildHandler(options, tokenBrokerOverride: tokenBroker);
+        var response = await handler.HandleReplyAsync(new ReplyRequest
+        {
+            ThreadId = "thread",
+            Text = "Team update",
+            EditedText = "调整后的内容",
+            TenantId = "contoso",
+            UserId = "user",
+            ChannelId = "general",
+            UserAssertion = "sso-token",
+            LanguagePolicy = new ReplyLanguagePolicy { TargetLang = "ja", Tone = ToneTemplateService.Business }
+        });
+
+        Assert.Equal("replyPosted", response["type"]?.GetValue<string>());
+        Assert.Equal("sso-token", tokenBroker.LastUserAssertion);
+        Assert.Equal("contoso", tokenBroker.LastTenantId);
+        Assert.Equal("user", tokenBroker.LastUserId);
     }
 
     [Fact]
@@ -451,6 +499,7 @@ public class MessageExtensionHandlerTests
             TenantId = "contoso",
             UserId = "user",
             ChannelId = "blocked",
+            UserAssertion = "sso-token",
             LanguagePolicy = new ReplyLanguagePolicy { TargetLang = "ja", Tone = ToneTemplateService.Business }
         });
 
@@ -459,7 +508,7 @@ public class MessageExtensionHandlerTests
         Assert.Equal("application/vnd.microsoft.card.adaptive", attachment["contentType"]!.GetValue<string>());
     }
 
-    private static MessageExtensionHandler BuildHandler(IOptions<PluginOptions> options, GlossaryService? glossaryOverride = null, ContextRetrievalService? contextOverride = null, ITeamsReplyClient? replyClientOverride = null)
+    private static MessageExtensionHandler BuildHandler(IOptions<PluginOptions> options, GlossaryService? glossaryOverride = null, ContextRetrievalService? contextOverride = null, ITeamsReplyClient? replyClientOverride = null, ITokenBroker? tokenBrokerOverride = null)
     {
         var glossary = glossaryOverride ?? new GlossaryService();
         if (glossaryOverride is null)
@@ -470,7 +519,7 @@ public class MessageExtensionHandlerTests
         var resolver = new KeyVaultSecretResolver(options);
         var localization = new LocalizationCatalogService();
         var metrics = new UsageMetricsService();
-        var tokenBroker = new TokenBroker(resolver, options);
+        var tokenBroker = tokenBrokerOverride ?? new TokenBroker(resolver, options);
         var router = new TranslationRouter(new ModelProviderFactory(options), compliance, new BudgetGuard(options.Value), new AuditLogger(), new ToneTemplateService(), tokenBroker, metrics, localization, options);
         var cache = new TranslationCache(options);
         var throttle = new TranslationThrottle(options);
@@ -480,6 +529,21 @@ public class MessageExtensionHandlerTests
         var context = contextOverride ?? new ContextRetrievalService(new NullTeamsMessageClient(), new MemoryCache(new MemoryCacheOptions()), tokenBroker, options);
         var pipeline = new TranslationPipeline(router, glossary, new OfflineDraftStore(options), new LanguageDetector(), cache, throttle, context, rewrite, reply, options);
         return new MessageExtensionHandler(pipeline, localization, options);
+    }
+
+    private sealed class CapturingTokenBroker : ITokenBroker
+    {
+        public string? LastTenantId { get; private set; }
+        public string? LastUserId { get; private set; }
+        public string? LastUserAssertion { get; private set; }
+
+        public Task<AccessToken> ExchangeOnBehalfOfAsync(string tenantId, string userId, string? userAssertion, CancellationToken cancellationToken)
+        {
+            LastTenantId = tenantId;
+            LastUserId = userId;
+            LastUserAssertion = userAssertion;
+            return Task.FromResult(new AccessToken("obo-token", DateTimeOffset.UtcNow.AddMinutes(5), "api://tla-plugin"));
+        }
     }
 
     private sealed class StubTeamsReplyClient : ITeamsReplyClient

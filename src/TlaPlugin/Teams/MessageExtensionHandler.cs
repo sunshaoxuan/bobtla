@@ -248,6 +248,8 @@ public class MessageExtensionHandler
                 LanguagePolicy = languagePolicy
             };
 
+            replyPayload.UserAssertion = request.UserAssertion;
+
             var replyTone = tone != TranslationRequest.DefaultTone ? tone : null;
             var result = await _pipeline.PostReplyAsync(replyPayload, rewrite.RewrittenText, replyTone, CancellationToken.None);
             return new JsonObject
