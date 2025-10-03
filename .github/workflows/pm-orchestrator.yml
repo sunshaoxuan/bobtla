@@ -1,16 +1,26 @@
 name: PM Orchestrator
 
 on:
-  workflow_dispatch: {}
-  schedule:
-    - cron: "0 * * * *"
-  pull_request:
-    types: [closed]
+  workflow_dispatch:
+    inputs:
+      force_task:
+        description: "Override task id (optional, e.g. T-0401)"
+        required: false
+        type: string
+  # 如需定时/合并触发再开启：
+  # pull_request:
+  #   types: [closed]
+  # schedule:
+  #   - cron: "0 * * * *"
 
 permissions:
   contents: write
   issues: write
   pull-requests: write
+
+concurrency:
+  group: pm-orchestrator-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   plan:
@@ -20,29 +30,40 @@ jobs:
         with:
           fetch-depth: 0
 
+      # 直接用 Python 作为 shell，避免 YAML 误判 "<<"
       - id: pick
+        name: Pick next task
+        shell: python
+        env:
+          FORCE_TASK: ${{ github.event.inputs.force_task }}
         run: |
-          python3 - <<'PY'
-          import json, yaml, pathlib
+          import os, json, yaml, pathlib, sys
           plan = yaml.safe_load(pathlib.Path(".pm/plan.yaml").read_text(encoding="utf-8"))
-          state_p = pathlib.Path(".pm/state.json")
-          state = json.loads(state_p.read_text(encoding="utf-8")) if state_p.exists() else {"completed":[]}
+          sp   = pathlib.Path(".pm/state.json")
+          state = json.loads(sp.read_text(encoding="utf-8")) if sp.exists() else {"completed":[]}
           done = set(state.get("completed", []))
-          cur  = state.get("current_task") or ""
+          cur  = (state.get("current_task") or "").strip()
+
           def ready():
               for t in plan["tasks"]:
                   deps = set(t.get("depends_on", []))
                   if t["id"] not in done and deps.issubset(done):
                       yield t["id"]
+
           nxt = cur if cur and cur not in done else next(ready(), "")
-          # 新语法：写入 GITHUB_OUTPUT
-          print(f"task={nxt}")
-          pathlib.Path("$GITHUB_OUTPUT").write_text(f"task={nxt}\n")
-          PY
+          force = (os.environ.get("FORCE_TASK") or "").strip()
+          task = force or nxt
+
+          # 写到 GITHUB_OUTPUT（新语法）
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
+              f.write(f"task={task}\n")
+
+          print(f"Picked task: {task}")
 
       - name: Dispatch executor
-        if: ${{ steps.pick.outputs.task != '' }} # 兼容：上面也写入了 GITHUB_OUTPUT，这里仍可引用
+        if: ${{ steps.pick.outputs.task != '' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          echo "Dispatching PM Task Executor with task_id=${{ steps.pick.outputs.task }}"
           gh workflow run "PM Task Executor" -f task_id=${{ steps.pick.outputs.task }}
