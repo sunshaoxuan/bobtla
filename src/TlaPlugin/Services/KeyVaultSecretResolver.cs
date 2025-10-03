@@ -44,7 +44,10 @@ public class KeyVaultSecretResolver
             return cached.Value;
         }
 
+        var security = _options.Security;
         var (vaultUri, shouldQueryVault) = ResolveVaultUri(tenantId);
+        var requireVaultSecrets = security.FailOnSeedFallback || security.RequireVaultSecrets;
+        var failOnSeedFallback = shouldQueryVault && (!security.UseHmacFallback || requireVaultSecrets);
         string? resolved = null;
         Exception? vaultError = null;
 
@@ -76,7 +79,13 @@ public class KeyVaultSecretResolver
 
         if (string.IsNullOrEmpty(resolved))
         {
-            if (!_options.Security.SeedSecrets.TryGetValue(secretName, out resolved) || string.IsNullOrEmpty(resolved))
+            if (failOnSeedFallback)
+            {
+                var failureReason = vaultError ?? new InvalidOperationException($"KeyVault 中不存在名为 {secretName} 的机密。");
+                throw new SecretRetrievalException(secretName, vaultUri, failureReason);
+            }
+
+            if (!security.SeedSecrets.TryGetValue(secretName, out resolved) || string.IsNullOrEmpty(resolved))
             {
                 if (shouldQueryVault)
                 {
@@ -87,9 +96,9 @@ public class KeyVaultSecretResolver
             }
         }
 
-        var ttl = _options.Security.SecretCacheTtl <= TimeSpan.Zero
+        var ttl = security.SecretCacheTtl <= TimeSpan.Zero
             ? TimeSpan.FromMinutes(1)
-            : _options.Security.SecretCacheTtl;
+            : security.SecretCacheTtl;
         var expiry = DateTimeOffset.UtcNow.Add(ttl);
         _cache[cacheKey] = new CachedSecret(resolved, expiry);
         return resolved;

@@ -158,6 +158,9 @@ static async Task<int> RunSecretCheckAsync(PluginOptions options, CancellationTo
     var resolver = new KeyVaultSecretResolver(Options.Create(options));
     var probes = BuildSecretProbes(options);
     var probeResults = new List<SecretProbeResult>();
+    var fallbackDisabled = !options.Security.UseHmacFallback
+        || options.Security.FailOnSeedFallback
+        || options.Security.RequireVaultSecrets;
 
     if (probes.Count == 0)
     {
@@ -186,7 +189,9 @@ static async Task<int> RunSecretCheckAsync(PluginOptions options, CancellationTo
         catch (SecretRetrievalException ex)
         {
             var vault = string.IsNullOrWhiteSpace(ex.VaultUri) ? options.Security.KeyVaultUri : ex.VaultUri;
-            var hint = "请确认托管身份或应用主体已在对应 Key Vault 中授予 get 权限，并且密钥名称拼写正确。";
+            var hint = fallbackDisabled
+                ? "Stage 默认禁止 SeedSecrets 回退，请立即检查 Key Vault 映射与访问策略是否已配置完整。"
+                : "请确认托管身份或应用主体已在对应 Key Vault 中授予 get 权限，并且密钥名称拼写正确。";
             failures.Add($"{FormatProbe(probe)} => 无法访问远程 Key Vault ({vault}): {ex.InnerException?.Message ?? ex.Message}. {hint}");
         }
         catch (Exception ex)

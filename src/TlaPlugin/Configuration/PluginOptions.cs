@@ -263,7 +263,20 @@ public class SecurityOptions
     {
         "https://graph.microsoft.com/.default"
     };
+    private bool _requireVaultSecrets;
+
     public bool UseHmacFallback { get; set; } = true;
+    public bool FailOnSeedFallback
+    {
+        get => _requireVaultSecrets;
+        set => _requireVaultSecrets = value;
+    }
+
+    public bool RequireVaultSecrets
+    {
+        get => _requireVaultSecrets;
+        set => _requireVaultSecrets = value;
+    }
     public TimeSpan AccessTokenLifetime { get; set; } = TimeSpan.FromMinutes(30);
     public TimeSpan SecretCacheTtl { get; set; } = TimeSpan.FromMinutes(10);
     public IDictionary<string, string> SeedSecrets { get; set; } = new Dictionary<string, string>
