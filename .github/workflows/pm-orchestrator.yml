@@ -33,6 +33,7 @@ jobs:
           print(f"::set-output name=task::{nxt}")
           PY
       - name: Dispatch executor
-        if: steps.pick.outputs.task != ''
-        env: { GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} }
+        if: ${{ steps.pick.outputs.task != '' }}
+        env: 
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
         run: gh workflow run "PM Task Executor" -f task_id='${{ steps.pick.outputs.task }}'
