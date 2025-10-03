@@ -1,39 +1,48 @@
 name: PM Orchestrator
+
 on:
   workflow_dispatch: {}
-  schedule: [{ cron: "0 * * * *" }]
+  schedule:
+    - cron: "0 * * * *"
   pull_request:
     types: [closed]
+
 permissions:
   contents: write
   issues: write
   pull-requests: write
+
 jobs:
   plan:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
+        with:
+          fetch-depth: 0
+
       - id: pick
         run: |
           python3 - <<'PY'
           import json, yaml, pathlib
-          plan=yaml.safe_load(pathlib.Path(".pm/plan.yaml").read_text())
-          state=pathlib.Path(".pm/state.json")
-          s=json.loads(state.read_text()) if state.exists() else {"completed":[]}
-          done=set(s.get("completed",[])); cur=s.get("current_task")
-          tasks={t["id"]:t for t in plan["tasks"]}
+          plan = yaml.safe_load(pathlib.Path(".pm/plan.yaml").read_text(encoding="utf-8"))
+          state_p = pathlib.Path(".pm/state.json")
+          state = json.loads(state_p.read_text(encoding="utf-8")) if state_p.exists() else {"completed":[]}
+          done = set(state.get("completed", []))
+          cur  = state.get("current_task") or ""
           def ready():
               for t in plan["tasks"]:
-                  deps=set(t.get("depends_on",[]))
+                  deps = set(t.get("depends_on", []))
                   if t["id"] not in done and deps.issubset(done):
                       yield t["id"]
           nxt = cur if cur and cur not in done else next(ready(), "")
+          # 新语法：写入 GITHUB_OUTPUT
           print(f"task={nxt}")
-          print(f"::set-output name=task::{nxt}")
+          pathlib.Path("$GITHUB_OUTPUT").write_text(f"task={nxt}\n")
           PY
+
       - name: Dispatch executor
-        if: ${{ steps.pick.outputs.task != '' }}
-        env: 
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
-        run: gh workflow run "PM Task Executor" -f task_id='${{ steps.pick.outputs.task }}'
+        if: ${{ steps.pick.outputs.task != '' }} # 兼容：上面也写入了 GITHUB_OUTPUT，这里仍可引用
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run "PM Task Executor" -f task_id=${{ steps.pick.outputs.task }}
