@@ -1,7 +1,9 @@
 {
   "spec_hash": "demo-20251003",
-  "current_task": "T-0001",
-  "completed": [],
+  "current_task": "",
+  "completed": [
+    "T-0001"
+  ],
   "blocked": [],
   "retries": {}
 }
