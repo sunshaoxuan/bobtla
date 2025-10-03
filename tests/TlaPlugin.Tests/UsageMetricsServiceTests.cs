@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using TlaPlugin.Services;
 using Xunit;
@@ -61,5 +62,18 @@ public class UsageMetricsServiceTests
         Assert.Equal(1, overallBudget.Count);
         var overallProvider = overall.Failures.Single(failure => failure.Reason == UsageMetricsService.FailureReasons.Provider);
         Assert.Equal(1, overallProvider.Count);
+    }
+
+    [Fact]
+    public void RecordSuccess_PersistsTimestamp()
+    {
+        var store = new InMemoryStageReadinessStore();
+        var service = new UsageMetricsService(store);
+
+        service.RecordSuccess("contoso", "openai", 0.1m, 100, 1);
+
+        var persisted = store.LastSuccess;
+        Assert.NotNull(persisted);
+        Assert.True(DateTimeOffset.UtcNow - persisted!.Value <= TimeSpan.FromSeconds(5));
     }
 }

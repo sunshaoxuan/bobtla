@@ -12,6 +12,17 @@ namespace TlaPlugin.Services;
 public class UsageMetricsService
 {
     private readonly ConcurrentDictionary<string, UsageAccumulator> _tenants = new();
+    private readonly IStageReadinessStore? _stageReadinessStore;
+
+    public UsageMetricsService()
+    {
+    }
+
+    public UsageMetricsService(IStageReadinessStore stageReadinessStore)
+        : this()
+    {
+        _stageReadinessStore = stageReadinessStore ?? throw new ArgumentNullException(nameof(stageReadinessStore));
+    }
 
     public static class FailureReasons
     {
@@ -37,13 +48,14 @@ public class UsageMetricsService
             throw new ArgumentOutOfRangeException(nameof(translationCount), "翻译计数必须为正。");
         }
 
+        var timestamp = DateTimeOffset.UtcNow;
         var accumulator = _tenants.GetOrAdd(tenantId, _ => new UsageAccumulator());
         lock (accumulator.Sync)
         {
             accumulator.Translations += translationCount;
             accumulator.TotalCost += costUsd;
             accumulator.TotalLatency += (long)latencyMs * translationCount;
-            accumulator.LastUpdated = DateTimeOffset.UtcNow;
+            accumulator.LastUpdated = timestamp;
 
             if (!accumulator.ModelBreakdown.TryGetValue(modelId, out var model))
             {
@@ -54,6 +66,8 @@ public class UsageMetricsService
             model.Translations += translationCount;
             model.TotalCost += costUsd;
         }
+
+        _stageReadinessStore?.WriteLastSuccess(timestamp);
     }
 
     public void RecordFailure(string tenantId, string reason)

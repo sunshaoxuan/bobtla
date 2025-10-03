@@ -129,6 +129,7 @@ builder.Services.AddSingleton<TranslationCache>();
 builder.Services.AddSingleton<TranslationThrottle>();
 builder.Services.AddSingleton<KeyVaultSecretResolver>();
 builder.Services.AddSingleton<ModelProviderFactory>();
+builder.Services.AddSingleton<IStageReadinessStore, FileStageReadinessStore>();
 builder.Services.AddSingleton<UsageMetricsService>();
 builder.Services.AddSingleton<LocalizationCatalogService>();
 builder.Services.AddSingleton<ContextRetrievalService>();
