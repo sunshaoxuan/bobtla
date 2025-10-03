@@ -113,6 +113,7 @@ static void PrintUsage()
     Console.WriteLine("  --language <code>       回帖语言，默认为 ja。");
     Console.WriteLine("  --tone <tone>           语气模板，默认为 polite。");
     Console.WriteLine("  --text <content>        待翻译并回帖的正文，默认为 'ステージ 5 連携テスト'。");
+    Console.WriteLine("  --assertion <jwt>       用户断言 (JWT)。HMAC 回退模式下可省略，脚本会生成模拟值。");
     Console.WriteLine("  --use-live-graph        启用真实 Graph 调用，默认使用内置模拟响应。");
     Console.WriteLine("  --use-live-model        启用真实模型 Provider，默认使用内置 Stub 模型。");
     Console.WriteLine();
@@ -407,6 +408,24 @@ static async Task<int> RunReplySmokeAsync(PluginOptions options, IReadOnlyDictio
     var language = GetValue(parameters, "language", "ja");
     var tone = GetValue(parameters, "tone", TranslationRequest.DefaultTone);
     var text = GetValue(parameters, "text", "ステージ 5 連携テスト");
+    var userAssertion = GetOptionalValue(parameters, "assertion");
+
+    if (string.IsNullOrWhiteSpace(userAssertion))
+    {
+        if (options.Security.UseHmacFallback)
+        {
+            userAssertion = BuildSimulatedUserAssertion(
+                tenantId,
+                userId,
+                options.Security.UserAssertionAudience);
+            Console.WriteLine("提示：未提供用户断言，已生成模拟 JWT 以驱动 HMAC 回退流程。");
+        }
+        else
+        {
+            Console.Error.WriteLine("真实 OBO 模式需要提供用户断言 (--assertion <jwt>)。");
+            return 13;
+        }
+    }
 
     if (!options.Security.UseHmacFallback)
     {
@@ -500,7 +519,8 @@ static async Task<int> RunReplySmokeAsync(PluginOptions options, IReadOnlyDictio
         ThreadId = threadId,
         Tone = tone,
         UiLocale = options.DefaultUiLocale,
-        AdditionalTargetLanguages = additionalTargets
+        AdditionalTargetLanguages = additionalTargets,
+        UserAssertion = userAssertion
     };
 
     TranslationResult translation;
@@ -555,6 +575,8 @@ static async Task<int> RunReplySmokeAsync(PluginOptions options, IReadOnlyDictio
         },
         AdditionalTargetLanguages = additionalTargets
     };
+
+    replyRequest.UserAssertion = userAssertion;
 
     ReplyResult replyResult;
     try
@@ -834,6 +856,35 @@ static string GetValue(IReadOnlyDictionary<string, string?> parameters, string k
 
 static string? GetOptionalValue(IReadOnlyDictionary<string, string?> parameters, string key)
     => parameters.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value) ? value : null;
+
+static string BuildSimulatedUserAssertion(string tenantId, string userId, string? audience)
+{
+    static string Base64UrlEncode(string value)
+        => Convert.ToBase64String(Encoding.UTF8.GetBytes(value))
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
+
+    var effectiveAudience = string.IsNullOrWhiteSpace(audience)
+        ? "api://tla-plugin"
+        : audience!;
+    var now = DateTimeOffset.UtcNow;
+    var header = Base64UrlEncode("{\"alg\":\"none\",\"typ\":\"JWT\"}");
+    var payload = new
+    {
+        aud = effectiveAudience,
+        tid = tenantId,
+        sub = userId,
+        upn = userId,
+        iss = "Stage5SmokeTests",
+        iat = now.ToUnixTimeSeconds(),
+        exp = now.AddMinutes(30).ToUnixTimeSeconds(),
+        ver = "1.0"
+    };
+    var payloadSegment = Base64UrlEncode(JsonSerializer.Serialize(payload));
+    var signature = Base64UrlEncode("stage5-smoke");
+    return $"{header}.{payloadSegment}.{signature}";
+}
 
 sealed class RecordingGraphHandler : DelegatingHandler
 {

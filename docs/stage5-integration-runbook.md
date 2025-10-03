@@ -57,6 +57,10 @@
 
    > 提示：`TokenBroker` 在默认配置下继续使用 HMAC 令牌便于单元测试。若要打通真实 Graph OBO，请在 `Plugin.Security` 中将 `UseHmacFallback` 设置为 `false`，填充所需的 `GraphScopes`（推荐 `https://graph.microsoft.com/.default` 加上必要的精细化权限），并按租户覆盖 `ClientId`/`ClientSecretName`。冒烟脚本会记录成功调用时的 Authorization 头部，并输出作用域检查结果，便于比对 AAD 返回的访问令牌。
 
+   `reply` 命令新增 `--assertion` 用于传入用户断言 (JWT)。在默认的 HMAC 回退模式下可以省略，脚本会生成带有 `aud/tid/sub` 字段的模拟 JWT 触发后续流程；若需要对比实际 OBO 行为，则必须提供真实的用户令牌。
+
+   **HMAC 回退（默认）** – 可直接运行以下命令，脚本会在控制台提示已生成模拟断言：
+
    ```bash
    dotnet run --project scripts/SmokeTests/Stage5SmokeTests -- reply \
      --tenant contoso.onmicrosoft.com \
@@ -68,9 +72,12 @@
      --text "Stage 5 手动联调验证"
    ```
 
-   **真实 Graph 调用** – 当 Stage 环境已具备可用的 AAD Token 与网络出口时，追加 `--use-live-graph`。脚本将读取 `Plugin.Security.GraphBaseUrl`/`GraphTimeout`/`GraphProxy` 配置实例化 `HttpClient`，并在失败时按 2 秒间隔重试最多三次：
+   若希望显式传入模拟值，可将脚本输出的断言保存后重复使用，例如 `--assertion $(cat ./artifacts/hmac-user.jwt)`。
+
+   **真实 Graph 调用** – 当 Stage 环境具备 AAD 访问令牌与网络出口时，需通过 `--assertion` 提供实际用户 JWT，并追加 `--use-live-graph` 触发真实 Graph 请求：
 
    ```bash
+   export USER_ASSERTION=$(az account get-access-token --resource api://tla-plugin --query accessToken -o tsv)
    dotnet run --project scripts/SmokeTests/Stage5SmokeTests -- reply \
      --tenant contoso.onmicrosoft.com \
      --user stage-user \
@@ -79,7 +86,8 @@
      --language ja \
      --tone business \
      --text "Stage 5 手动联调验证" \
-     --use-live-graph
+     --use-live-graph \
+     --assertion "$USER_ASSERTION"
    ```
 
    **真实模型 Provider** – 在成本预算可接受的场景下，可追加 `--use-live-model` 以跳过 Stub 模型并复用配置中的真实 Provider 列表。该模式会使用 `ModelProviderFactory.CreateProviders()` 解析 Key Vault API Key、按顺序触发多模型回退，并保留预算、审计与失败统计逻辑，用于验证密钥接入与容灾链路：
@@ -94,6 +102,33 @@
      --tone business \
      --text "Stage 5 手动联调验证" \
      --use-live-model
+   ```
+
+   成功运行后，控制台会打印一次 Graph 请求与指标快照，可用于变更记录留痕：
+
+   ```text
+   提示：未提供用户断言，已生成模拟 JWT 以驱动 HMAC 回退流程。
+   [TeamsReplyClient] 调用成功:
+     MessageId: smoke-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+     Status:    Created
+     Language:  ja
+   Graph 调用诊断:
+     Mode:        stub
+     CallCount:   1
+     LastPath:    /teams/.../messages
+     Authorization: Bearer eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0...
+     Body:
+   {...Graph 请求负载...}
+   使用指标摘要:
+   {
+     "overall": { "translations": 1, "failures": 0 },
+     "tenants": { "contoso.onmicrosoft.com": { "translations": 1 } }
+   }
+   审计记录样例:
+   {
+     "tenantId": "contoso.onmicrosoft.com",
+     "status": "Success"
+   }
    ```
 
    > 提示：启用真实模型时会按配置调用外部推理 API，请先确认 Key Vault 中的 `ApiKeySecretName` 已填充真实密钥，并评估当次调用可能产生的费用；如需同时验证 Graph，可同时追加 `--use-live-graph`，确保回帖链路、模型回退与审计记录均覆盖真实依赖。
