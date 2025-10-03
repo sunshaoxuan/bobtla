@@ -1,0 +1,16 @@
+version: 1
+spec_hash: "demo-20251003"   # 随便写一个，后面再严谨
+tasks:
+  - id: T-0001
+    title: "添加 CI 冒烟测试脚本"
+    depends_on: []
+    scope:
+      allow_paths: [".github/workflows/**", "scripts/**"]
+      max_files_changed: 10
+      max_lines_changed: 300
+    dod:
+      checks: ["build"]
+    prompt: |
+      在 scripts 目录创建 say-hello.ps1（输出 'Hello from codex'）。
+      在 .github/workflows 添加 hello.yml（手动触发后打印该输出）。
+      不修改业务代码。

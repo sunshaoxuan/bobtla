@@ -1,0 +1,9 @@
+merge_policy:
+  strategy: "squash"
+  required_checks: ["build"]
+safety:
+  diff_hard_limit:
+    files: 50
+    lines: 1000
+formatting:
+  only_touched_files: true
