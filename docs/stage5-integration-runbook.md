@@ -104,6 +104,23 @@
      --use-live-model
    ```
 
+   **远程 API 模式** – 若要直接验证已部署 Stage 服务的端到端行为，可追加 `--use-remote-api` 并通过 `--baseUrl` 指定目标地址（默认 `https://localhost:5001`）。脚本会把命令行中的租户、语种、断言等参数原样发送到远端 `/api/translate` 与 `/api/reply`，随后再访问 `/api/metrics` 与 `/api/audit` 校验服务端是否记录成功。示例命令：
+
+   ```bash
+   export USER_ASSERTION=$(az account get-access-token --resource api://tla-plugin --query accessToken -o tsv)
+   dotnet run --project scripts/SmokeTests/Stage5SmokeTests -- reply \
+     --tenant contoso.onmicrosoft.com \
+     --user stage-user \
+     --thread 19:stage-thread@thread.tacv2 \
+     --language ja \
+     --text "Stage 5 远程 API 冒烟" \
+     --use-remote-api \
+     --baseUrl https://stage5.contoso.net \
+     --assertion "$USER_ASSERTION"
+   ```
+
+   远程模式运行成功时会输出远端返回的翻译摘要、回帖结果、`/api/metrics` 与 `/api/audit` JSON 片段；如遇 401/403/429 等状态，脚本会打印 `21/22/23` 等退出码帮助定位鉴权或配额问题。与离线模式不同，此时不再显示本地 Graph 诊断信息，而是复用远程响应作为调试依据。
+
    成功运行后，控制台会打印一次 Graph 请求与指标快照，可用于变更记录留痕：
 
    ```text
