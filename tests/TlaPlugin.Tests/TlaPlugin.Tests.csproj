@@ -20,5 +20,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/TlaPlugin/TlaPlugin.csproj" />
+    <ProjectReference Include="../../scripts/SmokeTests/Stage5SmokeTests/Stage5SmokeTests.csproj" />
   </ItemGroup>
 </Project>

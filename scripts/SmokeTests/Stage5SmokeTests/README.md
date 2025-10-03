@@ -1,6 +1,6 @@
 # Stage5SmokeTests 自测指南
 
-本文档说明如何验证 `reply` 命令在默认离线模式与新增的 `--use-remote-api` 模式下均能正常运行，以便在修改脚本后快速自测。
+本文档说明如何验证 `reply` 命令在默认离线模式与远程 API 模式下均能正常运行。脚本会在 `Plugin.Security.UseHmacFallback=false` 或显式提供 `--baseUrl` 时自动切换到远程 API，可使用新增的 `--use-local-stub` 参数强制回退至本地 Stub。
 
 ## 前置准备
 
@@ -63,15 +63,17 @@ PY
      --thread smoke-thread \
      --language ja \
      --text "Stage 5 远程验证" \
-     --use-remote-api \
+     --baseUrl https://localhost:5001 \
      --assertion "$ASSERTION"
    ```
 
 预期输出：
 
-- `远程 API 模式已启用` 提示以及翻译、回帖响应摘要；
+- `远程 API 模式已启用` 提示以及翻译、回帖响应摘要；若同时加载 Stage 配置（`--override appsettings.Stage.json`），因 `UseHmacFallback=false` 会自动进入远程模式；
 - `/api/metrics` 与 `/api/audit` 的 JSON 片段，且包含当前租户的记录；
 - 若远程接口返回 401/403/429，会打印对应的退出码（21/22/23），便于快速定位权限或配额问题。
+
+如需在 Stage 配置下继续使用本地 Stub，可在命令末尾追加 `--use-local-stub`，脚本会提示已忽略自动远程条件。
 
 ## 常见问题排查
 
