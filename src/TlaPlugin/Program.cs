@@ -21,7 +21,11 @@ using TlaPlugin.Teams;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Configuration.AddJsonFile("appsettings.json", optional: true);
+builder.Configuration
+    .AddJsonFile("appsettings.json", optional: true)
+    .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true)
+    .AddJsonFile("appsettings.Local.json", optional: true)
+    .AddEnvironmentVariables();
 
 builder.Services.Configure<PluginOptions>(builder.Configuration.GetSection("Plugin"));
 
