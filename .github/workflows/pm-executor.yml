@@ -63,13 +63,24 @@ jobs:
           git push -u origin "${{ steps.prep.outputs.BR }}" --force-with-lease
 
       - name: Open PR and enable auto-merge
+        shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh pr create --title "[${{ steps.prep.outputs.TASK }}] automated" `
-            --body "$(Get-Content .pm/templates/pr.md -Raw).Replace('{{TASK}}','${{ steps.prep.outputs.TASK }}')" `
-            --base main --head "${{ steps.prep.outputs.BR }}" --label "codex,auto" || exit 0
-          gh pr merge --auto --squash || exit 0
+          $title = "[${{ steps.prep.outputs.TASK }}] automated"
+          $body  = (Get-Content .pm/templates/pr.md -Raw).Replace('{{TASK}}','${{ steps.prep.outputs.TASK }}')
+
+          # 创建 PR（如果已存在就继续，不当成失败）
+          gh pr create --title $title --body $body --base main --head "${{ steps.prep.outputs.BR }}"
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "gh pr create failed (maybe PR already exists). Continuing..."
+          }
+
+          # 尝试开启自动合并（未开启/检查未过也不当失败）
+          gh pr merge --auto --squash
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "Auto-merge not enabled or checks pending. Continuing..."
+          }
 
   update-state:
     needs: run-task
