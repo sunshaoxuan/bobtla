@@ -43,6 +43,23 @@ public class SmokeTestModeDeciderTests
     }
 
     [Fact]
+    public void Decide_IgnoresWhitespaceBaseUrl()
+    {
+        var options = new PluginOptions();
+        var parameters = new Dictionary<string, string?>
+        {
+            ["baseUrl"] = "  "
+        };
+
+        var decision = SmokeTestModeDecider.Decide(options, parameters);
+
+        Assert.False(decision.UseRemoteApi);
+        Assert.False(decision.IsAutomatic);
+        Assert.False(decision.AutoConditionMet);
+        Assert.False(decision.BaseUrlProvided);
+    }
+
+    [Fact]
     public void Decide_RespectsLocalStubOverride()
     {
         var options = new PluginOptions

@@ -413,8 +413,8 @@ static async Task<int> RunReplySmokeAsync(PluginOptions options, IReadOnlyDictio
 {
     var useLiveGraph = parameters.ContainsKey("use-live-graph");
     var useLiveModel = parameters.ContainsKey("use-live-model");
-    var localStubRequested = parameters.ContainsKey("use-local-stub");
     var remoteDecision = SmokeTestModeDecider.Decide(options, parameters);
+    var localStubRequested = remoteDecision.LocalStubRequested;
     var useRemoteApi = remoteDecision.UseRemoteApi;
     var tenantId = GetValue(parameters, "tenant", "contoso.onmicrosoft.com");
     var userId = GetValue(parameters, "user", "user1");

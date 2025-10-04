@@ -26,7 +26,8 @@ internal static class SmokeTestModeDecider
 
         var localStubRequested = parameters.ContainsKey("use-local-stub");
         var remoteRequested = parameters.ContainsKey("use-remote-api");
-        var baseUrlProvided = parameters.ContainsKey("baseUrl");
+        _ = parameters.TryGetValue("baseUrl", out var baseUrlRaw);
+        var baseUrlProvided = !string.IsNullOrWhiteSpace(baseUrlRaw);
         var autoConditionMet = baseUrlProvided || !options.Security.UseHmacFallback;
 
         if (localStubRequested)
