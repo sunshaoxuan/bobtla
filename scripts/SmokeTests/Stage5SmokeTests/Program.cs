@@ -6,6 +6,7 @@ using System.Net.Http;
 using System.Security.Authentication;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -233,7 +234,7 @@ internal static class Program
 
         var options = LoadOptions(appsettings, overrides);
         language ??= options.DefaultTargetLanguages.FirstOrDefault() ?? "ja";
-        text ??= "";
+        text ??= string.Empty;
 
         if (string.IsNullOrWhiteSpace(assertion))
         {
@@ -246,10 +247,66 @@ internal static class Program
             Console.WriteLine("提示：未提供用户断言，已生成模拟 JWT 以驱动 HMAC 回退流程。");
         }
 
+        var translationTone = tone ?? TranslationRequest.DefaultTone;
+        var additionalLanguages = options.DefaultTargetLanguages
+            .Where(l => !string.Equals(l, language, StringComparison.OrdinalIgnoreCase))
+            .Take(2)
+            .ToList();
+
+        var translationRequest = new TranslationRequest
+        {
+            Text = text,
+            TargetLanguage = language,
+            TenantId = tenantId!,
+            UserId = userId!,
+            ThreadId = threadId!,
+            ChannelId = channelId,
+            Tone = translationTone,
+            UiLocale = options.DefaultUiLocale,
+            UserAssertion = assertion,
+            AdditionalTargetLanguages = additionalLanguages
+        };
+
+        var decisionParameters = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        if (!string.IsNullOrWhiteSpace(baseUrl))
+        {
+            decisionParameters["baseUrl"] = baseUrl;
+        }
+
+        if (useRemoteApi)
+        {
+            decisionParameters["use-remote-api"] = null;
+        }
+
+        if (useLocalStub)
+        {
+            decisionParameters["use-local-stub"] = null;
+        }
+
+        var decision = SmokeTestModeDecider.Decide(options, decisionParameters);
+        if (decision.UseRemoteApi)
+        {
+            var resolvedBaseUrl = baseUrl;
+            if (string.IsNullOrWhiteSpace(resolvedBaseUrl))
+            {
+                throw new InvalidOperationException("未指定 --baseUrl，无法执行远程 API 冒烟。");
+            }
+
+            if (!string.IsNullOrWhiteSpace(decision.Reason))
+            {
+                Console.WriteLine($"[ModeDecider] {decision.Reason}");
+            }
+
+            return RemoteReplySmokeRunner
+                .RunAsync(resolvedBaseUrl, translationRequest, translationTone, additionalLanguages, CancellationToken.None)
+                .GetAwaiter()
+                .GetResult();
+        }
+
         var resolver = new KeyVaultSecretResolver(Options.Create(options));
         var tokenBroker = new TokenBroker(resolver, Options.Create(options), logger: NullLogger<TokenBroker>.Instance);
         var token = tokenBroker
-            .ExchangeOnBehalfOfAsync(tenantId, userId, assertion, cancellationToken: default)
+            .ExchangeOnBehalfOfAsync(tenantId!, userId!, assertion!, cancellationToken: default)
             .GetAwaiter()
             .GetResult();
 
@@ -258,12 +315,7 @@ internal static class Program
         Console.WriteLine($"  ExpiresOn:  {token.ExpiresOn:O}");
         Console.WriteLine($"  Value:      {token.Value.Substring(0, Math.Min(token.Value.Length, 64))}...");
 
-        var mode = useRemoteApi ? "remote" : useLiveGraph ? "graph" : useLiveModel ? "model" : "stub";
-        if (useLocalStub && mode == "remote")
-        {
-            mode = "stub";
-        }
-
+        var mode = useLiveGraph ? "graph" : useLiveModel ? "model" : "stub";
         Console.WriteLine();
         Console.WriteLine("[TeamsReplyClient] 调用诊断:");
         Console.WriteLine($"  Mode:        {mode}");
@@ -271,13 +323,8 @@ internal static class Program
         Console.WriteLine($"  ChannelId:   {channelId ?? "<none>"}");
         Console.WriteLine($"  TenantId:    {tenantId}");
         Console.WriteLine($"  Language:    {language}");
-        Console.WriteLine($"  Tone:        {tone ?? TranslationRequest.DefaultTone}");
-        Console.WriteLine($"  BaseUrl:     {baseUrl ?? "(local stub)"}");
-
-        var additionalLanguages = options.DefaultTargetLanguages
-            .Where(l => !string.Equals(l, language, StringComparison.OrdinalIgnoreCase))
-            .Take(2)
-            .ToArray();
+        Console.WriteLine($"  Tone:        {translationTone}");
+        Console.WriteLine($"  BaseUrl:     {(baseUrl ?? "(local stub)")}");
 
         var payload = new
         {
@@ -286,7 +333,7 @@ internal static class Program
             threadId,
             channelId,
             language,
-            tone,
+            tone = translationTone,
             text,
             additionalTranslations = additionalLanguages.Select(l => new
             {
@@ -304,7 +351,7 @@ internal static class Program
             overall = new { translations = 1, failures = 0 },
             tenants = new Dictionary<string, object>
             {
-                [tenantId] = new { translations = 1, lastLanguage = language }
+                [tenantId!] = new { translations = 1, lastLanguage = language }
             }
         };
 
@@ -317,7 +364,7 @@ internal static class Program
             tenantId,
             status = "Success",
             language,
-            toneApplied = tone ?? TranslationRequest.DefaultTone,
+            toneApplied = translationTone,
             baseUrl,
             mode
         };
