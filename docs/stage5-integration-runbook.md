@@ -120,6 +120,55 @@
 
    远程模式运行成功时会输出远端返回的翻译摘要、回帖结果、`/api/metrics` 与 `/api/audit` JSON 片段；如遇 401/403/429 等状态，脚本会打印 `21/22/23` 等退出码帮助定位鉴权或配额问题。与离线模式不同，此时不再显示本地 Graph 诊断信息，而是复用远程响应作为调试依据。若需要短暂关闭自动远程（例如在 Stage 配置下测试 Stub），可在命令末尾追加 `--use-local-stub`，脚本会提示已忽略自动触发条件。
 
+   ```text
+   [ModeDecider] 检测到 --use-remote-api 参数
+   [Remote] /api/translate 调用成功:
+     ModelId:   gpt4-stage
+     Language:  ja-JP
+     Latency:   123 ms
+     CostUsd:   0.1500
+     Response:  こちらは Stage5 の远程调用示例。
+
+   [Remote] /api/reply 调用成功:
+     MessageId: 19:stage-thread@thread.tacv2;messageid
+     Status:    Created
+     Language:  ja-JP
+     Tone:      business
+
+   使用指标摘要:
+   {
+     "overall": {
+       "translations": 42,
+       "totalCostUsd": 6.3,
+       "averageLatencyMs": 310,
+       "failures": []
+     },
+     "tenants": [
+       {
+         "tenantId": "contoso.onmicrosoft.com",
+         "translations": 5,
+         "totalCostUsd": 0.75,
+         "averageLatencyMs": 280,
+         "lastUpdated": "2024-03-12T02:11:34.123Z",
+         "models": [
+           { "modelId": "gpt4-stage", "translations": 5, "totalCostUsd": 0.75 }
+         ],
+         "failures": []
+       }
+     ]
+   }
+
+   审计记录样例:
+   [
+     {
+       "tenantId": "contoso.onmicrosoft.com",
+       "status": "Success",
+       "language": "ja-JP",
+       "toneApplied": "business"
+     }
+   ]
+   ```
+
    成功运行后，控制台会打印一次 Graph 请求与指标快照，可用于变更记录留痕：
 
    ```text
