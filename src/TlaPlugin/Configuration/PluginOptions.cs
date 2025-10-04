@@ -17,6 +17,7 @@ public class PluginOptions
     public TimeSpan DraftReplayPollingInterval { get; set; } = TimeSpan.FromSeconds(3);
     public int DraftReplayMaxAttempts { get; set; } = 3;
     public string OfflineDraftConnectionString { get; set; } = "Data Source=tla-offline.db";
+    public string? StageReadinessFilePath { get; set; }
     public IList<string> SupportedLanguages { get; set; } = new List<string>
     {
         "ja-JP",

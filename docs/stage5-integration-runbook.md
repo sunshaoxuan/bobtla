@@ -178,3 +178,15 @@
    5. 将脚本与命令记录在变更工单或自动化流水线中，便于回归与成本复核。
 
 通过上述步骤，可在 Stage 环境保证 Key Vault、Graph OBO 与观测指标三项能力全部打通，为后续正式上线提供可重复的联调手册。
+
+## 4. Stage 就绪文件持久化
+
+1. **指定共享卷路径** – 为确保阶段就绪状态在重启后仍然保留，可在配置中设置 `Plugin.StageReadinessFilePath` 指向挂载到容器或 App Service 的持久化卷，例如：
+
+   ```bash
+   export TLA_Plugin__StageReadinessFilePath="/mnt/stage/shared/stage-readiness.txt"
+   ```
+
+2. **验证写入权限** – `FileStageReadinessStore` 会在自定义路径下自动创建缺失的目录并写入 ISO-8601 时间戳。请确认部署身份对目标卷具有读写权限，且路径在多个实例间共享，以便 Stage Ready 状态在横向扩展时保持一致。
+
+3. **保留默认回退** – 如果未配置该项，插件会继续使用 `App_Data/stage-readiness.txt` 默认路径，可用于单实例或开发环境。Stage 环境推荐显式指向持久化卷，以避免 Pod/实例重启后阶段状态丢失。【F:src/TlaPlugin/Program.cs†L136-L147】【F:src/TlaPlugin/Services/FileStageReadinessStore.cs†L10-L69】
