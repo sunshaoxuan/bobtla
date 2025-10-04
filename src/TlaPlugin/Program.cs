@@ -145,7 +145,11 @@ builder.Services.AddSingleton<IStageReadinessStore>(provider =>
 
     return new FileStageReadinessStore();
 });
-builder.Services.AddSingleton<UsageMetricsService>();
+builder.Services.AddSingleton(provider =>
+{
+    var stageReadinessStore = provider.GetRequiredService<IStageReadinessStore>();
+    return new UsageMetricsService(stageReadinessStore);
+});
 builder.Services.AddSingleton<LocalizationCatalogService>();
 builder.Services.AddSingleton<ContextRetrievalService>();
 builder.Services.AddSingleton<TranslationRouter>();
