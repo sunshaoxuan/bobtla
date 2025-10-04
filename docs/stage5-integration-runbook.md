@@ -230,12 +230,23 @@
 
 ## 4. Stage 就绪文件持久化
 
-1. **指定共享卷路径** – 为确保阶段就绪状态在重启后仍然保留，可在配置中设置 `Plugin.StageReadinessFilePath` 指向挂载到容器或 App Service 的持久化卷，例如：
+1. **替换配置占位符** – 在 `src/TlaPlugin/appsettings.Stage.json` 中，`Plugin.StageReadinessFilePath` 默认使用 `<shared-path>/stage-readiness.txt` 占位符。将 `<shared-path>` 更新为实际挂载到容器或 App Service 的共享卷路径，例如 Azure Files：
 
    ```bash
-   export TLA_Plugin__StageReadinessFilePath="/mnt/stage/shared/stage-readiness.txt"
+   sed -i 's#<shared-path>#/mnt/stage/shared#g' src/TlaPlugin/appsettings.Stage.json
    ```
 
-2. **验证写入权限** – `FileStageReadinessStore` 会在自定义路径下自动创建缺失的目录并写入 ISO-8601 时间戳。请确认部署身份对目标卷具有读写权限，且路径在多个实例间共享，以便 Stage Ready 状态在横向扩展时保持一致。
+   若通过环境变量覆盖，可继续使用 `TLA_Plugin__StageReadinessFilePath`，但建议与配置文件保持一致，便于审计。
+
+2. **验证写入权限** – 使用部署身份在目标实例上执行一次读写探测，确认 `FileStageReadinessStore` 能够创建目录并写入 ISO-8601 时间戳：
+
+   ```bash
+   readiness_file="/mnt/stage/shared/stage-readiness.txt"
+   mkdir -p "$(dirname "$readiness_file")"
+   echo "$(date -Iseconds)" | tee "$readiness_file"
+   cat "$readiness_file"
+   ```
+
+   以上命令应成功输出时间戳，即表示路径可写且可读。请确保该卷在多个实例间共享，以便 Stage Ready 状态在横向扩展时保持一致。
 
 3. **保留默认回退** – 如果未配置该项，插件会继续使用 `App_Data/stage-readiness.txt` 默认路径，可用于单实例或开发环境。Stage 环境推荐显式指向持久化卷，以避免 Pod/实例重启后阶段状态丢失。【F:src/TlaPlugin/Program.cs†L136-L147】【F:src/TlaPlugin/Services/FileStageReadinessStore.cs†L10-L69】
