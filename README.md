@@ -41,6 +41,13 @@ TLA 参考实现基于 .NET 7 Minimal API 与 SQLite，支撑 Microsoft Teams �
 2. **Graph/OBO 冒烟**：依据 Graph 权限开通与 `reply` 命令流程完成 OBO 链路冒烟，验证 Teams 回帖所需的令牌与网络依赖。【F:docs/stage5-integration-runbook.md†L57-L140】
 3. **真实模型切换**：在成本可控场景下启用 `--use-live-model` 等模式切换到真实模型 Provider，并结合远程 API 校验发布前冒烟结果。【F:docs/stage5-integration-runbook.md†L141-L210】
 
+### Stage 部署 Checklist
+
+- [ ] **设置 Stage 环境变量**：在部署脚本或管道中执行 `export DOTNET_ENVIRONMENT=Stage`，确保所有进程加载 Stage 配置与 Key Vault 映射，呼应《阶段 5 联调 Runbook》1.4 关于 `appsettings.Stage.json` 覆盖与密钥注入的指引。[《阶段 5 联调 Runbook》阶段配置](docs/stage5-integration-runbook.md#L25-L38)
+- [ ] **加载 Stage 配置文件**：将 `appsettings.Stage.json` 与租户覆盖项一同发布，或通过 `--override appsettings.Stage.json` 注入，保持配置与密钥映射同步；详见 Runbook 中关于 Stage 模板与 `SeedSecrets` 注入的示例。[《阶段 5 联调 Runbook》Stage 模板示例](docs/stage5-integration-runbook.md#L25-L38)
+- [ ] **执行冒烟脚本**：运行 `dotnet run --project scripts/SmokeTests/Stage5SmokeTests -- reply --use-remote-api`，验证远程 API、Graph/OBO 与模型链路的联通性，对应 Runbook 的远程 API 冒烟步骤与诊断输出。[《阶段 5 联调 Runbook》远程 API 冒烟](docs/stage5-integration-runbook.md#L107-L138)
+- [ ] **复核诊断端点**：结合 `/api/status` 页面与 Runbook 第 3 章所述的 `/api/metrics`、`/api/audit` 观测，确认 Stage 环境暴露的指标、阶段进度与失败原因均可读取并留痕。[《阶段 5 联调 Runbook》指标与审计观测](docs/stage5-integration-runbook.md#L205-L229)
+
 ## 下一步规划
 1. **完善设置页组件并补全校验**：继续扩展 `src/webapp` 仪表盘的上传、搜索与校验体验，保障前端交互质量。【F:src/webapp/app.js†L89-L149】
 2. **串联实时数据与刷新机制**：将前端与 `/api/status`、`/api/roadmap`、`/api/localization/*` 建立轮询或订阅，确保阶段进度实时更新。【F:src/webapp/app.js†L1-L161】
