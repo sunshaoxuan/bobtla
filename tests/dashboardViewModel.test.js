@@ -23,6 +23,17 @@ test("buildStatusCards merges roadmap and status information", () => {
     overallCompletionPercent: 100,
     frontend: { completionPercent: 100, dataPlaneReady: true, uiImplemented: true, integrationReady: true },
     nextSteps: ["发布清单"],
+    stageFiveDiagnostics: {
+      stageReady: true,
+      hmacConfigured: true,
+      hmacStatus: "HMAC 回退已关闭",
+      graphScopesValid: true,
+      graphScopesStatus: "Graph 作用域已就绪",
+      smokeTestRecent: true,
+      smokeStatus: "冒烟 2 小时前通过",
+      failureReason: "",
+      lastSmokeSuccess: "2024-03-20T02:00:00Z"
+    },
     stages: [
       { id: "phase1", name: "阶段 1", completed: true },
       { id: "phase5", name: "阶段 5", completed: true }
@@ -48,6 +59,9 @@ test("buildStatusCards merges roadmap and status information", () => {
   assert.equal(phase5.progress, 100);
   assert.deepEqual(cards.nextSteps, ["发布清单"]);
   assert.equal(cards.overallPercent, 100);
+  assert.equal(cards.stageFiveDiagnostics.items.length, 3);
+  assert.equal(cards.stageFiveDiagnostics.failureReason, "");
+  assert.equal(cards.stageFiveDiagnostics.items[0].ready, true);
 });
 
 test("formatLocaleOptions sorts locales alphabetically", () => {

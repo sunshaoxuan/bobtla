@@ -13,6 +13,8 @@ test("renderSummary populates metrics blocks", (t) => {
       <div class="progress" data-frontend-progress><span>0%</span></div>
       <p data-frontend-text></p>
       <ul data-readiness></ul>
+      <ul data-stage-five-diagnostics></ul>
+      <p data-stage-five-failure hidden></p>
       <ul data-next-steps></ul>
       <h3 data-active-stage-title></h3>
       <p data-active-stage-body></p>
@@ -47,7 +49,15 @@ test("renderSummary populates metrics blocks", (t) => {
     overallPercent: 80,
     frontend: { completionPercent: 80, dataPlaneReady: true, uiImplemented: true, integrationReady: true },
     nextSteps: ["密钥映射 Runbook"],
-    activeStage: { name: "阶段 5", objective: "上线准备" }
+    activeStage: { name: "阶段 5", objective: "上线准备" },
+    stageFiveDiagnostics: {
+      failureReason: "最近一次冒烟 40 小时前，需要重新执行",
+      items: [
+        { id: "hmac", label: "HMAC 配置", ready: true, message: "HMAC 回退已关闭" },
+        { id: "graph", label: "Graph 作用域", ready: true, message: "Graph 作用域已就绪" },
+        { id: "smoke", label: "冒烟测试", ready: false, message: "最近一次冒烟 40 小时前，需要重新执行" }
+      ]
+    }
   };
 
   const metrics = normalizeMetrics({
@@ -74,6 +84,14 @@ test("renderSummary populates metrics blocks", (t) => {
   const failureItems = document.querySelectorAll("[data-failure-reasons] li");
   assert.equal(failureItems.length, 2);
   assert.equal(failureItems[0].querySelector(".metrics__reason").textContent, "RateLimitExceeded");
+
+  const diagnosticItems = document.querySelectorAll("[data-stage-five-diagnostics] li");
+  assert.equal(diagnosticItems.length, 3);
+  assert.ok(diagnosticItems[2].textContent.includes("冒烟测试"));
+
+  const diagnosticFailure = document.querySelector("[data-stage-five-failure]");
+  assert.equal(diagnosticFailure.hidden, false);
+  assert.ok(diagnosticFailure.textContent.includes("阻塞原因"));
 
   const updatedLabel = document.querySelector("[data-metrics-updated]").textContent;
   assert.match(updatedLabel, /^最近更新：/);

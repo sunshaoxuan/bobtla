@@ -229,6 +229,53 @@ body {
   margin-right: 8px;
 }
 
+.diagnostics {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.diagnostic {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.diagnostic--ready {
+  border: 1px solid rgba(118, 224, 160, 0.35);
+  color: #76e0a0;
+}
+
+.diagnostic--pending {
+  border: 1px solid rgba(255, 152, 67, 0.35);
+  color: #ffc861;
+}
+
+.diagnostic__label {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.diagnostic__message {
+  flex: 1;
+  text-align: right;
+}
+
+.diagnostic__failure {
+  margin: 0;
+  font-size: 13px;
+  color: #ff9a9a;
+  font-weight: 600;
+}
+
 .timeline {
   display: grid;
   gap: 16px;

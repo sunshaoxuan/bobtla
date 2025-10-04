@@ -16,6 +16,76 @@ function normalizeStages(stages) {
     }));
 }
 
+function parseDateOrNull(value) {
+  if (value instanceof Date) {
+    return Number.isNaN(value.valueOf()) ? null : value;
+  }
+
+  if (typeof value === "string" || typeof value === "number") {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.valueOf()) ? null : parsed;
+  }
+
+  return null;
+}
+
+function ensureMessage(text, ready, successFallback, failureFallback) {
+  if (typeof text === "string" && text.trim() !== "") {
+    return text;
+  }
+  return ready ? successFallback : failureFallback;
+}
+
+function normalizeStageFiveDiagnostics(raw) {
+  if (!raw || typeof raw !== "object") {
+    return {
+      stageReady: false,
+      failureReason: "",
+      smokeStatus: "",
+      lastSmokeSuccess: null,
+      items: []
+    };
+  }
+
+  const stageReady = Boolean(raw.stageReady ?? raw.StageReady);
+  const failureReason = raw.failureReason ?? raw.FailureReason ?? "";
+  const smokeStatus = raw.smokeStatus ?? raw.SmokeStatus ?? "";
+  const lastSmokeSuccess = parseDateOrNull(raw.lastSmokeSuccess ?? raw.LastSmokeSuccess);
+
+  const hmacReady = Boolean(raw.hmacConfigured ?? raw.HmacConfigured);
+  const graphReady = Boolean(raw.graphScopesValid ?? raw.GraphScopesValid);
+  const smokeReady = Boolean(raw.smokeTestRecent ?? raw.SmokeTestRecent);
+
+  const items = [
+    {
+      id: "hmac",
+      label: "HMAC 配置",
+      ready: hmacReady,
+      message: ensureMessage(raw.hmacStatus ?? raw.HmacStatus, hmacReady, "HMAC 回退已关闭", "仍依赖 HMAC 回退")
+    },
+    {
+      id: "graph",
+      label: "Graph 作用域",
+      ready: graphReady,
+      message: ensureMessage(raw.graphScopesStatus ?? raw.GraphScopesStatus, graphReady, "Graph 作用域已就绪", "Graph 作用域待补齐")
+    },
+    {
+      id: "smoke",
+      label: "冒烟测试",
+      ready: smokeReady,
+      message: ensureMessage(smokeStatus, smokeReady, "冒烟测试在可接受窗口内", "冒烟测试需重新执行")
+    }
+  ];
+
+  return {
+    stageReady,
+    failureReason: typeof failureReason === "string" ? failureReason : "",
+    smokeStatus,
+    lastSmokeSuccess,
+    items
+  };
+}
+
 export function groupStagesForTimeline(stages, activeStageId) {
   const normalized = normalizeStages(stages);
   return normalized.map((stage, index) => {
@@ -47,6 +117,7 @@ export function buildStatusCards(status, roadmap) {
       : Math.round((completedCount / timeline.length) * 100);
   const frontend = safeStatus.frontend ?? {};
   const activeStage = timeline.find((stage) => stage.isActive) ?? timeline.find((stage) => !stage.completed) ?? timeline[timeline.length - 1] ?? null;
+  const stageFiveDiagnostics = normalizeStageFiveDiagnostics(safeStatus.stageFiveDiagnostics ?? safeStatus.StageFiveDiagnostics);
 
   return {
     timeline,
@@ -59,7 +130,8 @@ export function buildStatusCards(status, roadmap) {
       uiImplemented: Boolean(frontend.uiImplemented),
       integrationReady: Boolean(frontend.integrationReady)
     },
-    tests: Array.isArray(safeRoadmap.tests) ? safeRoadmap.tests : []
+    tests: Array.isArray(safeRoadmap.tests) ? safeRoadmap.tests : [],
+    stageFiveDiagnostics
   };
 }
 
