@@ -22,6 +22,17 @@
 
 3. **配置访问策略或托管身份** – 为运行 Stage 服务的托管身份或应用注册授予目标 Key Vault 的 `get`/`list` Secret 权限。可通过 Azure Portal、`az keyvault set-policy` 或 Terraform 完成，确保 `Stage5SmokeTests` 的 `secrets` 命令能够直接读取远程机密。未授予权限时脚本会输出「无法访问远程 Key Vault」的提示，请根据错误信息补齐访问策略。
 
+### Stage 环境变量配置
+
+在加载 Stage 覆盖文件前，先让应用以 Stage 环境启动，确保 `appsettings.Stage.json` 中的 `UseHmacFallback=false` 等安全覆盖生效。可在本地或部署脚本中执行：
+
+```bash
+export DOTNET_ENVIRONMENT=Stage
+dotnet run --project src/TlaPlugin --configuration Release
+```
+
+若通过部署管道运行，也可在发布命令追加 `--environment Stage`，或设置 `ASPNETCORE_ENVIRONMENT=Stage` 等等效变量。若未显式设置这些环境变量，.NET 会继续读取基础 `appsettings.json`，默认的 `UseHmacFallback=true` 会保持启用。
+
 4. **将 Key Vault 引用映射进配置** – 在 Stage 配置中引用 `src/TlaPlugin/appsettings.Stage.json` 模板，按租户替换其中的 `KeyVaultUri`、`ClientId`、`ClientSecretName` 占位符，并确认 `GraphScopes` 使用 `https://graph.microsoft.com/.default` 或 `https://graph.microsoft.com/<Permission>` 的资源限定格式，且 `UseHmacFallback=false` 已覆盖 OBO 场景。作用域值需与 Azure AD 管理员已授权的范围一致，否则 OBO 将返回 `invalid_scope`。部署命令或冒烟脚本可通过 `--override appsettings.Stage.json` 注入该文件。若不同租户使用独立 Vault，可在 `Plugin.Security.TenantOverrides["<tenant>"].KeyVaultUri` 指向各自的 Key Vault。对真实 Key Vault，可使用 [Azure App Service Key Vault 引用](https://learn.microsoft.com/azure/app-service/app-service-key-vault-references) 或下方示例直接注入机密值：
 
    ```bash
