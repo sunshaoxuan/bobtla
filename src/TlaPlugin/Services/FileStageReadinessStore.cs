@@ -21,6 +21,11 @@ public class FileStageReadinessStore : IStageReadinessStore
     {
     }
 
+    public FileStageReadinessStore(ILogger<FileStageReadinessStore> logger)
+        : this(DefaultFilePath, logger)
+    {
+    }
+
     public FileStageReadinessStore(string filePath, ILogger<FileStageReadinessStore>? logger = null)
     {
         if (string.IsNullOrWhiteSpace(filePath))

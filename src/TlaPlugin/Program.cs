@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System;
 using System.Net;
@@ -137,13 +138,14 @@ builder.Services.AddSingleton<IStageReadinessStore>(provider =>
 {
     var options = provider.GetService<IOptions<PluginOptions>>();
     var configuredPath = options?.Value?.StageReadinessFilePath;
+    var logger = provider.GetRequiredService<ILogger<FileStageReadinessStore>>();
 
     if (!string.IsNullOrWhiteSpace(configuredPath))
     {
-        return new FileStageReadinessStore(configuredPath!);
+        return new FileStageReadinessStore(configuredPath!, logger);
     }
 
-    return new FileStageReadinessStore();
+    return new FileStageReadinessStore(logger);
 });
 builder.Services.AddSingleton(provider =>
 {

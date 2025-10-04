@@ -1,5 +1,7 @@
 using System;
+using System.IO;
 using System.Linq;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TlaPlugin.Configuration;
 using TlaPlugin.Services;
@@ -113,5 +115,37 @@ public class ProjectStatusServiceTests
         Assert.True(snapshot.StageFiveDiagnostics.SmokeTestRecent);
         Assert.True(snapshot.StageFiveDiagnostics.StageReady);
         Assert.Equal(store.LastSuccess, snapshot.StageFiveDiagnostics.LastSmokeSuccess);
+    }
+
+    [Fact]
+    public void RecordSuccess_WhenPersistenceWriteFails_LogsWarning()
+    {
+        var tempDirectory = Path.Combine(Path.GetTempPath(), "tla-plugin-tests", Guid.NewGuid().ToString());
+        Directory.CreateDirectory(tempDirectory);
+        var filePath = Path.Combine(tempDirectory, "locked.txt");
+        File.WriteAllText(filePath, string.Empty);
+
+        try
+        {
+            using var stream = new FileStream(filePath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+
+            var logger = new TestLogger<FileStageReadinessStore>();
+            var store = new FileStageReadinessStore(filePath, logger);
+            var metrics = new UsageMetricsService(store);
+
+            metrics.RecordSuccess("contoso", "model-a", 0.42m, 200, 1);
+
+            var entry = Assert.Single(logger.Entries);
+            Assert.Equal(LogLevel.Warning, entry.Level);
+            Assert.NotNull(entry.Exception);
+            Assert.Contains(filePath, entry.Message);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDirectory))
+            {
+                Directory.Delete(tempDirectory, recursive: true);
+            }
+        }
     }
 }
