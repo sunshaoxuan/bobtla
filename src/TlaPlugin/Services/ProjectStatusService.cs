@@ -54,23 +54,24 @@ public class ProjectStatusService
     public ProjectStatusSnapshot GetSnapshot()
     {
         var roadmap = _roadmapService.GetRoadmap();
-        var stageFiveCompleted = IsStageFiveCompleted(_options);
+        var diagnostics = EvaluateStageFiveDiagnostics(_options);
+        var stageFiveCompleted = diagnostics.StageReady;
         var stages = BuildStages(roadmap, stageFiveCompleted);
         var current = stages.FirstOrDefault(s => !s.Completed) ?? stages.Last();
         var overallPercent = CalculateOverallPercent(stages);
-        var frontend = BuildFrontendProgress(stages, stageFiveCompleted);
+        var frontend = BuildFrontendProgress(stages, diagnostics);
 
-        return new ProjectStatusSnapshot(current.Id, stages, NextSteps, overallPercent, frontend);
+        return new ProjectStatusSnapshot(current.Id, stages, NextSteps, overallPercent, frontend, diagnostics);
     }
 
-    private static FrontendProgress BuildFrontendProgress(IReadOnlyList<StageStatus> stages, bool stageFiveCompleted)
+    private static FrontendProgress BuildFrontendProgress(IReadOnlyList<StageStatus> stages, StageFiveDiagnostics diagnostics)
     {
         var percent = CalculateOverallPercent(stages);
         return new FrontendProgress(
             CompletionPercent: percent,
             DataPlaneReady: true,
             UiImplemented: true,
-            IntegrationReady: stageFiveCompleted);
+            IntegrationReady: diagnostics.StageReady);
     }
 
     private static int CalculateOverallPercent(IReadOnlyList<StageStatus> stages)
@@ -117,18 +118,7 @@ public class ProjectStatusService
 
     private bool IsStageFiveCompleted(PluginOptions options)
     {
-        var security = options.Security ?? new SecurityOptions();
-        if (security.UseHmacFallback)
-        {
-            return false;
-        }
-
-        if (!HasValidGraphScopes(security.GraphScopes))
-        {
-            return false;
-        }
-
-        return HasRecentSmokeSuccess();
+        return EvaluateStageFiveDiagnostics(options).StageReady;
     }
 
     private static bool HasValidGraphScopes(IList<string> scopes)
@@ -145,27 +135,138 @@ public class ProjectStatusService
             && scope.Length > Prefix.Length);
     }
 
-    private bool HasRecentSmokeSuccess()
+    private StageFiveDiagnostics EvaluateStageFiveDiagnostics(PluginOptions options)
+    {
+        var security = options.Security ?? new SecurityOptions();
+        var hmacConfigured = !security.UseHmacFallback;
+        var graphScopesValid = HasValidGraphScopes(security.GraphScopes);
+        var smoke = CalculateSmokeDiagnostics();
+
+        var stageReady = hmacConfigured && graphScopesValid && smoke.RecentSuccess;
+        var failureReason = stageReady ? null : DetermineFailureReason(hmacConfigured, graphScopesValid, smoke);
+
+        var hmacStatus = hmacConfigured
+            ? "已禁用 HMAC 回退，OBO 令牌链路就绪"
+            : "仍启用了 HMAC 回退，需要切换到 AAD/OBO";
+
+        var validScopes = security.GraphScopes?.Count(scope => !string.IsNullOrWhiteSpace(scope)) ?? 0;
+        var graphStatus = graphScopesValid
+            ? $"已配置 {validScopes} 项 Graph 作用域"
+            : "Graph 作用域缺失或格式不符合 https://graph.microsoft.com/ 前缀";
+
+        var smokeStatus = smoke.Message;
+
+        return new StageFiveDiagnostics(
+            stageReady,
+            hmacConfigured,
+            hmacStatus,
+            graphScopesValid,
+            graphStatus,
+            smoke.RecentSuccess,
+            smokeStatus,
+            smoke.LastSuccess,
+            failureReason);
+    }
+
+    private SmokeTestDiagnostics CalculateSmokeDiagnostics()
     {
         var now = DateTimeOffset.UtcNow;
-        var persisted = _stageReadinessStore.ReadLastSuccess();
-        if (persisted.HasValue)
+
+        DateTimeOffset? persisted = _stageReadinessStore.ReadLastSuccess();
+        if (persisted.HasValue && persisted.Value > now)
         {
-            var timestamp = persisted.Value <= now ? persisted.Value : now;
-            if (now - timestamp <= SmokeSuccessWindow)
-            {
-                return true;
-            }
+            persisted = now;
         }
 
         var report = _usageMetrics.GetReport();
-        if (report.Tenants.Count == 0)
+        DateTimeOffset? metricsTimestamp = null;
+        foreach (var snapshot in report.Tenants)
         {
-            return false;
+            if (snapshot.Translations <= 0)
+            {
+                continue;
+            }
+
+            var candidate = snapshot.LastUpdated <= now ? snapshot.LastUpdated : now;
+            if (!metricsTimestamp.HasValue || candidate > metricsTimestamp.Value)
+            {
+                metricsTimestamp = candidate;
+            }
         }
 
-        return report.Tenants.Any(snapshot =>
-            snapshot.Translations > 0
-            && now - snapshot.LastUpdated <= SmokeSuccessWindow);
+        var lastSuccess = persisted;
+        if (metricsTimestamp.HasValue && (!lastSuccess.HasValue || metricsTimestamp.Value > lastSuccess.Value))
+        {
+            lastSuccess = metricsTimestamp.Value;
+        }
+
+        var recent = lastSuccess.HasValue && now - lastSuccess.Value <= SmokeSuccessWindow;
+
+        string message;
+        if (recent && lastSuccess.HasValue)
+        {
+            message = $"冒烟 {DescribeDuration(now - lastSuccess.Value)} 前通过";
+        }
+        else if (lastSuccess.HasValue)
+        {
+            message = $"最近一次冒烟 {DescribeDuration(now - lastSuccess.Value)} 前，需要重新执行";
+        }
+        else if (report.Tenants.Count == 0)
+        {
+            message = "暂无租户调用记录";
+        }
+        else
+        {
+            message = "尚未记录冒烟成功";
+        }
+
+        return new SmokeTestDiagnostics(recent, message, lastSuccess);
     }
+
+    private static string? DetermineFailureReason(bool hmacConfigured, bool graphScopesValid, SmokeTestDiagnostics smoke)
+    {
+        if (!hmacConfigured)
+        {
+            return "HMAC 回退仍在生效";
+        }
+
+        if (!graphScopesValid)
+        {
+            return "Graph 作用域配置不完整";
+        }
+
+        if (!smoke.RecentSuccess)
+        {
+            return smoke.Message;
+        }
+
+        return null;
+    }
+
+    private static string DescribeDuration(TimeSpan duration)
+    {
+        if (duration < TimeSpan.Zero)
+        {
+            duration = TimeSpan.Zero;
+        }
+
+        if (duration.TotalMinutes < 1)
+        {
+            return "少于 1 分钟";
+        }
+
+        if (duration.TotalHours < 1)
+        {
+            return $"{Math.Round(duration.TotalMinutes)} 分钟";
+        }
+
+        if (duration.TotalDays < 1)
+        {
+            return $"{Math.Round(duration.TotalHours)} 小时";
+        }
+
+        return $"{Math.Round(duration.TotalDays)} 天";
+    }
+
+    private readonly record struct SmokeTestDiagnostics(bool RecentSuccess, string Message, DateTimeOffset? LastSuccess);
 }

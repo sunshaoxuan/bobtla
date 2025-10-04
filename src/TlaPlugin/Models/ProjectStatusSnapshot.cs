@@ -1,3 +1,5 @@
+using System;
+
 namespace TlaPlugin.Models;
 
 /// <summary>
@@ -8,7 +10,8 @@ public record ProjectStatusSnapshot(
     IReadOnlyList<StageStatus> Stages,
     IReadOnlyList<string> NextSteps,
     int OverallCompletionPercent,
-    FrontendProgress Frontend);
+    FrontendProgress Frontend,
+    StageFiveDiagnostics StageFiveDiagnostics);
 
 /// <summary>
 /// 单个开发阶段的状态信息。
@@ -27,3 +30,17 @@ public record FrontendProgress(
     bool DataPlaneReady,
     bool UiImplemented,
     bool IntegrationReady);
+
+/// <summary>
+/// 阶段五（上线准备）的诊断明细，帮助定位阻塞原因。
+/// </summary>
+public record StageFiveDiagnostics(
+    bool StageReady,
+    bool HmacConfigured,
+    string HmacStatus,
+    bool GraphScopesValid,
+    string GraphScopesStatus,
+    bool SmokeTestRecent,
+    string SmokeStatus,
+    DateTimeOffset? LastSmokeSuccess,
+    string? FailureReason);

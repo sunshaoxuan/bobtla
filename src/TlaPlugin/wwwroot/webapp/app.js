@@ -15,11 +15,22 @@ const FALLBACK_STATUS = {
     { id: "phase4", name: "阶段 4：前端体验", completed: true },
     { id: "phase5", name: "阶段 5：上线准备", completed: false }
   ],
+  stageFiveDiagnostics: {
+    stageReady: false,
+    hmacConfigured: false,
+    hmacStatus: "仍启用了 HMAC 回退，需要切换到 AAD/OBO",
+    graphScopesValid: false,
+    graphScopesStatus: "Graph 作用域缺失或格式不正确",
+    smokeTestRecent: false,
+    smokeStatus: "尚未记录冒烟成功",
+    lastSmokeSuccess: null,
+    failureReason: "冒烟链路尚未通过"
+  },
   frontend: {
     completionPercent: 80,
     dataPlaneReady: true,
     uiImplemented: true,
-    integrationReady: true
+    integrationReady: false
   }
 };
 
@@ -445,6 +456,44 @@ export function renderSummary(cards, metricsInput = latestMetrics) {
       li.textContent = `${item.label}: ${item.ready ? "已就绪" : "待完成"}`;
       readinessList.appendChild(li);
     });
+  }
+
+  const diagnosticsData = cardData.stageFiveDiagnostics ?? {};
+  const diagnosticsList = document.querySelector("[data-stage-five-diagnostics]");
+  if (diagnosticsList) {
+    diagnosticsList.innerHTML = "";
+    const diagItems = Array.isArray(diagnosticsData.items) ? diagnosticsData.items : [];
+    if (diagItems.length === 0) {
+      const empty = document.createElement("li");
+      empty.className = "diagnostic diagnostic--empty";
+      empty.textContent = "暂无诊断信息";
+      diagnosticsList.appendChild(empty);
+    } else {
+      diagItems.forEach((item) => {
+        const li = document.createElement("li");
+        li.className = `diagnostic ${item.ready ? "diagnostic--ready" : "diagnostic--pending"}`;
+        const label = document.createElement("span");
+        label.className = "diagnostic__label";
+        label.textContent = item.label ?? "";
+        const message = document.createElement("span");
+        message.className = "diagnostic__message";
+        message.textContent = item.message ?? "";
+        li.append(label, message);
+        diagnosticsList.appendChild(li);
+      });
+    }
+  }
+
+  const diagnosticsFailure = document.querySelector("[data-stage-five-failure]");
+  if (diagnosticsFailure) {
+    const failureText = typeof diagnosticsData.failureReason === "string" ? diagnosticsData.failureReason : "";
+    if (failureText) {
+      diagnosticsFailure.textContent = `阻塞原因：${failureText}`;
+      diagnosticsFailure.hidden = false;
+    } else {
+      diagnosticsFailure.textContent = "";
+      diagnosticsFailure.hidden = true;
+    }
   }
 
   const nextSteps = document.querySelector("[data-next-steps]");
