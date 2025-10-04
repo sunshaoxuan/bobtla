@@ -120,8 +120,8 @@ static void PrintUsage()
     Console.WriteLine("  --assertion <jwt>       用户断言 (JWT)。HMAC 回退模式下可省略，脚本会生成模拟值。");
     Console.WriteLine("  --use-live-graph        启用真实 Graph 调用，默认使用内置模拟响应。");
     Console.WriteLine("  --use-live-model        启用真实模型 Provider，默认使用内置 Stub 模型。");
-    Console.WriteLine("  --use-remote-api        强制访问 Stage 部署的 API；当 UseHmacFallback=false 或指定 --baseUrl 时会自动启用。");
-    Console.WriteLine("  --use-local-stub        即使满足自动触发条件，也继续使用本地 Stub 管道。");
+    Console.WriteLine("  --use-remote-api        强制访问 Stage 部署的 API；当 UseHmacFallback=false 或提供 --baseUrl 时会自动触发。");
+    Console.WriteLine("  --use-local-stub        在自动远程模式下显式回退到本地 Stub 管道。");
     Console.WriteLine("  --baseUrl <url>         远程模式下指定 Stage 服务根地址，默认 https://localhost:5001。提供该参数将自动启用远程模式。");
     Console.WriteLine();
     Console.WriteLine("metrics 命令参数:");
@@ -445,6 +445,11 @@ static async Task<int> RunReplySmokeAsync(PluginOptions options, IReadOnlyDictio
     if (!options.Security.UseHmacFallback)
     {
         PrintGraphScopeReminder(options);
+    }
+
+    if (!useRemoteApi && remoteDecision.AutoConditionMet && !remoteDecision.LocalStubRequested)
+    {
+        useRemoteApi = true;
     }
 
     if (!useRemoteApi && remoteDecision.LocalStubRequested && remoteDecision.AutoConditionMet)

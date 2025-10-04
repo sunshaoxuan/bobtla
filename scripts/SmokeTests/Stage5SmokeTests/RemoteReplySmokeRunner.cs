@@ -195,7 +195,7 @@ internal static class RemoteReplySmokeRunner
             return 5;
         }
 
-        Console.WriteLine("使用指标摘要:");
+        Console.WriteLine("使用指标摘要 (/api/metrics):");
         Console.WriteLine(JsonSerializer.Serialize(metricsReport, PrettyJsonOptions));
         Console.WriteLine();
 

@@ -104,7 +104,7 @@
      --use-live-model
    ```
 
-   **远程 API 模式** – 当 Stage 配置禁用 HMAC 回退 (`Plugin.Security.UseHmacFallback=false`) 或命令行提供 `--baseUrl` 时，脚本会自动直接访问已部署服务的 `/api/translate`、`/api/reply` 与 `/api/metrics`。可继续使用 `--use-remote-api` 在本地配置下手动触发，或通过 `--use-local-stub` 在 Stage 配置下强制回退到离线 Stub。示例命令：
+   **远程 API 模式** – Stage 模板默认禁用 HMAC 回退 (`Plugin.Security.UseHmacFallback=false`)，因此加载 `appsettings.Stage.json` 后将自动访问已部署服务的 `/api/translate`、`/api/reply` 与 `/api/metrics`，无需额外的 `--use-remote-api` 开关。命令行提供 `--baseUrl` 时同样会触发远程模式，可用于在本地切换到 Stage 实例。如需暂时回退到离线 Stub，可追加 `--use-local-stub`。
 
    ```bash
    export USER_ASSERTION=$(az account get-access-token --resource api://tla-plugin --query accessToken -o tsv)
@@ -118,33 +118,47 @@
      --assertion "$USER_ASSERTION"
    ```
 
-   远程模式运行成功时会输出远端返回的翻译摘要、回帖结果、`/api/metrics` 与 `/api/audit` JSON 片段；如遇 401/403/429 等状态，脚本会打印 `21/22/23` 等退出码帮助定位鉴权或配额问题。与离线模式不同，此时不再显示本地 Graph 诊断信息，而是复用远程响应作为调试依据。若需要短暂关闭自动远程（例如在 Stage 配置下测试 Stub），可在命令末尾追加 `--use-local-stub`，脚本会提示已忽略自动触发条件。
+   远程模式运行成功时会输出远端返回的翻译摘要、回帖结果、`/api/metrics` 与 `/api/audit` JSON 片段；如遇 401/403/429 等状态，脚本会打印 `21/22/23` 等退出码帮助定位鉴权或配额问题。与离线模式不同，此时不再显示本地 Graph 诊断信息，而是复用远程响应作为调试依据；当命令包含 `--use-local-stub` 时，脚本会明确提示已忽略自动触发条件。
 
    成功运行后，控制台会打印一次 Graph 请求与指标快照，可用于变更记录留痕：
 
    ```text
-   提示：未提供用户断言，已生成模拟 JWT 以驱动 HMAC 回退流程。
-   [TeamsReplyClient] 调用成功:
-     MessageId: smoke-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+   提示：配置中已禁用 UseHmacFallback，已自动启用远程 API 模式。如需继续使用本地 Stub，请追加 --use-local-stub。
+   远程 API 模式已启用，目标服务: https://stage5.contoso.net/
+   远程翻译完成:
+     ModelId:       gpt-stage
+     TargetLanguage: ja
+     LatencyMs:     123
+     CostUsd:       0.01
+     Text:          ステージ 5 远程冒烟
+   远程回帖完成:
+     MessageId: 19:stage-thread@thread.tacv2
      Status:    Created
      Language:  ja
-   Graph 调用诊断:
-     Mode:        stub
-     CallCount:   1
-     LastPath:    /teams/.../messages
-     Authorization: Bearer eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0...
-     Body:
-   {...Graph 请求负载...}
-   使用指标摘要:
+   使用指标摘要 (/api/metrics):
    {
-     "overall": { "translations": 1, "failures": 0 },
-     "tenants": { "contoso.onmicrosoft.com": { "translations": 1 } }
+     "overall": {
+       "translations": 1,
+       "totalCostUsd": 0.01,
+       "averageLatencyMs": 123
+     },
+     "tenants": [
+       {
+         "tenantId": "contoso.onmicrosoft.com",
+         "translations": 1,
+         "totalCostUsd": 0.01,
+         "latencyP95Ms": 123
+       }
+     ]
    }
    审计记录样例:
-   {
-     "tenantId": "contoso.onmicrosoft.com",
-     "status": "Success"
-   }
+   [
+     {
+       "tenantId": "contoso.onmicrosoft.com",
+       "status": "Success",
+       "modelId": "gpt-stage"
+     }
+   ]
    ```
 
    > 提示：启用真实模型时会按配置调用外部推理 API，请先确认 Key Vault 中的 `ApiKeySecretName` 已填充真实密钥，并评估当次调用可能产生的费用；如需同时验证 Graph，可同时追加 `--use-live-graph`，确保回帖链路、模型回退与审计记录均覆盖真实依赖。

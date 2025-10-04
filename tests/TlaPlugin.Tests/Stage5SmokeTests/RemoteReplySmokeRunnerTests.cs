@@ -59,7 +59,7 @@ public class RemoteReplySmokeRunnerTests
         }
 
         var output = stdout.ToString();
-        Assert.Contains("使用指标摘要:", output);
+        Assert.Contains("使用指标摘要 (/api/metrics):", output);
         Assert.Contains("\"tenantId\": \"contoso.onmicrosoft.com\"", output);
         Assert.Contains("审计记录样例:", output);
         Assert.True(string.IsNullOrEmpty(stderr.ToString()), "Expected stderr to be empty on success.");
