@@ -29,11 +29,17 @@ TLA 参考实现基于 .NET 7 Minimal API 与 SQLite，支撑 Microsoft Teams �
 | 阶段 1：平台基线 | 吸收需求、搭建 Minimal API、完成消息扩展骨架 | ✅ 完成 | 建立 .NET + SQLite 架构，交付 Adaptive Card 主流程并沉淀术语/语气服务。 |
 | 阶段 2：安全与合规 | 打通合规网关、预算守卫与密钥/OBO 管理 | ✅ 完成 | `ComplianceGateway` 覆盖区域/禁译，`BudgetGuard`、`TokenBroker` 与 `KeyVaultSecretResolver` 协同生效。 |
 | 阶段 3：性能与可观测 | 提升缓存、速率与多模型互联能力，沉淀指标 | ✅ 完成 | `TranslationCache`、`TranslationThrottle`、`UsageMetricsService` 形成性能护栏并输出仪表盘数据。 |
-| 阶段 4：前端体验 | 聚合状态/路标 API，交付设置页仪表盘与本地化 | 🚧 进行中 | `/api/status`、`/api/roadmap`、`/api/localization` 对接新建 `src/webapp` 仪表盘，前端完成度提升至 55%。 |
-| 阶段 5：上线准备 | 串联真实模型、联调并封板 | ⏳ 待启动 | 规划生产模型接入、CI 校验与发布清单。 |
+| 阶段 4：前端体验 | 聚合状态/路标 API，交付设置页仪表盘与本地化 | ✅ 完成 | `/api/status`、`/api/roadmap`、`/api/localization` 已对接新建 `src/webapp` 仪表盘，界面体验封板。 |
+| 阶段 5：上线准备 | 串联真实模型、联调并封板 | 🚧 进行中 | 对接真实依赖、巩固密钥治理并完成发布前冒烟。 |
 
 ## 当前状态
-项目处于 **阶段 4：前端体验**，前三个阶段已完成平台、合规与性能底座，整体完成度 60%，前端完成度 55%，数据面与界面均已就绪，联调待启。【F:src/TlaPlugin/Services/ProjectStatusService.cs†L12-L42】我们将 `/api/status`、`/api/roadmap`、`/api/localization/*` 聚合到全新的 `src/webapp` 仪表盘，页面通过回退样例自动回显进度、阶段成果与本地化语言，确保前端可离线预览。【F:src/webapp/index.html†L1-L44】【F:src/webapp/app.js†L1-L161】【F:src/webapp/styles.css†L1-L108】路标数据与测试清单已按五大阶段重新梳理，活跃阶段聚焦前端体验并新增仪表盘视图模型测试项，为后续上线准备收敛范围。【F:src/TlaPlugin/Services/DevelopmentRoadmapService.cs†L12-L102】
+项目处于 **阶段 5：上线准备**，前三个阶段已完成平台、合规与性能底座，阶段 4 的前端体验亦已封板，整体完成度 80%，前端完成度 80%，但 Stage 5 集成尚待打通。【F:src/TlaPlugin/Services/ProjectStatusService.cs†L12-L102】我们将 `/api/status`、`/api/roadmap`、`/api/localization/*` 聚合到全新的 `src/webapp` 仪表盘，页面通过回退样例自动回显进度、阶段成果与本地化语言，确保前端可离线预览。【F:src/webapp/index.html†L1-L44】【F:src/webapp/app.js†L1-L161】【F:src/webapp/styles.css†L1-L108】路标数据与测试清单已按五大阶段重新梳理，活跃阶段聚焦上线准备并延伸到发布前的端到端验证。【F:src/TlaPlugin/Services/DevelopmentRoadmapService.cs†L12-L102】
+
+阶段 5 的三项关键后续动作如下，均可在《阶段 5 联调 Runbook》中找到详细步骤：
+
+1. **密钥映射**：按照 Key Vault 映射与 `Stage5SmokeTests` 验证流程固化密钥分发策略，确保 `KeyVaultSecretResolver` 能解析真实机密。【F:docs/stage5-integration-runbook.md†L1-L55】
+2. **Graph/OBO 冒烟**：依据 Graph 权限开通与 `reply` 命令流程完成 OBO 链路冒烟，验证 Teams 回帖所需的令牌与网络依赖。【F:docs/stage5-integration-runbook.md†L57-L140】
+3. **真实模型切换**：在成本可控场景下启用 `--use-live-model` 等模式切换到真实模型 Provider，并结合远程 API 校验发布前冒烟结果。【F:docs/stage5-integration-runbook.md†L141-L210】
 
 ## 下一步规划
 1. **完善设置页组件并补全校验**：继续扩展 `src/webapp` 仪表盘的上传、搜索与校验体验，保障前端交互质量。【F:src/webapp/app.js†L89-L149】
