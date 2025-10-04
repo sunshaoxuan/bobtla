@@ -29,6 +29,17 @@
     </Content>
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="appsettings.Stage.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <Content Include="appsettings.Local.json" Condition="Exists('appsettings.Local.json')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Never</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
   <Target Name="EnsureNode">
     <Exec Command="&quot;$(NodeCommand)&quot; --version" IgnoreExitCode="true">
       <Output TaskParameter="ExitCode" PropertyName="NodeExitCode" />
