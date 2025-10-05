@@ -33,6 +33,15 @@ dotnet run --project src/TlaPlugin --configuration Release
 
 若通过部署管道运行，也可在发布命令追加 `--environment Stage`，或设置 `ASPNETCORE_ENVIRONMENT=Stage` 等等效变量。若未显式设置这些环境变量，.NET 会继续读取基础 `appsettings.json`，默认的 `UseHmacFallback=true` 会保持启用。
 
+> 📦 **发布包检查** – Stage 配置文件需要随产物一起发布才能覆盖远端实例。执行一次发布并确认 `appsettings.Stage.json` 出现在输出目录中：
+
+```bash
+dotnet publish src/TlaPlugin/TlaPlugin.csproj -c Release -o ./artifacts/stage-publish
+test -f ./artifacts/stage-publish/appsettings.Stage.json && echo "✔ Stage 覆盖文件已打包"
+```
+
+如未看到 ✔，请检查 `TlaPlugin.csproj` 中的 `<Content Include="appsettings.Stage.json">` 片段是否被保留，或在 CI/CD 中显式复制该文件。
+
 4. **将 Key Vault 引用映射进配置** – 在 Stage 配置中引用 `src/TlaPlugin/appsettings.Stage.json` 模板，按租户替换其中的 `KeyVaultUri`、`ClientId`、`ClientSecretName` 占位符，并确认 `GraphScopes` 使用 `https://graph.microsoft.com/.default` 或 `https://graph.microsoft.com/<Permission>` 的资源限定格式，且 `UseHmacFallback=false` 已覆盖 OBO 场景。作用域值需与 Azure AD 管理员已授权的范围一致，否则 OBO 将返回 `invalid_scope`。部署命令或冒烟脚本可通过 `--override appsettings.Stage.json` 注入该文件。若不同租户使用独立 Vault，可在 `Plugin.Security.TenantOverrides["<tenant>"].KeyVaultUri` 指向各自的 Key Vault。对真实 Key Vault，可使用 [Azure App Service Key Vault 引用](https://learn.microsoft.com/azure/app-service/app-service-key-vault-references) 或下方示例直接注入机密值：
 
    ```bash
@@ -48,7 +57,7 @@ dotnet run --project src/TlaPlugin --configuration Release
    dotnet run --project scripts/SmokeTests/Stage5SmokeTests -- secrets --appsettings src/TlaPlugin/appsettings.json --override appsettings.Stage.json
    ```
 
-   输出中的 ✔ 表示成功解析；如遇 ✘ 项目，按错误提示检查 Key Vault 引用或环境变量是否配置正确。Stage 模板默认启用 `Plugin.Security.FailOnSeedFallback=true`，因此脚本会在缺失机密时立即报错提醒补齐 Key Vault 映射。脚本会同步打印 `GraphScopes` 列表并标记是否符合资源限定格式，提醒现场工程师确认作用域与 Azure AD 授权一致，避免因无效 scope 造成 OBO 失败。【F:scripts/SmokeTests/Stage5SmokeTests/Program.cs†L82-L147】【F:src/TlaPlugin/appsettings.Stage.json†L1-L23】
+   输出中的 ✔ 表示成功解析；如遇 ✘ 项目，按错误提示检查 Key Vault 引用或环境变量是否配置正确。Stage 模板默认启用 `Plugin.Security.FailOnSeedFallback=true`，因此脚本会在缺失机密时立即报错提醒补齐 Key Vault 映射。脚本会同步打印 `GraphScopes` 列表并标记是否符合资源限定格式，提醒现场工程师确认作用域与 Azure AD 授权一致，避免因无效 scope 造成 OBO 失败。建议将命令输出保存在联调记录中，作为 Stage 凭据映射已完成的佐证。【F:scripts/SmokeTests/Stage5SmokeTests/Program.cs†L82-L147】【F:src/TlaPlugin/appsettings.Stage.json†L1-L23】
 
 ## 2. Graph 权限与 ReplyService 冒烟
 
@@ -206,6 +215,15 @@ dotnet run --project src/TlaPlugin --configuration Release
      "status": "Success"
    }
    ```
+
+   冒烟显示 `Status: Created` 后，请立即调用一次 Metrics API 并核对 Stage 就绪文件，确保 `StageReadinessFilePath` 覆盖已经生效：
+
+   ```bash
+   curl -H "Authorization: Bearer <token>" https://stage5.contoso.net/api/metrics | jq '.'
+   tail -n 1 <shared-path>/stage-readiness.txt
+   ```
+
+   第一条命令返回的 `tenants[].lastUpdated` 应接近当前时间，第二条命令应输出最近的 ISO-8601 时间戳，代表 `FileStageReadinessStore` 已写入共享文件，后续 `ProjectStatusService` 即可读取有效的冒烟记录。【F:src/TlaPlugin/Services/UsageMetricsService.cs†L22-L88】【F:src/TlaPlugin/Services/FileStageReadinessStore.cs†L12-L88】
 
    > 提示：启用真实模型时会按配置调用外部推理 API，请先确认 Key Vault 中的 `ApiKeySecretName` 已填充真实密钥，并评估当次调用可能产生的费用；如需同时验证 Graph，可同时追加 `--use-live-graph`，确保回帖链路、模型回退与审计记录均覆盖真实依赖。
 
