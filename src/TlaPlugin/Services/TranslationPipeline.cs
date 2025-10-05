@@ -322,30 +322,23 @@ public class TranslationPipeline : ITranslationPipeline
         }
 
         var jobId = Guid.NewGuid().ToString("N");
-        for (var index = 0; index < segments.Count; index++)
-        {
-            _drafts.SaveDraft(new OfflineDraftRequest
-            {
-                OriginalText = segments[index],
-                TargetLanguage = normalizedRequest.TargetLanguage,
-                TenantId = normalizedRequest.TenantId,
-                UserId = normalizedRequest.UserId,
-                JobId = jobId,
-                SegmentIndex = index,
-                SegmentCount = segments.Count
-            });
-        }
+        _drafts.EnqueueSegments(
+            jobId,
+            normalizedRequest.TenantId,
+            normalizedRequest.UserId,
+            normalizedRequest.TargetLanguage,
+            segments);
 
         return PipelineExecutionResult.FromQueuedJob(jobId, segments.Count);
     }
 
-    private IReadOnlyList<string> SplitIntoSegments(string text)
+    private IReadOnlyList<TranslationSegment> SplitIntoSegments(string text)
     {
-        var segments = new List<string>();
+        var segments = new List<TranslationSegment>();
         var max = Math.Max(1, _options.MaxCharactersPerRequest);
         if (text.Length <= max)
         {
-            segments.Add(text);
+            segments.Add(new TranslationSegment(0, text));
             return segments;
         }
 
@@ -355,7 +348,7 @@ public class TranslationPipeline : ITranslationPipeline
             var remaining = text.Length - offset;
             if (remaining <= max)
             {
-                segments.Add(text[offset..]);
+                segments.Add(new TranslationSegment(segments.Count, text[offset..]));
                 break;
             }
 
@@ -374,7 +367,7 @@ public class TranslationPipeline : ITranslationPipeline
             }
 
             var chunk = text.Substring(offset, length);
-            segments.Add(chunk);
+            segments.Add(new TranslationSegment(segments.Count, chunk));
             offset += length;
 
             while (offset < text.Length && char.IsWhiteSpace(text[offset]))

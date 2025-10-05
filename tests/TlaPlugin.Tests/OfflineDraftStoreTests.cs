@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Options;
 using TlaPlugin.Configuration;
@@ -163,6 +164,61 @@ public class OfflineDraftStoreTests
                 Assert.Equal(jobId, segment.JobId);
                 Assert.Equal("翻訳一段目翻訳二段目", segment.ResultText);
                 Assert.Equal("翻訳一段目翻訳二段目", segment.AggregatedResult);
+            });
+        }
+        finally
+        {
+            File.Delete(dbPath);
+        }
+    }
+
+    [Fact]
+    public void EnqueueSegmentsRequiresContiguousIndexes()
+    {
+        var dbPath = Path.GetTempFileName();
+        try
+        {
+            var options = Options.Create(new PluginOptions
+            {
+                OfflineDraftConnectionString = $"Data Source={dbPath}"
+            });
+
+            var store = new OfflineDraftStore(options);
+            var jobId = Guid.NewGuid().ToString("N");
+
+            Assert.Throws<ArgumentException>(() => store.EnqueueSegments(
+                jobId,
+                "tenant",
+                "user",
+                "ja",
+                new[]
+                {
+                    new TranslationSegment(1, "skip")
+                }));
+
+            var records = store.EnqueueSegments(
+                jobId,
+                "tenant",
+                "user",
+                "ja",
+                new[]
+                {
+                    new TranslationSegment(0, "第一段"),
+                    new TranslationSegment(1, "第二段")
+                });
+
+            Assert.Equal(2, records.Count);
+            var stored = store.GetDraftsByJob(jobId);
+            Assert.Equal(2, stored.Count);
+            Assert.Equal(new[] { 0, 1 }, stored.Select(segment => segment.SegmentIndex));
+            Assert.All(stored, segment =>
+            {
+                Assert.Equal(jobId, segment.JobId);
+                Assert.Equal(OfflineDraftStatus.Pending, segment.Status);
+                Assert.Equal("ja", segment.TargetLanguage);
+                Assert.Equal("tenant", segment.TenantId);
+                Assert.Equal("user", segment.UserId);
+                Assert.Equal(0, segment.Attempts);
             });
         }
         finally
