@@ -42,7 +42,9 @@ public class LocalizationCatalogService
                     ["tla.ui.glossary.option.alternative"] = "代替訳 {0} （{1}）",
                     ["tla.ui.glossary.option.original"] = "原文を保持",
                     ["tla.ui.glossary.submit"] = "選択を適用",
-                    ["tla.ui.glossary.cancel"] = "取消"
+                    ["tla.ui.glossary.cancel"] = "取消",
+                    ["tla.ui.queue.title"] = "長文の翻訳を受け付けました",
+                    ["tla.ui.queue.body"] = "メッセージを {0} 個のセグメントに分割し、準備が整い次第草稿に反映します。ジョブ ID: {1}"
                 }),
             ["zh-CN"] = new CatalogDefinition(
                 "简体中文 (中国)",
@@ -68,7 +70,9 @@ public class LocalizationCatalogService
                     ["tla.ui.glossary.option.alternative"] = "备选译文 {0}（{1}）",
                     ["tla.ui.glossary.option.original"] = "保留原文",
                     ["tla.ui.glossary.submit"] = "提交选择",
-                    ["tla.ui.glossary.cancel"] = "取消"
+                    ["tla.ui.glossary.cancel"] = "取消",
+                    ["tla.ui.queue.title"] = "长文本翻译已排队",
+                    ["tla.ui.queue.body"] = "消息已拆分为 {0} 个片段，完成后会同步到草稿。任务 ID: {1}"
                 })
         };
 

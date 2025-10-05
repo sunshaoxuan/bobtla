@@ -24,6 +24,14 @@ public class OfflineDraftRecord
         = 0;
     public DateTimeOffset? CompletedAt { get; set; }
         = null;
+    public string? JobId { get; set; }
+        = null;
+    public int SegmentIndex { get; set; }
+        = 0;
+    public int SegmentCount { get; set; }
+        = 1;
+    public string? AggregatedResult { get; set; }
+        = null;
 }
 
 public static class OfflineDraftStatus

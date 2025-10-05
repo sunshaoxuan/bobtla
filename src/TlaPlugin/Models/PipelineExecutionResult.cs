@@ -13,12 +13,16 @@ public class PipelineExecutionResult
         TranslationResult? translation,
         DetectionResult? detection,
         GlossaryApplicationResult? glossaryConflicts,
-        TranslationRequest? pendingRequest)
+        TranslationRequest? pendingRequest,
+        string? queuedJobId,
+        int queuedSegmentCount)
     {
         Translation = translation;
         Detection = detection;
         GlossaryConflicts = glossaryConflicts;
         PendingRequest = pendingRequest;
+        QueuedJobId = queuedJobId;
+        QueuedSegmentCount = queuedSegmentCount;
     }
 
     /// <summary>
@@ -51,6 +55,21 @@ public class PipelineExecutionResult
     /// </summary>
     public bool RequiresGlossaryResolution => GlossaryConflicts is not null && GlossaryConflicts.RequiresResolution;
 
+    /// <summary>
+    /// 長文翻訳が非同期キューに登録された場合に、そのジョブ ID を返す。
+    /// </summary>
+    public string? QueuedJobId { get; }
+
+    /// <summary>
+    /// キューに登録されたセグメント数。
+    /// </summary>
+    public int QueuedSegmentCount { get; }
+
+    /// <summary>
+    /// 翻訳がバックグラウンド処理に移行したかを示す。
+    /// </summary>
+    public bool IsQueued => !string.IsNullOrEmpty(QueuedJobId);
+
     public static PipelineExecutionResult FromTranslation(TranslationResult translation)
     {
         if (translation is null)
@@ -58,7 +77,7 @@ public class PipelineExecutionResult
             throw new ArgumentNullException(nameof(translation));
         }
 
-        return new PipelineExecutionResult(translation, null, null, null);
+        return new PipelineExecutionResult(translation, null, null, null, null, 0);
     }
 
     public static PipelineExecutionResult FromDetection(DetectionResult detection)
@@ -68,7 +87,7 @@ public class PipelineExecutionResult
             throw new ArgumentNullException(nameof(detection));
         }
 
-        return new PipelineExecutionResult(null, detection, null, null);
+        return new PipelineExecutionResult(null, detection, null, null, null, 0);
     }
 
     public static PipelineExecutionResult FromGlossaryConflict(
@@ -89,7 +108,24 @@ public class PipelineExecutionResult
             null,
             null,
             conflicts.Clone(),
-            CloneRequest(request));
+            CloneRequest(request),
+            null,
+            0);
+    }
+
+    public static PipelineExecutionResult FromQueuedJob(string jobId, int segmentCount)
+    {
+        if (string.IsNullOrWhiteSpace(jobId))
+        {
+            throw new ArgumentException("ジョブ ID は必須です。", nameof(jobId));
+        }
+
+        if (segmentCount <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(segmentCount));
+        }
+
+        return new PipelineExecutionResult(null, null, null, null, jobId, segmentCount);
     }
 
     private static TranslationRequest CloneRequest(TranslationRequest request)

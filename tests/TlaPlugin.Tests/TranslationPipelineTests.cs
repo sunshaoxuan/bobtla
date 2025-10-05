@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -91,6 +92,68 @@ public class TranslationPipelineTests
         Assert.Equal(firstTranslation.TranslatedText, secondTranslation.TranslatedText);
         Assert.Equal("ja-JP", firstTranslation.UiLocale);
         Assert.Equal("ja-JP", secondTranslation.UiLocale);
+    }
+
+    [Fact]
+    public async Task QueuesSegmentsWhenRequestExceedsMaximumLength()
+    {
+        var dbPath = Path.GetTempFileName();
+        try
+        {
+            var options = Options.Create(new PluginOptions
+            {
+                OfflineDraftConnectionString = $"Data Source={dbPath}",
+                MaxCharactersPerRequest = 40,
+                Providers = new List<ModelProviderOptions>
+                {
+                    new()
+                    {
+                        Id = "primary",
+                        Regions = new List<string> { "japan" },
+                        Certifications = new List<string> { "iso" }
+                    }
+                },
+                Compliance = new CompliancePolicyOptions
+                {
+                    RequiredRegionTags = new List<string> { "japan" },
+                    RequiredCertifications = new List<string> { "iso" }
+                }
+            });
+
+            var store = new OfflineDraftStore(options);
+            var pipeline = BuildPipeline(options, storeOverride: store);
+
+            var longText = string.Concat(Enumerable.Repeat("これは非常に長いテキストです。", 10));
+            var request = new TranslationRequest
+            {
+                Text = longText,
+                TenantId = "contoso",
+                UserId = "user",
+                UserAssertion = "assertion",
+                TargetLanguage = "ja",
+                SourceLanguage = "en"
+            };
+
+            var execution = await pipeline.TranslateAsync(request, CancellationToken.None);
+
+            Assert.True(execution.IsQueued);
+            Assert.False(string.IsNullOrEmpty(execution.QueuedJobId));
+            Assert.True(execution.QueuedSegmentCount > 1);
+
+            var segments = store.GetDraftsByJob(execution.QueuedJobId!);
+            Assert.Equal(execution.QueuedSegmentCount, segments.Count);
+            Assert.All(segments, segment =>
+            {
+                Assert.Equal(execution.QueuedJobId, segment.JobId);
+                Assert.Equal(OfflineDraftStatus.Pending, segment.Status);
+                Assert.Equal(request.TargetLanguage, segment.TargetLanguage);
+                Assert.Equal(request.TenantId, segment.TenantId);
+            });
+        }
+        finally
+        {
+            File.Delete(dbPath);
+        }
     }
 
     [Fact]
@@ -1016,7 +1079,8 @@ public class TranslationPipelineTests
         GlossaryService? glossaryOverride = null,
         ContextRetrievalService? contextOverride = null,
         ITeamsMessageClient? teamsClient = null,
-        IMemoryCache? memoryCache = null)
+        IMemoryCache? memoryCache = null,
+        OfflineDraftStore? storeOverride = null)
     {
         var glossary = glossaryOverride ?? new GlossaryService();
         var localization = new LocalizationCatalogService();
@@ -1028,7 +1092,8 @@ public class TranslationPipelineTests
         var rewrite = new RewriteService(router, throttle);
         var reply = new ReplyService(rewrite, router, new NoopTeamsReplyClient(), tokenBroker, metrics, options);
         var context = contextOverride ?? new ContextRetrievalService(teamsClient ?? new NullTeamsMessageClient(), memoryCache ?? new MemoryCache(new MemoryCacheOptions()), tokenBroker, options);
-        return new TranslationPipeline(router, glossary, new OfflineDraftStore(options), new LanguageDetector(), cache, throttle, context, rewrite, reply, options);
+        var store = storeOverride ?? new OfflineDraftStore(options);
+        return new TranslationPipeline(router, glossary, store, new LanguageDetector(), cache, throttle, context, rewrite, reply, options);
     }
 
     private sealed class LowConfidenceModelProvider : IModelProvider

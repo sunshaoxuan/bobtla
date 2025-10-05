@@ -22,6 +22,7 @@ TLA 参考实现基于 .NET 7 Minimal API 与 SQLite，支撑 Microsoft Teams �
 2. `TranslationRouter` 在调用模型前通过 `TokenBroker` 执行 OBO 令牌交换，再依次评估合规策略、预算额度与可用性，对失败的提供方自动回退并写入审计日志与令牌受众信息。【F:src/TlaPlugin/Services/TokenBroker.cs†L1-L63】【F:src/TlaPlugin/Services/TranslationRouter.cs†L30-L112】
 3. `ComplianceGateway` 在翻译前检查区域、认证、禁译词及 PII，违反策略时阻断调用；`BudgetGuard` 跟踪租户当日花费避免超支。【F:src/TlaPlugin/Services/ComplianceGateway.cs†L17-L69】【F:src/TlaPlugin/Services/BudgetGuard.cs†L8-L27】
 4. `OfflineDraftStore` 通过 SQLite 持久化草稿，支持断线场景下的恢复与清理。【F:src/TlaPlugin/Services/OfflineDraftStore.cs†L14-L82】
+5. 当翻译请求长度超过 `MaxCharactersPerRequest` 时，`TranslationPipeline` 会按句段拆分文本并以共享 Job ID 保存至离线草稿队列，`DraftReplayService` 后台逐段重试翻译、利用 `OfflineDraftStore.TryFinalizeJob` 顺序合并译文并更新草稿状态，同时 `MessageExtensionHandler` 向前端返回排队提示卡片。【F:src/TlaPlugin/Services/TranslationPipeline.cs†L84-L159】【F:src/TlaPlugin/Services/OfflineDraftStore.cs†L24-L203】【F:src/TlaPlugin/Services/DraftReplayService.cs†L94-L155】【F:src/TlaPlugin/Teams/MessageExtensionHandler.cs†L60-L138】
 
 ## 开发阶段
 | 阶段 | 目标 | 进度 | 成果 |

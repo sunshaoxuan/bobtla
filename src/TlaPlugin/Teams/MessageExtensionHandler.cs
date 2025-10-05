@@ -74,6 +74,11 @@ public class MessageExtensionHandler
                 return BuildGlossaryConflictCard(catalog, conflicts, pendingRequest);
             }
 
+            if (execution.IsQueued)
+            {
+                return BuildQueuedCard(catalog, execution);
+            }
+
             var result = execution.Translation ?? throw new TranslationException("翻訳結果を取得できませんでした。");
             return new JsonObject
             {
@@ -315,6 +320,50 @@ public class MessageExtensionHandler
         {
             request.UseRag = true;
         }
+    }
+
+    private static JsonObject BuildQueuedCard(LocalizationCatalog catalog, PipelineExecutionResult execution)
+    {
+        static string Resolve(LocalizationCatalog catalog, string key) =>
+            catalog.Strings.TryGetValue(key, out var value) ? value : key;
+
+        var title = Resolve(catalog, "tla.ui.queue.title");
+        var template = Resolve(catalog, "tla.ui.queue.body");
+        var description = string.Format(CultureInfo.InvariantCulture, template, execution.QueuedSegmentCount, execution.QueuedJobId);
+
+        return new JsonObject
+        {
+            ["type"] = "message",
+            ["attachments"] = new JsonArray
+            {
+                new JsonObject
+                {
+                    ["contentType"] = "application/vnd.microsoft.card.adaptive",
+                    ["content"] = new JsonObject
+                    {
+                        ["type"] = "AdaptiveCard",
+                        ["version"] = "1.5",
+                        ["body"] = new JsonArray
+                        {
+                            new JsonObject
+                            {
+                                ["type"] = "TextBlock",
+                                ["text"] = title,
+                                ["wrap"] = true,
+                                ["weight"] = "Bolder",
+                                ["size"] = "Medium"
+                            },
+                            new JsonObject
+                            {
+                                ["type"] = "TextBlock",
+                                ["text"] = description,
+                                ["wrap"] = true
+                            }
+                        }
+                    }
+                }
+            }
+        };
     }
 
     private static JsonObject BuildErrorCard(LocalizationCatalog catalog, string titleKey, string message)
