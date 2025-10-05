@@ -113,6 +113,17 @@ public class DraftReplayService : BackgroundService
                 if (result.Translation is { } translation)
                 {
                     _store.MarkCompleted(draft.Id, translation.TranslatedText);
+                    if (!string.IsNullOrEmpty(draft.JobId))
+                    {
+                        var merged = _store.TryFinalizeJob(draft.JobId);
+                        if (merged is not null)
+                        {
+                            _logger.LogInformation(
+                                "Merged translation job {JobId} with {SegmentCount} segments.",
+                                draft.JobId,
+                                draft.SegmentCount);
+                        }
+                    }
                     _logger.LogInformation(
                         "Successfully replayed draft {DraftId} on attempt {AttemptCount}.",
                         draft.Id,

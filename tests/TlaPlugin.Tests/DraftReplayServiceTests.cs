@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Data.Sqlite;
@@ -169,6 +170,91 @@ public class DraftReplayServiceTests
         }
     }
 
+    [Fact]
+    public async Task ProcessesSegmentedDraftsWithRetryAndMerge()
+    {
+        var dbPath = Path.GetTempFileName();
+        try
+        {
+            var options = Options.Create(new PluginOptions
+            {
+                OfflineDraftConnectionString = $"Data Source={dbPath}"
+            });
+
+            var store = new OfflineDraftStore(options);
+            var jobId = Guid.NewGuid().ToString("N");
+
+            _ = store.SaveDraft(new OfflineDraftRequest
+            {
+                OriginalText = "第一段",
+                TargetLanguage = "ja",
+                TenantId = "contoso",
+                UserId = "segment",
+                JobId = jobId,
+                SegmentIndex = 0,
+                SegmentCount = 2
+            });
+
+            _ = store.SaveDraft(new OfflineDraftRequest
+            {
+                OriginalText = "第二段",
+                TargetLanguage = "ja",
+                TenantId = "contoso",
+                UserId = "segment",
+                JobId = jobId,
+                SegmentIndex = 1,
+                SegmentCount = 2
+            });
+
+            var pipeline = new StubTranslationPipeline
+            {
+                ExceptionFactory = attempt => attempt == 1 ? new InvalidOperationException("boom-1") : null,
+                TranslationFactory = request => PipelineExecutionResult.FromTranslation(new TranslationResult
+                {
+                    RawTranslatedText = request.Text,
+                    TranslatedText = request.Text + "-完成",
+                    SourceLanguage = "zh",
+                    TargetLanguage = request.TargetLanguage
+                })
+            };
+
+            var service = new DraftReplayService(store, pipeline, NullLogger<DraftReplayService>.Instance);
+
+            await service.ProcessPendingDraftsAsync(CancellationToken.None);
+
+            var afterFirst = store.GetDraftsByJob(jobId);
+            var firstSegment = afterFirst.Single(segment => segment.SegmentIndex == 0);
+            var secondSegment = afterFirst.Single(segment => segment.SegmentIndex == 1);
+
+            Assert.Equal(OfflineDraftStatus.Pending, firstSegment.Status);
+            Assert.Equal(1, firstSegment.Attempts);
+            Assert.Equal("boom-1", firstSegment.ErrorReason);
+            Assert.Null(firstSegment.ResultText);
+
+            Assert.Equal(OfflineDraftStatus.Completed, secondSegment.Status);
+            Assert.Equal("第二段-完成", secondSegment.ResultText);
+            Assert.Null(secondSegment.AggregatedResult);
+
+            await service.ProcessPendingDraftsAsync(CancellationToken.None);
+
+            var merged = store.GetDraftsByJob(jobId);
+            Assert.All(merged, segment =>
+            {
+                Assert.Equal(OfflineDraftStatus.Completed, segment.Status);
+                Assert.Equal("第一段-完成第二段-完成", segment.ResultText);
+                Assert.Equal("第一段-完成第二段-完成", segment.AggregatedResult);
+                Assert.Null(segment.ErrorReason);
+            });
+
+            var attempts = merged.Single(segment => segment.SegmentIndex == 0).Attempts;
+            Assert.Equal(2, attempts);
+        }
+        finally
+        {
+            File.Delete(dbPath);
+        }
+    }
+
     private sealed class StubTranslationPipeline : ITranslationPipeline
     {
         public Func<TranslationRequest, PipelineExecutionResult>? TranslationFactory { get; init; }
@@ -186,7 +272,11 @@ public class DraftReplayServiceTests
             _callCount++;
             if (ExceptionFactory is not null)
             {
-                throw ExceptionFactory(_callCount);
+                var exception = ExceptionFactory(_callCount);
+                if (exception is not null)
+                {
+                    throw exception;
+                }
             }
 
             var factory = TranslationFactory ?? (_ => PipelineExecutionResult.FromTranslation(new TranslationResult

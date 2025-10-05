@@ -34,6 +34,9 @@ public class OfflineDraftStoreTests
 
             Assert.Equal(OfflineDraftStatus.Pending, record.Status);
             Assert.Equal(0, record.Attempts);
+            Assert.Null(record.JobId);
+            Assert.Equal(0, record.SegmentIndex);
+            Assert.Equal(1, record.SegmentCount);
 
             var processing = store.MarkProcessing(record.Id);
             Assert.Equal(OfflineDraftStatus.Processing, processing.Status);
@@ -100,6 +103,67 @@ public class OfflineDraftStoreTests
             Assert.Equal(OfflineDraftStatus.Failed, failed.Status);
             Assert.Equal("permanent", failed.ErrorReason);
             Assert.NotNull(failed.CompletedAt);
+        }
+        finally
+        {
+            File.Delete(dbPath);
+        }
+    }
+
+    [Fact]
+    public void TryFinalizeJobMergesSegments()
+    {
+        var dbPath = Path.GetTempFileName();
+        try
+        {
+            var options = Options.Create(new PluginOptions
+            {
+                OfflineDraftConnectionString = $"Data Source={dbPath}"
+            });
+
+            var store = new OfflineDraftStore(options);
+            var jobId = Guid.NewGuid().ToString("N");
+
+            var first = store.SaveDraft(new OfflineDraftRequest
+            {
+                OriginalText = "part-1",
+                TargetLanguage = "ja",
+                TenantId = "contoso",
+                UserId = "queue",
+                JobId = jobId,
+                SegmentIndex = 0,
+                SegmentCount = 2
+            });
+
+            var second = store.SaveDraft(new OfflineDraftRequest
+            {
+                OriginalText = "part-2",
+                TargetLanguage = "ja",
+                TenantId = "contoso",
+                UserId = "queue",
+                JobId = jobId,
+                SegmentIndex = 1,
+                SegmentCount = 2
+            });
+
+            Assert.Null(store.TryFinalizeJob(jobId));
+
+            store.MarkCompleted(first.Id, "翻訳一段目");
+            Assert.Null(store.TryFinalizeJob(jobId));
+
+            store.MarkCompleted(second.Id, "翻訳二段目");
+            var merged = store.TryFinalizeJob(jobId);
+
+            Assert.Equal("翻訳一段目翻訳二段目", merged);
+
+            var segments = store.GetDraftsByJob(jobId);
+            Assert.Equal(2, segments.Count);
+            Assert.All(segments, segment =>
+            {
+                Assert.Equal(jobId, segment.JobId);
+                Assert.Equal("翻訳一段目翻訳二段目", segment.ResultText);
+                Assert.Equal("翻訳一段目翻訳二段目", segment.AggregatedResult);
+            });
         }
         finally
         {

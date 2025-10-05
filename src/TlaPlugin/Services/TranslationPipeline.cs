@@ -49,6 +49,11 @@ public class TranslationPipeline : ITranslationPipeline
         _options = options?.Value ?? new PluginOptions();
     }
 
+    private static readonly char[] SentenceDelimiters =
+    {
+        '\n', '\r', '.', '。', '!', '！', '?', '？', ';', '；'
+    };
+
     public Task<DetectionResult> DetectAsync(LanguageDetectionRequest request, CancellationToken cancellationToken)
     {
         if (request is null)
@@ -106,6 +111,11 @@ public class TranslationPipeline : ITranslationPipeline
 
         await ApplyContextAsync(normalizedRequest, cancellationToken);
 
+        if (normalizedRequest.Text.Length > _options.MaxCharactersPerRequest)
+        {
+            return QueueLongRunningTranslation(normalizedRequest);
+        }
+
         if (_cache.TryGet(normalizedRequest, out var cached))
         {
             cached.SetGlossaryMatches(matchSnapshots.Select(match => match.Clone()));
@@ -130,10 +140,6 @@ public class TranslationPipeline : ITranslationPipeline
             throw new TranslationException("翻訳する本文は必須です。");
         }
 
-        if (request.Text.Length > _options.MaxCharactersPerRequest)
-        {
-            throw new TranslationException("許容される文字数を超えています。");
-        }
     }
 
     private GlossaryApplicationResult PreviewGlossary(TranslationRequest request)
@@ -305,6 +311,79 @@ public class TranslationPipeline : ITranslationPipeline
 
         request.SourceLanguage = detection.Language;
         return null;
+    }
+
+    private PipelineExecutionResult QueueLongRunningTranslation(TranslationRequest normalizedRequest)
+    {
+        var segments = SplitIntoSegments(normalizedRequest.Text);
+        if (segments.Count <= 1)
+        {
+            throw new TranslationException("長文の分割処理に失敗しました。");
+        }
+
+        var jobId = Guid.NewGuid().ToString("N");
+        for (var index = 0; index < segments.Count; index++)
+        {
+            _drafts.SaveDraft(new OfflineDraftRequest
+            {
+                OriginalText = segments[index],
+                TargetLanguage = normalizedRequest.TargetLanguage,
+                TenantId = normalizedRequest.TenantId,
+                UserId = normalizedRequest.UserId,
+                JobId = jobId,
+                SegmentIndex = index,
+                SegmentCount = segments.Count
+            });
+        }
+
+        return PipelineExecutionResult.FromQueuedJob(jobId, segments.Count);
+    }
+
+    private IReadOnlyList<string> SplitIntoSegments(string text)
+    {
+        var segments = new List<string>();
+        var max = Math.Max(1, _options.MaxCharactersPerRequest);
+        if (text.Length <= max)
+        {
+            segments.Add(text);
+            return segments;
+        }
+
+        var offset = 0;
+        while (offset < text.Length)
+        {
+            var remaining = text.Length - offset;
+            if (remaining <= max)
+            {
+                segments.Add(text[offset..]);
+                break;
+            }
+
+            var startIndex = Math.Min(text.Length - 1, offset + max - 1);
+            var count = startIndex - offset + 1;
+            var splitIndex = text.LastIndexOfAny(SentenceDelimiters, startIndex, count);
+            if (splitIndex < offset)
+            {
+                splitIndex = startIndex;
+            }
+
+            var length = splitIndex - offset + 1;
+            if (length <= 0)
+            {
+                length = Math.Min(max, remaining);
+            }
+
+            var chunk = text.Substring(offset, length);
+            segments.Add(chunk);
+            offset += length;
+
+            while (offset < text.Length && char.IsWhiteSpace(text[offset]))
+            {
+                offset++;
+            }
+        }
+
+        return segments;
     }
 
     private async Task<TranslationResult> TranslateWithRouterAsync(
