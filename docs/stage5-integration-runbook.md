@@ -220,10 +220,13 @@ test -f ./artifacts/stage-publish/appsettings.Stage.json && echo "✔ Stage 覆�
 
    ```bash
    curl -H "Authorization: Bearer <token>" https://stage5.contoso.net/api/metrics | jq '.'
-   tail -n 1 <shared-path>/stage-readiness.txt
+   dotnet run --project scripts/SmokeTests/Stage5SmokeTests -- metrics \
+     --appsettings src/TlaPlugin/appsettings.json \
+     --override src/TlaPlugin/appsettings.Stage.json \
+     --baseUrl https://stage5.contoso.net
    ```
 
-   第一条命令返回的 `tenants[].lastUpdated` 应接近当前时间，第二条命令应输出最近的 ISO-8601 时间戳，代表 `FileStageReadinessStore` 已写入共享文件，后续 `ProjectStatusService` 即可读取有效的冒烟记录。【F:src/TlaPlugin/Services/UsageMetricsService.cs†L22-L88】【F:src/TlaPlugin/Services/FileStageReadinessStore.cs†L12-L88】
+   第一条命令返回的 `tenants[].lastUpdated` 应接近当前时间，`metrics` 命令会在远程输出后追加「Stage 就绪文件检查」段落：当共享卷内存在 ISO-8601 时间戳时显示 `✔ 最近成功时间`，否则标记缺失或权限异常，便于排查 `FileStageReadinessStore` 是否将成功时间写入共享文件。若仍需人工复核，可继续执行 `tail -n 1 <shared-path>/stage-readiness.txt` 观察原始内容。【F:scripts/SmokeTests/Stage5SmokeTests/Program.cs†L375-L468】【F:src/TlaPlugin/Services/UsageMetricsService.cs†L22-L88】【F:src/TlaPlugin/Services/FileStageReadinessStore.cs†L12-L88】
 
    > 提示：启用真实模型时会按配置调用外部推理 API，请先确认 Key Vault 中的 `ApiKeySecretName` 已填充真实密钥，并评估当次调用可能产生的费用；如需同时验证 Graph，可同时追加 `--use-live-graph`，确保回帖链路、模型回退与审计记录均覆盖真实依赖。
 
@@ -267,7 +270,7 @@ test -f ./artifacts/stage-publish/appsettings.Stage.json && echo "✔ Stage 覆�
 
    若通过环境变量覆盖，可继续使用 `TLA_Plugin__StageReadinessFilePath`，但建议与配置文件保持一致，便于审计。
 
-2. **验证写入权限** – 使用部署身份在目标实例上执行一次读写探测，确认 `FileStageReadinessStore` 能够创建目录并写入 ISO-8601 时间戳：
+2. **验证写入权限** – 使用部署身份在目标实例上执行一次读写探测，确认 `FileStageReadinessStore` 能够创建目录并写入 ISO-8601 时间戳。亦可在冒烟后通过 `Stage5SmokeTests -- metrics` 的「Stage 就绪文件检查」输出确认：
 
    ```bash
    readiness_file="/mnt/stage/shared/stage-readiness.txt"
