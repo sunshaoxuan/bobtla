@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
@@ -411,7 +412,7 @@ internal static class Program
             }
         }
 
-        _ = LoadOptions(appsettings, overrides);
+        var options = LoadOptions(appsettings, overrides);
 
         if (!string.IsNullOrWhiteSpace(baseUrl))
         {
@@ -458,7 +459,66 @@ internal static class Program
             Console.WriteLine(JsonSerializer.Serialize(snapshot, JsonOptions));
         }
 
+        ReportStageReadinessFile(options.StageReadinessFilePath);
+
         return 0;
+    }
+
+    private static void ReportStageReadinessFile(string? configuredPath)
+    {
+        Console.WriteLine();
+        Console.WriteLine("Stage 就绪文件检查:");
+
+        if (string.IsNullOrWhiteSpace(configuredPath))
+        {
+            Console.WriteLine("  ✘ 未在配置中找到 Plugin.StageReadinessFilePath，默认路径将落在 App_Data。请在 Stage 覆盖文件中显式配置共享卷路径。");
+            return;
+        }
+
+        string path;
+        try
+        {
+            path = Path.GetFullPath(configuredPath);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            Console.WriteLine($"  ✘ 无法解析 Stage 就绪文件路径 '{configuredPath}'：{ex.Message}");
+            return;
+        }
+
+        Console.WriteLine($"  • 目标路径: {path}");
+
+        try
+        {
+            if (!File.Exists(path))
+            {
+                Console.WriteLine("  ✘ 未检测到就绪文件，请确认 Stage 实例已拥有该共享卷的读写权限并至少执行过一次冒烟。");
+                return;
+            }
+
+            var content = File.ReadAllText(path).Trim();
+            if (string.IsNullOrWhiteSpace(content))
+            {
+                Console.WriteLine("  ✘ 文件存在但内容为空，请检查写入逻辑或执行一次成功冒烟。");
+                return;
+            }
+
+            if (DateTimeOffset.TryParse(content, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var timestamp))
+            {
+                Console.WriteLine($"  ✔ 最近成功时间: {timestamp:O} (UTC)");
+                return;
+            }
+
+            Console.WriteLine($"  ✘ 文件内容无法解析为 ISO-8601 时间戳：{content}");
+        }
+        catch (IOException ex)
+        {
+            Console.WriteLine($"  ✘ 读取 Stage 就绪文件失败：{ex.Message}");
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            Console.WriteLine($"  ✘ 缺少 Stage 就绪文件的访问权限：{ex.Message}");
+        }
     }
 
     private static PluginOptions LoadOptions(string? appsettings, IEnumerable<string> overrides)
