@@ -184,27 +184,16 @@ public class DraftReplayServiceTests
             var store = new OfflineDraftStore(options);
             var jobId = Guid.NewGuid().ToString("N");
 
-            _ = store.SaveDraft(new OfflineDraftRequest
-            {
-                OriginalText = "第一段",
-                TargetLanguage = "ja",
-                TenantId = "contoso",
-                UserId = "segment",
-                JobId = jobId,
-                SegmentIndex = 0,
-                SegmentCount = 2
-            });
-
-            _ = store.SaveDraft(new OfflineDraftRequest
-            {
-                OriginalText = "第二段",
-                TargetLanguage = "ja",
-                TenantId = "contoso",
-                UserId = "segment",
-                JobId = jobId,
-                SegmentIndex = 1,
-                SegmentCount = 2
-            });
+            store.EnqueueSegments(
+                jobId,
+                "contoso",
+                "segment",
+                "ja",
+                new[]
+                {
+                    new TranslationSegment(0, "第一段"),
+                    new TranslationSegment(1, "第二段")
+                });
 
             var pipeline = new StubTranslationPipeline
             {

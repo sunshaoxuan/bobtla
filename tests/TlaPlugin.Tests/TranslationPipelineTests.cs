@@ -142,12 +142,16 @@ public class TranslationPipelineTests
 
             var segments = store.GetDraftsByJob(execution.QueuedJobId!);
             Assert.Equal(execution.QueuedSegmentCount, segments.Count);
+            Assert.Equal(
+                Enumerable.Range(0, execution.QueuedSegmentCount),
+                segments.Select(segment => segment.SegmentIndex));
             Assert.All(segments, segment =>
             {
                 Assert.Equal(execution.QueuedJobId, segment.JobId);
                 Assert.Equal(OfflineDraftStatus.Pending, segment.Status);
                 Assert.Equal(request.TargetLanguage, segment.TargetLanguage);
                 Assert.Equal(request.TenantId, segment.TenantId);
+                Assert.False(string.IsNullOrWhiteSpace(segment.OriginalText));
             });
         }
         finally

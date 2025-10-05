@@ -58,6 +58,81 @@ public class OfflineDraftStore
         };
     }
 
+    public IReadOnlyList<OfflineDraftRecord> EnqueueSegments(
+        string jobId,
+        string tenantId,
+        string userId,
+        string targetLanguage,
+        IReadOnlyList<TranslationSegment> segments)
+    {
+        if (string.IsNullOrWhiteSpace(jobId))
+        {
+            throw new ArgumentException("ジョブ ID は必須です。", nameof(jobId));
+        }
+
+        if (segments is null || segments.Count == 0)
+        {
+            throw new ArgumentException("少なくとも 1 つのセグメントが必要です。", nameof(segments));
+        }
+
+        var ordered = segments
+            .OrderBy(segment => segment.Index)
+            .ToList();
+
+        for (var i = 0; i < ordered.Count; i++)
+        {
+            if (ordered[i].Index != i)
+            {
+                throw new ArgumentException("セグメントの並び順が不正です。", nameof(segments));
+            }
+        }
+
+        using var connection = new SqliteConnection(_options.OfflineDraftConnectionString);
+        connection.Open();
+        using var transaction = connection.BeginTransaction();
+
+        var createdAt = DateTimeOffset.UtcNow;
+        var records = new List<OfflineDraftRecord>(ordered.Count);
+
+        foreach (var segment in ordered)
+        {
+            using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText =
+                @"INSERT INTO Drafts(UserId, TenantId, OriginalText, TargetLanguage, CreatedAt, Status, ResultText, ErrorReason, Attempts, CompletedAt, JobId, SegmentIndex, SegmentCount, AggregatedResult)
+                  VALUES ($userId, $tenantId, $text, $target, $createdAt, $status, NULL, NULL, 0, NULL, $jobId, $segmentIndex, $segmentCount, NULL);
+                  SELECT last_insert_rowid();";
+            command.Parameters.AddWithValue("$userId", userId);
+            command.Parameters.AddWithValue("$tenantId", tenantId);
+            command.Parameters.AddWithValue("$text", segment.Text);
+            command.Parameters.AddWithValue("$target", targetLanguage);
+            command.Parameters.AddWithValue("$createdAt", createdAt.ToUnixTimeSeconds());
+            command.Parameters.AddWithValue("$status", OfflineDraftStatus.Pending);
+            command.Parameters.AddWithValue("$jobId", jobId);
+            command.Parameters.AddWithValue("$segmentIndex", segment.Index);
+            command.Parameters.AddWithValue("$segmentCount", ordered.Count);
+
+            var id = (long)(command.ExecuteScalar() ?? 0);
+            records.Add(new OfflineDraftRecord
+            {
+                Id = id,
+                UserId = userId,
+                TenantId = tenantId,
+                OriginalText = segment.Text,
+                TargetLanguage = targetLanguage,
+                CreatedAt = createdAt,
+                Status = OfflineDraftStatus.Pending,
+                Attempts = 0,
+                JobId = jobId,
+                SegmentIndex = segment.Index,
+                SegmentCount = ordered.Count
+            });
+        }
+
+        transaction.Commit();
+        return records;
+    }
+
     public OfflineDraftRecord MarkProcessing(long id)
     {
         using var connection = new SqliteConnection(_options.OfflineDraftConnectionString);
