@@ -1,3 +1,5 @@
+import { fetchJson } from "./network.js";
+
 const DEFAULT_FETCH = typeof fetch === "function" ? fetch.bind(globalThis) : undefined;
 
 function resolveElements(root = typeof document !== "undefined" ? document : undefined) {
@@ -22,18 +24,6 @@ function resolveElements(root = typeof document !== "undefined" ? document : und
     styleList: root.querySelector?.("[data-style-template-list]"),
     statusLabel: root.querySelector?.("[data-settings-status]")
   };
-}
-
-async function fetchJson(url, fetchImpl = DEFAULT_FETCH) {
-  if (!fetchImpl) {
-    throw new Error("fetch implementation is not available");
-  }
-  const response = await fetchImpl(url, { method: "GET" });
-  if (!response.ok) {
-    const text = await response.text?.();
-    throw new Error(`Request failed: ${response.status} ${text ?? ""}`);
-  }
-  return response.json();
 }
 
 function renderList(container, items, emptyText) {
@@ -125,7 +115,11 @@ function updateProgress(elements, value, label) {
 
 async function refreshGlossary(elements, fetchImpl) {
   try {
-    const entries = await fetchJson("/api/glossary", fetchImpl);
+    const entries = await fetchJson("/api/glossary", {
+      fetchImpl,
+      toastMessage: "无法加载术语表，请稍后重试。",
+      toastKey: "settings-glossary"
+    });
     renderGlossaryList(elements.glossaryList, entries);
   } catch (error) {
     console.warn("无法加载术语列表", error);
@@ -244,7 +238,11 @@ export async function initSettingsPage({
   const elements = resolveElements(root);
 
   try {
-    const configuration = await fetchJson("/api/configuration", fetchImpl);
+    const configuration = await fetchJson("/api/configuration", {
+      fetchImpl,
+      toastMessage: "无法加载租户策略，将使用默认设置。",
+      toastKey: "settings-configuration"
+    });
     renderPolicies(elements, configuration?.tenantPolicies);
   } catch (error) {
     console.warn("加载配置失败", error);
