@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TlaPlugin.Configuration;
 using TlaPlugin.Providers;
@@ -15,12 +16,18 @@ public class ModelProviderFactory
     private readonly PluginOptions _options;
     private readonly IHttpClientFactory? _httpClientFactory;
     private readonly KeyVaultSecretResolver? _secretResolver;
+    private readonly ILoggerFactory? _loggerFactory;
 
-    public ModelProviderFactory(IOptions<PluginOptions>? options = null, IHttpClientFactory? httpClientFactory = null, KeyVaultSecretResolver? secretResolver = null)
+    public ModelProviderFactory(
+        IOptions<PluginOptions>? options = null,
+        IHttpClientFactory? httpClientFactory = null,
+        KeyVaultSecretResolver? secretResolver = null,
+        ILoggerFactory? loggerFactory = null)
     {
         _options = options?.Value ?? new PluginOptions();
         _httpClientFactory = httpClientFactory;
         _secretResolver = secretResolver;
+        _loggerFactory = loggerFactory;
     }
 
     public IReadOnlyList<IModelProvider> CreateProviders()
@@ -46,7 +53,7 @@ public class ModelProviderFactory
         {
             ModelProviderKind.Mock => new MockModelProvider(options),
             ModelProviderKind.OpenAi or ModelProviderKind.Anthropic or ModelProviderKind.Groq or ModelProviderKind.OpenWebUi or ModelProviderKind.Ollama or ModelProviderKind.Custom
-                => new ConfigurableChatModelProvider(options, _httpClientFactory, _secretResolver),
+                => new ConfigurableChatModelProvider(options, _httpClientFactory, _secretResolver, _loggerFactory?.CreateLogger<ConfigurableChatModelProvider>()),
             _ => new MockModelProvider(options)
         };
     }
