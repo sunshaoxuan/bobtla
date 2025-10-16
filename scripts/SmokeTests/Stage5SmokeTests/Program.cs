@@ -48,6 +48,7 @@ internal static class Program
                 "secrets" => RunSecrets(commandArgs),
                 "reply" => RunReply(commandArgs),
                 "metrics" => RunMetrics(commandArgs),
+                "ready" or "mark-ready" => RunReady(commandArgs),
                 _ => HandleUnknownCommand(command)
             };
         }
@@ -86,6 +87,7 @@ internal static class Program
         var overrides = new List<string>();
         var tenants = new List<string>();
         string? appsettings = null;
+        var verifyReadiness = false;
 
         for (var i = 0; i < args.Length; i++)
         {
@@ -106,6 +108,9 @@ internal static class Program
                     break;
                 case "--tenant":
                     tenants.Add(RequireValue(args, ref i));
+                    break;
+                case "--verify-readiness":
+                    verifyReadiness = true;
                     break;
                 default:
                     throw new ArgumentException($"未知参数 {current}");
@@ -136,6 +141,12 @@ internal static class Program
         }
 
         Console.WriteLine();
+        Console.WriteLine("🔁 HMAC 回退：");
+        Console.WriteLine(options.Security.UseHmacFallback
+            ? "  ✘ 已启用 UseHmacFallback，Stage 环境需关闭该选项以走 OBO 链路。"
+            : "  ✔ 已禁用 UseHmacFallback，使用 AAD/OBO 令牌链路。");
+
+        Console.WriteLine();
         Console.WriteLine("📡 Graph 作用域：");
         foreach (var scope in options.Security.GraphScopes)
         {
@@ -145,6 +156,69 @@ internal static class Program
                 ? $"  ✔ {normalized}"
                 : $"  ✘ {normalized} (建议以 https://graph.microsoft.com/.default 或资源限定格式配置)");
         }
+
+        Console.WriteLine();
+        ReportStageReadinessFile(options.StageReadinessFilePath, verifyReadiness);
+
+        return 0;
+    }
+
+    private static int RunReady(string[] args)
+    {
+        var overrides = new List<string>();
+        string? appsettings = null;
+        string? overridePath = null;
+        DateTimeOffset? timestampOverride = null;
+
+        for (var i = 0; i < args.Length; i++)
+        {
+            var current = args[i];
+            if (IsHelpFlag(current))
+            {
+                PrintReadyHelp();
+                return 0;
+            }
+
+            switch (current)
+            {
+                case "--appsettings":
+                    appsettings = RequireValue(args, ref i);
+                    break;
+                case "--override":
+                    overrides.Add(RequireValue(args, ref i));
+                    break;
+                case "--path":
+                    overridePath = RequireValue(args, ref i);
+                    break;
+                case "--timestamp":
+                    var value = RequireValue(args, ref i);
+                    if (!DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsed))
+                    {
+                        throw new ArgumentException($"无法解析时间戳 {value}，请使用 ISO-8601 格式。");
+                    }
+
+                    timestampOverride = parsed;
+                    break;
+                default:
+                    throw new ArgumentException($"未知参数 {current}");
+            }
+        }
+
+        var options = LoadOptions(appsettings, overrides);
+        var targetPath = string.IsNullOrWhiteSpace(overridePath) ? options.StageReadinessFilePath : overridePath;
+
+        if (string.IsNullOrWhiteSpace(targetPath))
+        {
+            throw new InvalidOperationException("未在配置中找到 Plugin.StageReadinessFilePath，无法写入 Stage 就绪文件。可通过 --path 显式指定。");
+        }
+
+        var timestamp = timestampOverride ?? DateTimeOffset.UtcNow;
+        var store = new FileStageReadinessStore(targetPath!);
+        store.WriteLastSuccess(timestamp);
+
+        Console.WriteLine("✅ Stage 就绪文件已更新:");
+        Console.WriteLine($"  Path: {Path.GetFullPath(targetPath!)}");
+        Console.WriteLine($"  Timestamp: {timestamp:O}");
 
         return 0;
     }
@@ -464,7 +538,7 @@ internal static class Program
         return 0;
     }
 
-    private static void ReportStageReadinessFile(string? configuredPath)
+    private static void ReportStageReadinessFile(string? configuredPath, bool probeWrite = false)
     {
         Console.WriteLine();
         Console.WriteLine("Stage 就绪文件检查:");
@@ -487,6 +561,11 @@ internal static class Program
         }
 
         Console.WriteLine($"  • 目标路径: {path}");
+
+        if (probeWrite)
+        {
+            ProbeStageReadinessPath(path);
+        }
 
         try
         {
@@ -518,6 +597,42 @@ internal static class Program
         catch (UnauthorizedAccessException ex)
         {
             Console.WriteLine($"  ✘ 缺少 Stage 就绪文件的访问权限：{ex.Message}");
+        }
+    }
+
+    private static void ProbeStageReadinessPath(string path)
+    {
+        try
+        {
+            var directory = Path.GetDirectoryName(path);
+            if (string.IsNullOrWhiteSpace(directory))
+            {
+                directory = Path.GetDirectoryName(Path.GetFullPath(path));
+            }
+
+            if (!string.IsNullOrWhiteSpace(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            var fileName = Path.GetFileName(path);
+            if (string.IsNullOrWhiteSpace(fileName))
+            {
+                fileName = "stage-readiness.txt";
+            }
+
+            var probeFile = string.IsNullOrWhiteSpace(directory)
+                ? Path.GetFullPath($".{fileName}.probe")
+                : Path.Combine(directory, $".{fileName}.probe");
+
+            var timestamp = DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture);
+            File.WriteAllText(probeFile, timestamp);
+            File.Delete(probeFile);
+            Console.WriteLine("  ✔ 写入权限检查通过，可创建/更新 Stage 就绪文件。");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Console.WriteLine($"  ✘ 无法在该路径写入 Stage 就绪文件：{ex.Message}");
         }
     }
 
@@ -630,9 +745,10 @@ internal static class Program
         Console.WriteLine("  dotnet run --project scripts/SmokeTests/Stage5SmokeTests -- <命令> [选项]");
         Console.WriteLine();
         Console.WriteLine("可用命令:");
-        Console.WriteLine("  secrets   检查 Key Vault 机密映射与 Graph 作用域配置。");
-        Console.WriteLine("  reply     模拟 Stage 回帖流程，输出 Token 与诊断信息。");
-        Console.WriteLine("  metrics   拉取 /api/metrics 与 /api/audit 观测数据。");
+        Console.WriteLine("  secrets     检查 Key Vault 机密映射、Graph 作用域，并可探测 Stage 就绪路径。");
+        Console.WriteLine("  reply       模拟 Stage 回帖流程，输出 Token 与诊断信息。");
+        Console.WriteLine("  metrics     拉取 /api/metrics 与 /api/audit 观测数据。");
+        Console.WriteLine("  ready       写入 Stage 就绪文件时间戳，标记最新冒烟结果。");
         Console.WriteLine();
         Console.WriteLine("使用 `--help` 查看每个命令的详细选项。");
     }
@@ -645,6 +761,7 @@ internal static class Program
         Console.WriteLine("  --appsettings <path>   指定基础 appsettings.json 路径，默认为 src/TlaPlugin/appsettings.json。");
         Console.WriteLine("  --override <path>      附加一个覆盖配置，可重复指定。");
         Console.WriteLine("  --tenant <tenant>      限定检查的租户 ID，可重复指定。");
+        Console.WriteLine("  --verify-readiness     探测 Stage 就绪文件路径的读写权限并输出结果。");
     }
 
     private static void PrintReplyHelp()
@@ -680,6 +797,21 @@ internal static class Program
         Console.WriteLine("  --output <path>        将指标与审计响应写入指定文件。");
         Console.WriteLine("  --appsettings <path>   指定基础配置路径。");
         Console.WriteLine("  --override <path>      附加覆盖配置，可重复。");
+    }
+
+    private static void PrintReadyHelp()
+    {
+        Console.WriteLine("用法: dotnet run --project scripts/SmokeTests/Stage5SmokeTests -- ready [选项]");
+        Console.WriteLine();
+        Console.WriteLine("选项:");
+        Console.WriteLine("  --appsettings <path>   指定基础配置路径，默认为 src/TlaPlugin/appsettings.json。");
+        Console.WriteLine("  --override <path>      附加覆盖配置，可重复。");
+        Console.WriteLine("  --path <path>          显式指定 Stage 就绪文件路径，优先于配置。");
+        Console.WriteLine("  --timestamp <value>    指定 ISO-8601 时间戳，默认写入当前 UTC 时间。");
+        Console.WriteLine();
+        Console.WriteLine("示例:");
+        Console.WriteLine("  dotnet run --project scripts/SmokeTests/Stage5SmokeTests -- ready --override appsettings.Stage.json");
+        Console.WriteLine("  dotnet run --project scripts/SmokeTests/Stage5SmokeTests -- ready --path /mnt/shared/stage-ready.txt");
     }
 
     private static string GenerateMockAssertion(string tenantId, string userId, string audience)

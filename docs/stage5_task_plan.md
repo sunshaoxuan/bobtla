@@ -6,8 +6,8 @@ Following the 85% completion assessment, the remaining scope targets Stage 5 rea
 
 | Workstream | Status | Evidence & Notes |
 | --- | --- | --- |
-| Secrets & Compliance Readiness | ⚪ 未开始 | 仍未找到关于 HMAC 回退关闭或 Graph 作用域扩展的实现/脚本更新，`StageFiveDiagnostics` 仍在前端 fallback 数据中提示未完成。 【F:src/webapp/app.js†L19-L44】 |
-| Live Model Provider Enablement | ⚪ 未开始 | 未看到 Key Vault 密钥映射或 `ConfigurableChatModelProvider` live 模式的新增配置/校验逻辑，需要补充密钥校验与告警。 |
+| Secrets & Compliance Readiness | 🟡 部分完成 | `Stage5SmokeTests` 新增 `--verify-readiness` 与 `ready` 命令，可在 HMAC/Graph 检查后探测 Stage 就绪文件并写入时间戳，为 StageFiveDiagnostics 提供真实信号。 【F:scripts/SmokeTests/Stage5SmokeTests/Program.cs†L40-L214】【F:scripts/SmokeTests/Stage5SmokeTests/Program.cs†L430-L520】 |
+| Live Model Provider Enablement | 🟡 部分完成 | `ConfigurableChatModelProvider` 现记录模型调用起止、密钥解析与回退原因，`ModelProviderFactory` 注入 ILogger 以支撑 live 模式诊断。 【F:src/TlaPlugin/Providers/ConfigurableChatModelProvider.cs†L22-L208】【F:src/TlaPlugin/Services/ModelProviderFactory.cs†L1-L56】 |
 | Frontend Telemetry Dashboard Integration | 🟡 部分完成 | 新增了 `fetchJson` 重试+超时逻辑并在仪表盘/设置页接入，但仍依赖 fallback 数据且尚无联通真实 API 的验证。 【F:src/webapp/network.js†L1-L117】【F:src/webapp/app.js†L1-L88】 |
 | Reply Service & Teams Integration Hardening | ⚪ 未开始 | 未检索到 ReplyService 与 Teams DTO 更新或 Stage 环境回帖链路的诊断记录。 |
 | Observability & Rollout Operations | ⚪ 未开始 | 仓库中未新增日志指标或告警配置，回滚手册仍待编写。 |
@@ -16,13 +16,15 @@ Following the 85% completion assessment, the remaining scope targets Stage 5 rea
 ## 下一步并行任务拆解
 
 1. **Secrets & Compliance Readiness**
+   - 利用 `Stage5SmokeTests -- secrets --verify-readiness` 持续探测共享卷权限，并在联调完成后执行 `-- ready` 写入冒烟时间戳，驱动 `StageFiveDiagnostics` 更新。
    - 完成密钥回退策略清理：更新服务器配置关闭 HMAC 回退，提交变更记录，并在 `StageFiveDiagnostics` 中同步状态标记。
    - 执行 Graph 权限验证脚本：编写/运行自动化脚本校验所需作用域，输出结果至 Runbook。
    - 准备 `Stage5SmokeTests` 流水线：在 CI/CD 中植入 secrets/reply/metrics 冒烟脚本并记录最新运行结果。
 
 2. **Live Model Provider Enablement**
    - 在基础设施仓库中登记 Key Vault secrets，编写校验脚本检查密钥有效期并告警。
-   - 扩展 `ConfigurableChatModelProvider` 日志，记录密钥检索、fallback 路径和异常，覆盖 `--use-live-model` 集成测试。
+   - 基于新日志完善 `--use-live-model` 集成测试，断言密钥解析、HTTP 成功/失败与回退路径均有记录。
+   - 结合日志输出定义 Application Insights 查询与告警，捕获密钥缺失、请求超时等异常。
 
 3. **Frontend Telemetry Dashboard Integration**
    - 替换仪表盘 fallback 数据：将 `/api/status`、`/api/roadmap` 等接口的真实响应存储与缓存策略补齐，删除冗余本地常量。
