@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using TlaPlugin.Configuration;
 using TlaPlugin.Models;
@@ -312,7 +313,7 @@ public class ContextRetrievalIntegrationTests
         var cacheStore = new TranslationCache(options);
         var throttle = new TranslationThrottle(options);
         var rewrite = new RewriteService(router, throttle);
-        var reply = new ReplyService(rewrite, router, new NoopTeamsReplyClient(), tokenBroker, metrics, options);
+        var reply = new ReplyService(rewrite, router, new NoopTeamsReplyClient(), tokenBroker, metrics, options, NullLogger<ReplyService>.Instance);
 
         return new TranslationPipeline(
             router,

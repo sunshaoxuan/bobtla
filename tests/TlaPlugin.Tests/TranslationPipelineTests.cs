@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using TlaPlugin.Configuration;
 using TlaPlugin.Models;
@@ -1055,7 +1056,7 @@ public class TranslationPipelineTests
         var glossary = new GlossaryService();
         var cache = new TranslationCache(options);
         var rewrite = new RewriteService(router, throttle);
-        var reply = new ReplyService(rewrite, router, new NoopTeamsReplyClient(), tokenBroker, metrics, options);
+        var reply = new ReplyService(rewrite, router, new NoopTeamsReplyClient(), tokenBroker, metrics, options, NullLogger<ReplyService>.Instance);
 
         var context = new ContextRetrievalService(new NullTeamsMessageClient(), new MemoryCache(new MemoryCacheOptions()), tokenBroker, options);
 
@@ -1094,7 +1095,7 @@ public class TranslationPipelineTests
         var cache = new TranslationCache(options);
         var throttle = new TranslationThrottle(options);
         var rewrite = new RewriteService(router, throttle);
-        var reply = new ReplyService(rewrite, router, new NoopTeamsReplyClient(), tokenBroker, metrics, options);
+        var reply = new ReplyService(rewrite, router, new NoopTeamsReplyClient(), tokenBroker, metrics, options, NullLogger<ReplyService>.Instance);
         var context = contextOverride ?? new ContextRetrievalService(teamsClient ?? new NullTeamsMessageClient(), memoryCache ?? new MemoryCache(new MemoryCacheOptions()), tokenBroker, options);
         var store = storeOverride ?? new OfflineDraftStore(options);
         return new TranslationPipeline(router, glossary, store, new LanguageDetector(), cache, throttle, context, rewrite, reply, options);

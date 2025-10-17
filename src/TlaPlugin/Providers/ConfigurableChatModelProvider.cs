@@ -9,6 +9,8 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using TlaPlugin.Configuration;
 using TlaPlugin.Models;
 using TlaPlugin.Services;
@@ -25,13 +27,19 @@ public class ConfigurableChatModelProvider : IModelProvider
     private readonly KeyVaultSecretResolver? _secretResolver;
     private readonly LanguageDetector _detector = new();
     private readonly MockModelProvider _fallback;
+    private readonly ILogger<ConfigurableChatModelProvider> _logger;
 
-    public ConfigurableChatModelProvider(ModelProviderOptions options, IHttpClientFactory? httpClientFactory, KeyVaultSecretResolver? secretResolver)
+    public ConfigurableChatModelProvider(
+        ModelProviderOptions options,
+        IHttpClientFactory? httpClientFactory,
+        KeyVaultSecretResolver? secretResolver,
+        ILogger<ConfigurableChatModelProvider>? logger = null)
     {
         Options = options;
         _httpClientFactory = httpClientFactory;
         _secretResolver = secretResolver;
         _fallback = new MockModelProvider(options);
+        _logger = logger ?? NullLogger<ConfigurableChatModelProvider>.Instance;
     }
 
     public ModelProviderOptions Options { get; }
@@ -45,6 +53,7 @@ public class ConfigurableChatModelProvider : IModelProvider
     {
         if (!CanInvokeExternalEndpoint)
         {
+            LogFallback("translate");
             return await _fallback.TranslateAsync(text, sourceLanguage, targetLanguage, promptPrefix, cancellationToken);
         }
 
@@ -55,14 +64,18 @@ public class ConfigurableChatModelProvider : IModelProvider
         };
 
         var stopwatch = Stopwatch.StartNew();
+        LogInvocationStart("translate");
         try
         {
             var content = await InvokeChatCompletionAsync(instructions, messages, cancellationToken);
             stopwatch.Stop();
+            LogInvocationSuccess("translate", stopwatch.ElapsedMilliseconds);
             return new ModelTranslationResult(content, GetModelIdentifier(), Options.Reliability, (int)stopwatch.ElapsedMilliseconds);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
         {
+            stopwatch.Stop();
+            LogInvocationFailure("translate", ex, stopwatch.ElapsedMilliseconds);
             throw new InvalidOperationException($"调用模型 {Options.Id} 失败。", ex);
         }
     }
@@ -71,6 +84,7 @@ public class ConfigurableChatModelProvider : IModelProvider
     {
         if (!CanInvokeExternalEndpoint)
         {
+            LogFallback("rewrite");
             return await _fallback.RewriteAsync(translatedText, tone, cancellationToken);
         }
 
@@ -87,13 +101,19 @@ public class ConfigurableChatModelProvider : IModelProvider
             ("user", translatedText)
         };
 
+        var stopwatch = Stopwatch.StartNew();
+        LogInvocationStart("rewrite");
         try
         {
             var content = await InvokeChatCompletionAsync(instructions, messages, cancellationToken);
+            stopwatch.Stop();
+            LogInvocationSuccess("rewrite", stopwatch.ElapsedMilliseconds);
             return EnsureToneSuffix(content, tone);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
         {
+            stopwatch.Stop();
+            LogInvocationFailure("rewrite", ex, stopwatch.ElapsedMilliseconds);
             throw new InvalidOperationException($"模型 {Options.Id} 的改写流程失败。", ex);
         }
     }
@@ -102,6 +122,7 @@ public class ConfigurableChatModelProvider : IModelProvider
     {
         if (!CanInvokeExternalEndpoint)
         {
+            LogFallback("summarize");
             return await _fallback.SummarizeAsync(text, cancellationToken);
         }
 
@@ -111,14 +132,77 @@ public class ConfigurableChatModelProvider : IModelProvider
             ("user", text)
         };
 
+        var stopwatch = Stopwatch.StartNew();
+        LogInvocationStart("summarize");
         try
         {
-            return await InvokeChatCompletionAsync(instructions, messages, cancellationToken);
+            var content = await InvokeChatCompletionAsync(instructions, messages, cancellationToken);
+            stopwatch.Stop();
+            LogInvocationSuccess("summarize", stopwatch.ElapsedMilliseconds);
+            return content;
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
         {
+            stopwatch.Stop();
+            LogInvocationFailure("summarize", ex, stopwatch.ElapsedMilliseconds);
             throw new InvalidOperationException($"模型 {Options.Id} 的摘要流程失败。", ex);
         }
+    }
+
+    private void LogFallback(string operation)
+    {
+        if (!_logger.IsEnabled(LogLevel.Warning))
+        {
+            return;
+        }
+
+        _logger.LogWarning(
+            "Provider {ProviderId} 使用回退模型执行 {Operation}，HasHttpClient={HasClient} HasSecretResolver={HasResolver} EndpointConfigured={HasEndpoint} ApiKeyConfigured={HasApiKey}。",
+            Options.Id,
+            operation,
+            _httpClientFactory != null,
+            _secretResolver != null,
+            !string.IsNullOrWhiteSpace(Options.Endpoint),
+            !string.IsNullOrWhiteSpace(Options.ApiKeySecretName) || Options.Kind == ModelProviderKind.Ollama || Options.DefaultHeaders.Count > 0);
+    }
+
+    private void LogInvocationStart(string operation)
+    {
+        if (!_logger.IsEnabled(LogLevel.Information))
+        {
+            return;
+        }
+
+        _logger.LogInformation(
+            "Provider {ProviderId} 开始执行 {Operation} 调用，模型 {ModelId}，终端 {Endpoint}。",
+            Options.Id,
+            operation,
+            GetModelIdentifier(),
+            string.IsNullOrWhiteSpace(Options.Endpoint) ? "(none)" : Options.Endpoint);
+    }
+
+    private void LogInvocationSuccess(string operation, long durationMs)
+    {
+        if (!_logger.IsEnabled(LogLevel.Information))
+        {
+            return;
+        }
+
+        _logger.LogInformation(
+            "Provider {ProviderId} 完成 {Operation} 调用，耗时 {Duration}ms。",
+            Options.Id,
+            operation,
+            durationMs);
+    }
+
+    private void LogInvocationFailure(string operation, Exception exception, long durationMs)
+    {
+        _logger.LogError(
+            exception,
+            "Provider {ProviderId} 在执行 {Operation} 调用时失败，耗时 {Duration}ms。",
+            Options.Id,
+            operation,
+            durationMs);
     }
 
     private bool CanInvokeExternalEndpoint =>
@@ -176,8 +260,17 @@ public class ConfigurableChatModelProvider : IModelProvider
             cancellationToken);
         if (string.IsNullOrWhiteSpace(secret))
         {
+            _logger.LogWarning(
+                "Provider {ProviderId} 未能解析密钥 {SecretName}，将尝试无凭据调用。",
+                Options.Id,
+                Options.ApiKeySecretName);
             return;
         }
+
+        _logger.LogInformation(
+            "Provider {ProviderId} 已解析密钥 {SecretName}。",
+            Options.Id,
+            Options.ApiKeySecretName);
 
         switch (Options.Kind)
         {

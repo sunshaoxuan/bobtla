@@ -6,6 +6,8 @@ using System.Text.Json.Nodes;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using TlaPlugin.Configuration;
 using TlaPlugin.Models;
@@ -23,6 +25,7 @@ public class ReplyService
     private readonly ITokenBroker _tokenBroker;
     private readonly UsageMetricsService _metrics;
     private readonly PluginOptions _options;
+    private readonly ILogger<ReplyService> _logger;
 
     public ReplyService(
         RewriteService rewriteService,
@@ -30,7 +33,8 @@ public class ReplyService
         ITeamsReplyClient teamsClient,
         ITokenBroker tokenBroker,
         UsageMetricsService metrics,
-        IOptions<PluginOptions>? options = null)
+        IOptions<PluginOptions>? options = null,
+        ILogger<ReplyService>? logger = null)
     {
         _rewriteService = rewriteService;
         _translationRouter = translationRouter;
@@ -38,6 +42,7 @@ public class ReplyService
         _tokenBroker = tokenBroker;
         _metrics = metrics;
         _options = options?.Value ?? new PluginOptions();
+        _logger = logger ?? NullLogger<ReplyService>.Instance;
     }
 
     public async Task<ReplyResult> SendReplyAsync(ReplyRequest request, string finalTextOverride, string? toneApplied, CancellationToken cancellationToken)
@@ -48,18 +53,22 @@ public class ReplyService
         }
 
         var context = PrepareContext(request);
+        using var scope = BeginScope(context);
+        _logger.LogInformation("Posting reply with override text and tone {Tone}", toneApplied ?? context.Tone ?? TranslationRequest.DefaultTone);
         return await PostAsync(context, finalTextOverride, toneApplied, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<ReplyResult> SendReplyAsync(ReplyRequest request, CancellationToken cancellationToken)
     {
         var context = PrepareContext(request);
+        using var scope = BeginScope(context);
 
         var finalText = context.InitialText;
         string? toneApplied = null;
 
         if (!string.IsNullOrWhiteSpace(context.Tone) && context.Tone != TranslationRequest.DefaultTone)
         {
+            _logger.LogInformation("Rewriting reply tone from {OriginalTone}", context.Tone);
             var rewrite = await _rewriteService.RewriteAsync(new RewriteRequest
             {
                 Text = context.ReplyText,
@@ -163,6 +172,8 @@ public class ReplyService
 
     private async Task<ReplyResult> PostAsync(ReplyExecutionContext context, string finalText, string? toneApplied, CancellationToken cancellationToken)
     {
+        _logger.LogInformation("Resolving Teams reply token via OBO");
+
         AccessToken token;
         try
         {
@@ -173,6 +184,7 @@ public class ReplyService
         catch (AuthenticationException)
         {
             _metrics.RecordFailure(context.TenantId, UsageMetricsService.FailureReasons.Authentication);
+            _logger.LogWarning("Token exchange failed for tenant {TenantId}", context.TenantId);
             throw;
         }
 
@@ -181,6 +193,10 @@ public class ReplyService
         var additionalTranslations = await TranslateAdditionalLanguagesAsync(context, finalText, cancellationToken).ConfigureAwait(false);
         var finalMessage = BuildMultilingualMessage(finalText, additionalTranslations, context.AdditionalTargetLanguages);
         var adaptiveCard = BuildAdaptiveCard(finalText, context.TargetLanguage, context.AdditionalTargetLanguages, additionalTranslations);
+
+        _logger.LogInformation(
+            "Posting Teams reply with {AdditionalCount} additional languages",
+            context.AdditionalTargetLanguages.Count);
 
         try
         {
@@ -195,6 +211,11 @@ public class ReplyService
                 additionalTranslations,
                 adaptiveCard), cancellationToken).ConfigureAwait(false);
 
+            _logger.LogInformation(
+                "Reply posted successfully with message {MessageId} and status {Status}",
+                response.MessageId,
+                response.Status);
+
             return new ReplyResult(response.MessageId, response.Status, finalMessage, toneApplied)
             {
                 Language = context.TargetLanguage,
@@ -204,11 +225,20 @@ public class ReplyService
         catch (TeamsReplyException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
         {
             _metrics.RecordFailure(context.TenantId, UsageMetricsService.FailureReasons.Authentication);
+            _logger.LogWarning(
+                "Reply forbidden for tenant {TenantId}, channel {ChannelId}: {Message}",
+                context.TenantId,
+                context.ChannelId ?? string.Empty,
+                ex.Message);
             throw new ReplyAuthorizationException("指定されたチャネルでは返信権限がありません。");
         }
         catch (TeamsReplyException ex) when (ex.StatusCode == HttpStatusCode.PaymentRequired)
         {
             _metrics.RecordFailure(context.TenantId, UsageMetricsService.FailureReasons.Budget);
+            _logger.LogWarning(
+                "Reply rejected due to budget limit for tenant {TenantId}: {Message}",
+                context.TenantId,
+                ex.Message);
             throw new BudgetExceededException(string.IsNullOrWhiteSpace(ex.Message)
                 ? "予算の上限を超えたため、返信を送信できません。"
                 : ex.Message);
@@ -216,6 +246,11 @@ public class ReplyService
         catch (TeamsReplyException ex)
         {
             _metrics.RecordFailure(context.TenantId, UsageMetricsService.FailureReasons.Provider);
+            _logger.LogWarning(
+                "Reply failed for tenant {TenantId} with status {StatusCode} and error code {ErrorCode}",
+                context.TenantId,
+                ex.StatusCode,
+                ex.ErrorCode);
             throw new TranslationException(string.IsNullOrWhiteSpace(ex.Message)
                 ? "返信の投稿に失敗しました。"
                 : ex.Message);
@@ -228,6 +263,10 @@ public class ReplyService
         {
             return new Dictionary<string, string>();
         }
+
+        _logger.LogDebug(
+            "Translating additional languages: {Languages}",
+            context.AdditionalTargetLanguages);
 
         var results = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
@@ -376,4 +415,18 @@ public class ReplyService
         string? Tone,
         IReadOnlyList<string> AdditionalTargetLanguages,
         string UserAssertion);
+
+    private IDisposable BeginScope(ReplyExecutionContext context)
+    {
+        return _logger.BeginScope(new Dictionary<string, object>
+        {
+            ["ThreadId"] = context.ThreadId,
+            ["TenantId"] = context.TenantId,
+            ["UserId"] = context.UserId,
+            ["ChannelId"] = context.ChannelId ?? string.Empty,
+            ["TargetLanguage"] = context.TargetLanguage,
+            ["Tone"] = context.Tone ?? TranslationRequest.DefaultTone,
+            ["AdditionalLanguages"] = context.AdditionalTargetLanguages.Count
+        });
+    }
 }
