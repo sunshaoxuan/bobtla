@@ -1,12 +1,14 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Security.Authentication;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Logging;
 using TlaPlugin.Configuration;
 using TlaPlugin.Models;
 
@@ -22,18 +24,21 @@ public class ContextRetrievalService
     private readonly ITokenBroker _tokenBroker;
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _locks;
     private readonly PluginOptions _options;
+    private readonly ILogger<ContextRetrievalService>? _logger;
 
     public ContextRetrievalService(
         ITeamsMessageClient teamsClient,
         IMemoryCache cache,
         ITokenBroker tokenBroker,
-        IOptions<PluginOptions>? options = null)
+        IOptions<PluginOptions>? options = null,
+        ILogger<ContextRetrievalService>? logger = null)
     {
         _teamsClient = teamsClient ?? throw new ArgumentNullException(nameof(teamsClient));
         _cache = cache ?? throw new ArgumentNullException(nameof(cache));
         _tokenBroker = tokenBroker ?? throw new ArgumentNullException(nameof(tokenBroker));
         _options = options?.Value ?? new PluginOptions();
         _locks = new ConcurrentDictionary<string, SemaphoreSlim>(StringComparer.OrdinalIgnoreCase);
+        _logger = logger;
     }
 
     public async Task<ContextRetrievalResult> GetContextAsync(ContextRetrievalRequest request, CancellationToken cancellationToken)
@@ -45,14 +50,27 @@ public class ContextRetrievalService
 
         if (string.IsNullOrWhiteSpace(request.TenantId) || string.IsNullOrWhiteSpace(request.UserId))
         {
+            _logger?.LogWarning("ContextRetrievalService skipping request due to missing tenant or user. Tenant: {TenantId}. User: {UserId}.", request.TenantId, request.UserId);
             return new ContextRetrievalResult();
         }
 
         var cacheKey = BuildChannelKey(request.TenantId, request.ThreadId ?? request.ChannelId ?? string.Empty);
         var hints = request.ContextHints ?? new List<string>();
+        _logger?.LogDebug(
+            "ContextRetrievalService resolving context for tenant {TenantId}, key {CacheKey}. HintCount={HintCount}, MaxMessages={MaxMessages}.",
+            request.TenantId,
+            cacheKey,
+            hints.Count,
+            request.MaxMessages);
         var candidates = await GetOrFetchMessagesAsync(cacheKey, request, cancellationToken).ConfigureAwait(false);
 
         var messages = ApplyFilters(candidates, hints, request.MaxMessages);
+
+        _logger?.LogInformation(
+            "ContextRetrievalService returning {MessageCount} messages for tenant {TenantId} (cache key {CacheKey}).",
+            messages.Count,
+            request.TenantId,
+            cacheKey);
 
         return new ContextRetrievalResult
         {
@@ -89,6 +107,7 @@ public class ContextRetrievalService
     {
         if (_cache.TryGetValue(cacheKey, out IReadOnlyList<ContextMessage> cached))
         {
+            _logger?.LogDebug("ContextRetrievalService cache hit for {CacheKey}. Returning {Count} messages.", cacheKey, cached.Count);
             return cached;
         }
 
@@ -99,6 +118,7 @@ public class ContextRetrievalService
         {
             if (_cache.TryGetValue(cacheKey, out cached))
             {
+                _logger?.LogDebug("ContextRetrievalService cache populated for {CacheKey} while waiting. Returning {Count} messages.", cacheKey, cached.Count);
                 return cached;
             }
 
@@ -110,21 +130,30 @@ public class ContextRetrievalService
 
             if (string.IsNullOrWhiteSpace(request.UserAssertion))
             {
+                _logger?.LogWarning("ContextRetrievalService missing user assertion for tenant {TenantId}, cache key {CacheKey}. Returning empty result.", request.TenantId, cacheKey);
                 return Array.Empty<ContextMessage>();
             }
 
             AccessToken? accessToken = null;
             try
             {
+                var stopwatch = Stopwatch.StartNew();
                 accessToken = await _tokenBroker
                     .ExchangeOnBehalfOfAsync(request.TenantId, request.UserId, request.UserAssertion, cancellationToken)
                     .ConfigureAwait(false);
+                stopwatch.Stop();
+                _logger?.LogInformation(
+                    "ContextRetrievalService acquired OBO token for tenant {TenantId} in {ElapsedMs} ms.",
+                    request.TenantId,
+                    stopwatch.ElapsedMilliseconds);
             }
             catch (AuthenticationException)
             {
+                _logger?.LogWarning("ContextRetrievalService failed to exchange token for tenant {TenantId}, cache key {CacheKey}.", request.TenantId, cacheKey);
                 return Array.Empty<ContextMessage>();
             }
 
+            var fetchWatch = Stopwatch.StartNew();
             var fetched = await _teamsClient
                 .GetRecentMessagesAsync(
                     request.TenantId,
@@ -136,6 +165,13 @@ public class ContextRetrievalService
                     request.UserAssertion,
                     cancellationToken)
                 .ConfigureAwait(false);
+            fetchWatch.Stop();
+            _logger?.LogInformation(
+                "ContextRetrievalService fetched {MessageCount} messages for tenant {TenantId} in {ElapsedMs} ms (cache key {CacheKey}).",
+                fetched.Count,
+                request.TenantId,
+                fetchWatch.ElapsedMilliseconds,
+                cacheKey);
 
             var snapshot = fetched
                 .Select(Clone)
@@ -144,6 +180,7 @@ public class ContextRetrievalService
                 .AsReadOnly();
 
             _cache.Set(cacheKey, snapshot, BuildCacheEntryOptions());
+            _logger?.LogDebug("ContextRetrievalService cached {Count} messages for {CacheKey} with expiration {Expiration}.", snapshot.Count, cacheKey, _options.Rag.CacheExpiration);
             return snapshot;
         }
         finally
@@ -161,24 +198,35 @@ public class ContextRetrievalService
 
         if (hints.Count > 0)
         {
-            filtered = filtered.Where(message => hints.Any(hint =>
-                message.Text.Contains(hint, StringComparison.OrdinalIgnoreCase)
-                || message.Author.Contains(hint, StringComparison.OrdinalIgnoreCase)));
+            var hinted = filtered
+                .Where(message => hints.Any(hint =>
+                    message.Text.Contains(hint, StringComparison.OrdinalIgnoreCase)
+                    || message.Author.Contains(hint, StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+            _logger?.LogDebug("ContextRetrievalService applied {HintCount} hints and reduced message set to {Count} candidates.", hints.Count, hinted.Count);
+            filtered = hinted;
         }
 
         var limit = overrideLimit ?? _options.Rag.MaxMessages;
+        List<ContextMessage> limited;
         if (limit > 0)
         {
-            filtered = filtered.Take(limit);
+            limited = filtered.Take(limit).ToList();
+            _logger?.LogTrace("ContextRetrievalService applied max message limit {Limit}.", limit);
+        }
+        else
+        {
+            limited = filtered as List<ContextMessage> ?? filtered.ToList();
         }
 
-        var ordered = filtered
+        var ordered = limited
             .Select(Clone)
             .ToList();
 
         if (_options.Rag.SummaryThreshold > 0)
         {
             ordered = TrimByThreshold(ordered, _options.Rag.SummaryThreshold);
+            _logger?.LogTrace("ContextRetrievalService trimmed messages to summary threshold {Threshold}.", _options.Rag.SummaryThreshold);
         }
 
         return ordered;

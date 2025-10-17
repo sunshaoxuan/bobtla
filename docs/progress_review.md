@@ -6,10 +6,10 @@
 
 | 分类 | 权重 | 完成度 | 说明 |
 | --- | --- | --- | --- |
-| Must (R1, R2, R3, R5, R7, R9, R10) | 60% | 0.52 | 自动检测/翻译、回帖、术语、预算守卫、审计链路均已落地；Teams 消息扩展已实现但 Compose 外挂/设置页仍待 Stage 验证，合规侧缺少真实密钥托管演练，因此按 ~87% 计入。 |
+| Must (R1, R2, R3, R5, R7, R9, R10) | 60% | 0.53 | 自动检测/翻译、回帖、术语、预算守卫、审计链路均已落地；新增预算与 RAG 结构化日志支撑观测，Teams Compose/设置页仍待 Stage 验证，合规侧缺少真实密钥托管演练，因此按 ~88% 计入。 |
 | Should (R4, R6, R8, R11) | 25% | 0.20 | 多模型路由、RAG 上下文、MCP 工具链均完备；国际化具备 100+ 语言配置但 UI 仅提供日/中双语，本项按 80% 计入。 |
 | Could (R12, R13, R14) | 15% | 0.09 | 离线草稿/分片与术语上传管理实现度高；多语广播目前以单卡片附带附加译文方式呈现，未拆分多条公告，折算 60%。 |
-| **总体** | **100%** | **81%** | 结合权重折算后的当前完成度约 **81%**。 |
+| **总体** | **100%** | **82%** | 结合权重折算后的当前完成度约 **82%**。 |
 
 ## 需求映射详情
 
@@ -18,7 +18,7 @@
 - **R1 自动检测并翻译** — `TranslationPipeline` 在翻译入口调用 `LanguageDetector`，若置信度不足会返回候选语言提示，同时兼顾长文本排队流程。 【F:src/TlaPlugin/Services/TranslationPipeline.cs†L47-L120】【F:src/TlaPlugin/Services/LanguageDetector.cs†L122-L256】
 - **R2 可编辑回帖** — `ReplyService` 支持语气改写、附加多语言译文并最终通过 Teams 客户端回复，`MessageExtensionHandler` 也会在译后触发回帖。 【F:src/TlaPlugin/Services/ReplyService.cs†L24-L210】【F:src/TlaPlugin/Teams/MessageExtensionHandler.cs†L185-L266】
 - **R3 术语库合并与冲突提示** — `GlossaryService` 处理多层级合并、冲突预览，消息扩展在冲突时返回自适应卡片供用户决策。 【F:src/TlaPlugin/Services/GlossaryService.cs†L13-L196】【F:src/TlaPlugin/Teams/MessageExtensionHandler.cs†L37-L118】
-- **R5 成本/延迟控制** — `BudgetGuard`、`TranslationThrottle` 与 `UsageMetricsService` 组合提供预算守卫、速率限制与性能监控。 【F:src/TlaPlugin/Services/BudgetGuard.cs†L8-L71】【F:src/TlaPlugin/Services/TranslationThrottle.cs†L13-L88】【F:src/TlaPlugin/Services/UsageMetricsService.cs†L10-L109】
+- **R5 成本/延迟控制** — `BudgetGuard`、`TranslationThrottle` 与 `UsageMetricsService` 组合提供预算守卫、速率限制与性能监控，并新增结构化日志记录预算拒绝与 RAG 获取耗时以支撑告警。 【F:src/TlaPlugin/Services/BudgetGuard.cs†L1-L90】【F:src/TlaPlugin/Services/TranslationThrottle.cs†L13-L88】【F:src/TlaPlugin/Services/UsageMetricsService.cs†L10-L109】【F:src/TlaPlugin/Services/ContextRetrievalService.cs†L1-L225】
 - **R7 审计追溯** — `AuditLogger` 记录租户、模型、成本等字段并哈希原文，接口 `/api/audit` 支持导出。 【F:src/TlaPlugin/Services/AuditLogger.cs†L13-L52】【F:src/TlaPlugin/Program.cs†L482-L520】
 - **R9 Teams 集成** — `MessageExtensionHandler` 覆盖翻译、改写、离线草稿与回帖流程；`wwwroot` 下提供 Tab/仪表盘静态资源，待 Stage 环境验证。 【F:src/TlaPlugin/Teams/MessageExtensionHandler.cs†L19-L336】【F:src/TlaPlugin/wwwroot/webapp/app.js†L1-L116】
 - **R10 安全合规** — `ComplianceGateway` 按区域、认证、PII 检测拦截；`ConfigurableChatModelProvider` 支持 Key Vault 密钥解析及回退日志。实际密钥拉通尚未验证。 【F:src/TlaPlugin/Services/ComplianceGateway.cs†L8-L66】【F:src/TlaPlugin/Providers/ConfigurableChatModelProvider.cs†L20-L116】
