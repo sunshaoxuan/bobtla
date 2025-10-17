@@ -64,6 +64,71 @@ const DASHBOARD_ENDPOINTS = {
   }
 };
 
+const CACHE_PREFIX = "bobtla:dashboard:";
+
+function getCacheStorage() {
+  if (typeof localStorage !== "undefined") {
+    return localStorage;
+  }
+  if (typeof sessionStorage !== "undefined") {
+    return sessionStorage;
+  }
+  return null;
+}
+
+function readCachedValue(key) {
+  const storage = getCacheStorage();
+  if (!storage || typeof storage.getItem !== "function") {
+    return undefined;
+  }
+
+  try {
+    const raw = storage.getItem(`${CACHE_PREFIX}${key}`);
+    if (!raw) {
+      return undefined;
+    }
+    return JSON.parse(raw);
+  } catch (error) {
+    if (typeof console !== "undefined" && typeof console.debug === "function") {
+      console.debug("读取缓存失败", error);
+    }
+    return undefined;
+  }
+}
+
+function writeCachedValue(key, value) {
+  const storage = getCacheStorage();
+  if (!storage || typeof storage.setItem !== "function") {
+    return;
+  }
+
+  if (value === undefined) {
+    return;
+  }
+
+  try {
+    storage.setItem(`${CACHE_PREFIX}${key}`, JSON.stringify(value));
+  } catch (error) {
+    if (typeof console !== "undefined" && typeof console.debug === "function") {
+      console.debug("写入缓存失败", error);
+    }
+  }
+}
+
+function resolveDataFromCache(key, freshValue, fallbackValue) {
+  if (freshValue !== null && freshValue !== undefined) {
+    writeCachedValue(key, freshValue);
+    return freshValue;
+  }
+
+  const cached = readCachedValue(key);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  return fallbackValue;
+}
+
 function getEndpoint(key, overrides = {}) {
   const endpoint = DASHBOARD_ENDPOINTS[key] ?? {};
   const { url, ...baseOptions } = endpoint;
@@ -760,7 +825,12 @@ async function handleMetricsRefresh() {
   try {
     const { url, options } = getEndpoint("metrics", { retries: 1 });
     const response = await fetchJson(url, options);
-    const normalized = response ? normalizeMetrics(response) : normalizeMetrics(latestMetrics ?? FALLBACK_METRICS);
+    if (response) {
+      writeCachedValue("metrics", response);
+    }
+
+    const resolvedMetrics = resolveDataFromCache("metrics", response, latestMetrics ?? FALLBACK_METRICS);
+    const normalized = normalizeMetrics(resolvedMetrics);
     latestMetrics = normalized;
     if (latestCards) {
       renderSummary(latestCards, latestMetrics);
@@ -822,14 +892,24 @@ async function bootstrap() {
     fetchJson(metricsEndpoint.url, metricsEndpoint.options)
   ]);
 
-  latestCards = buildStatusCards(status ?? FALLBACK_STATUS, roadmap ?? FALLBACK_ROADMAP);
-  latestMetrics = normalizeMetrics(metrics ?? FALLBACK_METRICS);
+  const resolvedStatus = resolveDataFromCache("status", status, FALLBACK_STATUS);
+  const resolvedRoadmap = resolveDataFromCache("roadmap", roadmap, FALLBACK_ROADMAP);
+  const resolvedLocales = resolveDataFromCache("locales", locales, FALLBACK_LOCALES);
+  const resolvedConfiguration = resolveDataFromCache("configuration", configuration, null);
+  const resolvedMetrics = resolveDataFromCache("metrics", metrics, FALLBACK_METRICS);
+
+  latestCards = buildStatusCards(resolvedStatus, resolvedRoadmap);
+  latestMetrics = normalizeMetrics(resolvedMetrics);
 
   renderSummary(latestCards, latestMetrics);
   renderTimeline(latestCards.timeline);
   renderTests(latestCards.tests, latestMetrics);
-  renderLocales(formatLocaleOptions(locales ?? FALLBACK_LOCALES));
-  renderLanguages(configuration?.supportedLanguages ?? FALLBACK_LANGUAGES);
+  renderLocales(formatLocaleOptions(resolvedLocales));
+  const supportedLanguages = resolvedConfiguration?.supportedLanguages ?? FALLBACK_LANGUAGES;
+  if (resolvedConfiguration !== null && resolvedConfiguration !== undefined) {
+    writeCachedValue("configuration", resolvedConfiguration);
+  }
+  renderLanguages(supportedLanguages);
   setupMetricsRefresh();
 }
 
