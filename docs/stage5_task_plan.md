@@ -9,8 +9,8 @@ Following the 85% completion assessment, the remaining scope targets Stage 5 rea
 | Secrets & Compliance Readiness | 🟡 部分完成 | `Stage5SmokeTests` 新增 `--verify-readiness` 与 `ready` 命令，可在 HMAC/Graph 检查后探测 Stage 就绪文件并写入时间戳，为 StageFiveDiagnostics 提供真实信号。 【F:scripts/SmokeTests/Stage5SmokeTests/Program.cs†L40-L214】【F:scripts/SmokeTests/Stage5SmokeTests/Program.cs†L430-L520】 |
 | Live Model Provider Enablement | 🟡 部分完成 | `ConfigurableChatModelProvider` 现记录模型调用起止、密钥解析与回退原因，`ModelProviderFactory` 注入 ILogger 以支撑 live 模式诊断。 【F:src/TlaPlugin/Providers/ConfigurableChatModelProvider.cs†L22-L208】【F:src/TlaPlugin/Services/ModelProviderFactory.cs†L1-L56】 |
 | Frontend Telemetry Dashboard Integration | 🟡 部分完成 | 新增了 `fetchJson` 重试+超时逻辑并在仪表盘/设置页接入，但仍依赖 fallback 数据且尚无联通真实 API 的验证。 【F:src/webapp/network.js†L1-L117】【F:src/webapp/app.js†L1-L88】 |
-| Reply Service & Teams Integration Hardening | ⚪ 未开始 | 未检索到 ReplyService 与 Teams DTO 更新或 Stage 环境回帖链路的诊断记录。 |
-| Observability & Rollout Operations | 🟡 部分完成 | `BudgetGuard` 与 `ContextRetrievalService` 新增结构化日志，记录预算拒绝与 RAG 抓取耗时，为后续 Application Insights 查询奠定数据基础。 【F:src/TlaPlugin/Services/BudgetGuard.cs†L1-L90】【F:src/TlaPlugin/Services/ContextRetrievalService.cs†L1-L225】 |
+| Reply Service & Teams Integration Hardening | 🟡 部分完成 | `ReplyService` 与 `TeamsReplyClient` 增加 OBO 交换、附加语种与 Graph 调用的结构化日志，可追踪消息 ID、状态码与预算/权限异常，为 Stage 回帖冒烟提供可观测性。 【F:src/TlaPlugin/Services/ReplyService.cs†L24-L334】【F:src/TlaPlugin/Services/TeamsReplyClient.cs†L1-L214】 |
+| Observability & Rollout Operations | 🟡 部分完成 | `BudgetGuard`、`ContextRetrievalService`、`ReplyService` 与 `TeamsReplyClient` 输出结构化日志，记录预算拒绝、RAG 抓取耗时与 Graph 回复状态，为后续 Application Insights 查询奠定数据基础。 【F:src/TlaPlugin/Services/BudgetGuard.cs†L1-L90】【F:src/TlaPlugin/Services/ContextRetrievalService.cs†L1-L225】【F:src/TlaPlugin/Services/ReplyService.cs†L24-L334】【F:src/TlaPlugin/Services/TeamsReplyClient.cs†L1-L214】 |
 | Documentation & Stakeholder Alignment | 🟡 部分完成 | 当前文档已列出工作流与负责人框架，但尚缺 burndown、风险与会议纪要等动态内容。 【F:docs/stage5_task_plan.md†L1-L32】 |
 
 ## 下一步并行任务拆解
@@ -32,7 +32,7 @@ Following the 85% completion assessment, the remaining scope targets Stage 5 rea
 
 4. **Reply Service & Teams Integration Hardening**
    - 同步最新 Teams 消息扩展 schema，更新 DTO、验证器与映射表。
-   - 在 Stage 环境跑通多轮对话并收集日志，针对 budget guard 与审计差异开 Issue 跟踪。
+   - 在 Stage 环境跑通多轮对话，复核新增日志中记录的 token、语言与 Graph 状态，针对 budget guard 与审计差异开 Issue 跟踪。
 
 5. **Observability & Rollout Operations**
    - 丰富日志：为预算守卫、RAG 检索、模型回退增加结构化字段，并在 Application Insights/Splunk 中建立查询。（预算与 RAG 日志已落地，需继续覆盖模型回退与指标管道。）

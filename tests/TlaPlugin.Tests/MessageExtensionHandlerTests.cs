@@ -6,6 +6,7 @@ using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using TlaPlugin.Configuration;
 using TlaPlugin.Models;
@@ -525,7 +526,7 @@ public class MessageExtensionHandlerTests
         var throttle = new TranslationThrottle(options);
         var rewrite = new RewriteService(router, throttle);
         var replyClient = replyClientOverride ?? new StubTeamsReplyClient();
-        var reply = new ReplyService(rewrite, router, replyClient, tokenBroker, metrics, options);
+        var reply = new ReplyService(rewrite, router, replyClient, tokenBroker, metrics, options, NullLogger<ReplyService>.Instance);
         var context = contextOverride ?? new ContextRetrievalService(new NullTeamsMessageClient(), new MemoryCache(new MemoryCacheOptions()), tokenBroker, options);
         var pipeline = new TranslationPipeline(router, glossary, new OfflineDraftStore(options), new LanguageDetector(), cache, throttle, context, rewrite, reply, options);
         return new MessageExtensionHandler(pipeline, localization, options);
