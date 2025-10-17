@@ -10,6 +10,8 @@ using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace TlaPlugin.Services;
 
@@ -24,10 +26,12 @@ public class TeamsReplyClient : ITeamsReplyClient
     };
 
     private readonly HttpClient _httpClient;
+    private readonly ILogger<TeamsReplyClient> _logger;
 
-    public TeamsReplyClient(HttpClient httpClient)
+    public TeamsReplyClient(HttpClient httpClient, ILogger<TeamsReplyClient>? logger = null)
     {
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+        _logger = logger ?? NullLogger<TeamsReplyClient>.Instance;
         if (_httpClient.BaseAddress is null)
         {
             _httpClient.BaseAddress = new Uri("https://graph.microsoft.com/v1.0/", UriKind.Absolute);
@@ -42,6 +46,17 @@ public class TeamsReplyClient : ITeamsReplyClient
         }
 
         var path = BuildRequestPath(request);
+        using var scope = _logger.BeginScope(new Dictionary<string, object>
+        {
+            ["ThreadId"] = request.ThreadId,
+            ["ChannelId"] = request.ChannelId ?? string.Empty,
+            ["TenantId"] = request.TenantId,
+            ["Language"] = request.Language,
+            ["Tone"] = request.Tone
+        });
+
+        _logger.LogInformation("Sending Teams reply via Graph path {GraphPath}", path);
+
         using var httpRequest = new HttpRequestMessage(HttpMethod.Post, new Uri(path, UriKind.Relative));
         httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", request.AccessToken);
 
@@ -92,6 +107,10 @@ public class TeamsReplyClient : ITeamsReplyClient
 
         if (!response.IsSuccessStatusCode)
         {
+            _logger.LogWarning(
+                "Teams reply failed with status {StatusCode} and body length {Length}",
+                response.StatusCode,
+                responseBody?.Length ?? 0);
             throw CreateException(response.StatusCode, responseBody);
         }
 
@@ -132,6 +151,11 @@ public class TeamsReplyClient : ITeamsReplyClient
         var status = response.StatusCode is HttpStatusCode.Created or HttpStatusCode.OK
             ? "sent"
             : response.StatusCode.ToString().ToLowerInvariant();
+
+        _logger.LogInformation(
+            "Teams reply succeeded with message {MessageId} and status {Status}",
+            messageId,
+            status);
 
         return new TeamsReplyResponse(messageId, postedAt, status);
     }

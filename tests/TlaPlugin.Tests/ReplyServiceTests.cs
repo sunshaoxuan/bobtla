@@ -15,6 +15,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using TlaPlugin.Configuration;
 using TlaPlugin.Models;
@@ -243,7 +244,7 @@ public class ReplyServiceTests
         {
             BaseAddress = new Uri("https://graph.test/v1.0/")
         };
-        var teamsClient = new TeamsReplyClient(httpClient);
+        var teamsClient = new TeamsReplyClient(httpClient, NullLogger<TeamsReplyClient>.Instance);
         var metrics = new UsageMetricsService();
         var service = CreateService(options, teamsClient, metrics, new RecordingTokenBroker("token-http"));
 
@@ -296,7 +297,7 @@ public class ReplyServiceTests
             Content = new StringContent("{\"error\":{\"code\":\"Forbidden\",\"message\":\"access denied\"}}", Encoding.UTF8, "application/json")
         });
         var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://graph.test/") };
-        var teamsClient = new TeamsReplyClient(httpClient);
+        var teamsClient = new TeamsReplyClient(httpClient, NullLogger<TeamsReplyClient>.Instance);
         var metrics = new UsageMetricsService();
         var service = CreateService(options, teamsClient, metrics, new RecordingTokenBroker());
 
@@ -329,7 +330,7 @@ public class ReplyServiceTests
             Content = new StringContent("{\"error\":{\"code\":\"Budget\",\"message\":\"budget exceeded\"}}", Encoding.UTF8, "application/json")
         });
         var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://graph.test/") };
-        var teamsClient = new TeamsReplyClient(httpClient);
+        var teamsClient = new TeamsReplyClient(httpClient, NullLogger<TeamsReplyClient>.Instance);
         var metrics = new UsageMetricsService();
         var service = CreateService(options, teamsClient, metrics, new RecordingTokenBroker());
 
@@ -355,7 +356,7 @@ public class ReplyServiceTests
         var router = new TranslationRouter(new ModelProviderFactory(options), new ComplianceGateway(options), new BudgetGuard(options.Value), new AuditLogger(), new ToneTemplateService(), broker, metrics, new LocalizationCatalogService(), options);
         var throttle = new TranslationThrottle(options);
         var rewrite = new RewriteService(router, throttle);
-        return new ReplyService(rewrite, router, teamsClient, broker, metrics, options);
+        return new ReplyService(rewrite, router, teamsClient, broker, metrics, options, NullLogger<ReplyService>.Instance);
     }
 
     private sealed class RecordingTeamsClient : ITeamsReplyClient

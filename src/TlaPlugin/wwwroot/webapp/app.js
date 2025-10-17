@@ -1,4 +1,5 @@
 import { buildStatusCards, formatLocaleOptions } from "./viewModel.js";
+import { fetchJson } from "./network.js";
 
 const FALLBACK_STATUS = {
   currentStageId: "phase5",
@@ -33,6 +34,108 @@ const FALLBACK_STATUS = {
     integrationReady: false
   }
 };
+
+const DASHBOARD_ENDPOINTS = {
+  status: {
+    url: "/api/status",
+    toastMessage: "无法加载项目状态，仪表盘展示的是缓存数据。",
+    toastKey: "dashboard-status"
+  },
+  roadmap: {
+    url: "/api/roadmap",
+    toastMessage: "无法加载路线图信息，展示的是内置模板。",
+    toastKey: "dashboard-roadmap"
+  },
+  locales: {
+    url: "/api/localization/locales",
+    toastMessage: "无法加载可用语言列表，将使用默认配置。",
+    toastKey: "dashboard-locales"
+  },
+  configuration: {
+    url: "/api/configuration",
+    toastMessage: "无法加载配置，语言列表基于本地默认值。",
+    toastKey: "dashboard-configuration"
+  },
+  metrics: {
+    url: "/api/metrics",
+    toastMessage: "无法获取实时指标，显示的是最近一次缓存。",
+    toastKey: "dashboard-metrics"
+  }
+};
+
+const CACHE_PREFIX = "bobtla:dashboard:";
+
+function getCacheStorage() {
+  if (typeof localStorage !== "undefined") {
+    return localStorage;
+  }
+  if (typeof sessionStorage !== "undefined") {
+    return sessionStorage;
+  }
+  return null;
+}
+
+function readCachedValue(key) {
+  const storage = getCacheStorage();
+  if (!storage || typeof storage.getItem !== "function") {
+    return undefined;
+  }
+
+  try {
+    const raw = storage.getItem(`${CACHE_PREFIX}${key}`);
+    if (!raw) {
+      return undefined;
+    }
+    return JSON.parse(raw);
+  } catch (error) {
+    if (typeof console !== "undefined" && typeof console.debug === "function") {
+      console.debug("读取缓存失败", error);
+    }
+    return undefined;
+  }
+}
+
+function writeCachedValue(key, value) {
+  const storage = getCacheStorage();
+  if (!storage || typeof storage.setItem !== "function") {
+    return;
+  }
+
+  if (value === undefined) {
+    return;
+  }
+
+  try {
+    storage.setItem(`${CACHE_PREFIX}${key}`, JSON.stringify(value));
+  } catch (error) {
+    if (typeof console !== "undefined" && typeof console.debug === "function") {
+      console.debug("写入缓存失败", error);
+    }
+  }
+}
+
+function resolveDataFromCache(key, freshValue, fallbackValue) {
+  if (freshValue !== null && freshValue !== undefined) {
+    writeCachedValue(key, freshValue);
+    return freshValue;
+  }
+
+  const cached = readCachedValue(key);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  return fallbackValue;
+}
+
+function getEndpoint(key, overrides = {}) {
+  const endpoint = DASHBOARD_ENDPOINTS[key] ?? {};
+  const { url, ...baseOptions } = endpoint;
+  return {
+    url: url ?? "",
+    options: { ...baseOptions, ...overrides }
+  };
+}
 
 const FALLBACK_ROADMAP = {
   activeStageId: "phase5",
@@ -393,19 +496,6 @@ export function normalizeMetrics(metrics) {
 
 latestMetrics = normalizeMetrics(FALLBACK_METRICS);
 
-async function fetchJson(url) {
-  try {
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`请求 ${url} 失败: ${response.status}`);
-    }
-    return await response.json();
-  } catch (error) {
-    console.warn("获取数据失败，使用本地样例:", error.message);
-    return null;
-  }
-}
-
 function updateProgress(element, percent) {
   if (!element) return;
   const safePercent = Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : 0;
@@ -732,8 +822,14 @@ async function handleMetricsRefresh() {
   }
 
   try {
-    const response = await fetchJson("/api/metrics");
-    const normalized = response ? normalizeMetrics(response) : normalizeMetrics(latestMetrics ?? FALLBACK_METRICS);
+    const { url, options } = getEndpoint("metrics", { retries: 1 });
+    const response = await fetchJson(url, options);
+    if (response) {
+      writeCachedValue("metrics", response);
+    }
+
+    const resolvedMetrics = resolveDataFromCache("metrics", response, latestMetrics ?? FALLBACK_METRICS);
+    const normalized = normalizeMetrics(resolvedMetrics);
     latestMetrics = normalized;
     if (latestCards) {
       renderSummary(latestCards, latestMetrics);
@@ -781,22 +877,38 @@ function formatUpdatedLabel(timestamp) {
 }
 
 async function bootstrap() {
+  const statusEndpoint = getEndpoint("status");
+  const roadmapEndpoint = getEndpoint("roadmap");
+  const localesEndpoint = getEndpoint("locales");
+  const configurationEndpoint = getEndpoint("configuration");
+  const metricsEndpoint = getEndpoint("metrics");
+
   const [status, roadmap, locales, configuration, metrics] = await Promise.all([
-    fetchJson("/api/status"),
-    fetchJson("/api/roadmap"),
-    fetchJson("/api/localization/locales"),
-    fetchJson("/api/configuration"),
-    fetchJson("/api/metrics")
+    fetchJson(statusEndpoint.url, statusEndpoint.options),
+    fetchJson(roadmapEndpoint.url, roadmapEndpoint.options),
+    fetchJson(localesEndpoint.url, localesEndpoint.options),
+    fetchJson(configurationEndpoint.url, configurationEndpoint.options),
+    fetchJson(metricsEndpoint.url, metricsEndpoint.options)
   ]);
 
-  latestCards = buildStatusCards(status ?? FALLBACK_STATUS, roadmap ?? FALLBACK_ROADMAP);
-  latestMetrics = normalizeMetrics(metrics ?? FALLBACK_METRICS);
+  const resolvedStatus = resolveDataFromCache("status", status, FALLBACK_STATUS);
+  const resolvedRoadmap = resolveDataFromCache("roadmap", roadmap, FALLBACK_ROADMAP);
+  const resolvedLocales = resolveDataFromCache("locales", locales, FALLBACK_LOCALES);
+  const resolvedConfiguration = resolveDataFromCache("configuration", configuration, null);
+  const resolvedMetrics = resolveDataFromCache("metrics", metrics, FALLBACK_METRICS);
+
+  latestCards = buildStatusCards(resolvedStatus, resolvedRoadmap);
+  latestMetrics = normalizeMetrics(resolvedMetrics);
 
   renderSummary(latestCards, latestMetrics);
   renderTimeline(latestCards.timeline);
   renderTests(latestCards.tests, latestMetrics);
-  renderLocales(formatLocaleOptions(locales ?? FALLBACK_LOCALES));
-  renderLanguages(configuration?.supportedLanguages ?? FALLBACK_LANGUAGES);
+  renderLocales(formatLocaleOptions(resolvedLocales));
+  const supportedLanguages = resolvedConfiguration?.supportedLanguages ?? FALLBACK_LANGUAGES;
+  if (resolvedConfiguration !== null && resolvedConfiguration !== undefined) {
+    writeCachedValue("configuration", resolvedConfiguration);
+  }
+  renderLanguages(supportedLanguages);
   setupMetricsRefresh();
 }
 
