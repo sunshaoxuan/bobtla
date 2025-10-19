@@ -64,6 +64,26 @@ const DASHBOARD_ENDPOINTS = {
 };
 
 const CACHE_PREFIX = "bobtla:dashboard:";
+const datasetFreshness = new Map();
+
+function recordDatasetFreshness(key, timestamp, source) {
+  if (!key) {
+    return;
+  }
+  const normalizedSource = typeof source === "string" ? source : null;
+  datasetFreshness.set(key, {
+    timestamp: timestamp ?? null,
+    source: normalizedSource
+  });
+}
+
+function getDatasetFreshness(key) {
+  return datasetFreshness.get(key) ?? { timestamp: null, source: null };
+}
+
+function resetDatasetFreshness() {
+  datasetFreshness.clear();
+}
 
 function getCacheStorage() {
   if (typeof localStorage !== "undefined") {
@@ -73,6 +93,15 @@ function getCacheStorage() {
     return sessionStorage;
   }
   return null;
+}
+
+function createCacheEnvelope(value, timestamp) {
+  const cachedAt = timestamp ?? new Date().toISOString();
+  return {
+    version: 1,
+    cachedAt,
+    payload: value
+  };
 }
 
 function readCachedValue(key) {
@@ -86,7 +115,21 @@ function readCachedValue(key) {
     if (!raw) {
       return undefined;
     }
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object" && "payload" in parsed) {
+      const cachedAt = typeof parsed.cachedAt === "string" || typeof parsed.cachedAt === "number"
+        ? parsed.cachedAt
+        : null;
+      return {
+        payload: parsed.payload,
+        cachedAt
+      };
+    }
+
+    return {
+      payload: parsed,
+      cachedAt: null
+    };
   } catch (error) {
     if (typeof console !== "undefined" && typeof console.debug === "function") {
       console.debug("读取缓存失败", error);
@@ -95,7 +138,7 @@ function readCachedValue(key) {
   }
 }
 
-function writeCachedValue(key, value) {
+function writeCachedValue(key, value, timestamp) {
   const storage = getCacheStorage();
   if (!storage || typeof storage.setItem !== "function") {
     return;
@@ -106,7 +149,8 @@ function writeCachedValue(key, value) {
   }
 
   try {
-    storage.setItem(`${CACHE_PREFIX}${key}`, JSON.stringify(value));
+    const envelope = createCacheEnvelope(value, timestamp);
+    storage.setItem(`${CACHE_PREFIX}${key}`, JSON.stringify(envelope));
   } catch (error) {
     if (typeof console !== "undefined" && typeof console.debug === "function") {
       console.debug("写入缓存失败", error);
@@ -115,17 +159,48 @@ function writeCachedValue(key, value) {
 }
 
 function resolveDataFromCache(key, freshValue, fallbackValue) {
-  if (freshValue !== null && freshValue !== undefined) {
-    writeCachedValue(key, freshValue);
+  const hasFresh = freshValue !== null && freshValue !== undefined;
+  if (hasFresh) {
+    const freshTimestamp = extractTimestamp(freshValue) ?? new Date().toISOString();
+    writeCachedValue(key, freshValue, freshTimestamp);
+    recordDatasetFreshness(key, freshTimestamp, "network");
     return freshValue;
   }
 
   const cached = readCachedValue(key);
   if (cached !== undefined) {
-    return cached;
+    const cachedTimestamp = cached.cachedAt ?? extractTimestamp(cached.payload) ?? null;
+    recordDatasetFreshness(key, cachedTimestamp, "cache");
+    return cached.payload;
   }
 
+  const fallbackTimestamp = extractTimestamp(fallbackValue) ?? null;
+  recordDatasetFreshness(key, fallbackTimestamp, "fallback");
   return fallbackValue;
+}
+
+function extractTimestamp(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  if (typeof value.updatedAt === "string" || typeof value.updatedAt === "number") {
+    return value.updatedAt;
+  }
+
+  if (typeof value.timestamp === "string" || typeof value.timestamp === "number") {
+    return value.timestamp;
+  }
+
+  if (typeof value.generatedAt === "string" || typeof value.generatedAt === "number") {
+    return value.generatedAt;
+  }
+
+  if (typeof value.cachedAt === "string" || typeof value.cachedAt === "number") {
+    return value.cachedAt;
+  }
+
+  return null;
 }
 
 function getEndpoint(key, overrides = {}) {
@@ -486,9 +561,13 @@ export function normalizeMetrics(metrics) {
     failures,
     tests: {
       failing: normalizedFailing
-    },
-    updatedAt: safe.updatedAt ?? safe.timestamp ?? safe.generatedAt ?? null
+    }
   };
+
+  const { timestamp, source } = getDatasetFreshness("metrics");
+  const fallbackTimestamp = timestamp ?? null;
+  normalized.updatedAt = safe.updatedAt ?? safe.timestamp ?? safe.generatedAt ?? fallbackTimestamp;
+  normalized.source = source ?? null;
 
   normalized[NORMALIZED_METRICS_TOKEN] = true;
   return normalized;
@@ -676,7 +755,14 @@ export function renderSummary(cards, metricsInput = latestMetrics) {
 
   const metricsUpdated = document.querySelector("[data-metrics-updated]");
   if (metricsUpdated) {
-    metricsUpdated.textContent = `最近更新：${formatUpdatedLabel(metrics.updatedAt)}`;
+    const { source } = getDatasetFreshness("metrics");
+    const suffix = formatFreshnessSourceSuffix(source);
+    metricsUpdated.textContent = `最近更新：${formatUpdatedLabel(metrics.updatedAt)}${suffix}`;
+    if (source) {
+      metricsUpdated.dataset.source = source;
+    } else if (metricsUpdated.dataset) {
+      delete metricsUpdated.dataset.source;
+    }
   }
 }
 
@@ -824,9 +910,6 @@ async function handleMetricsRefresh() {
   try {
     const { url, options } = getEndpoint("metrics", { retries: 1 });
     const response = await fetchJson(url, options);
-    if (response) {
-      writeCachedValue("metrics", response);
-    }
 
     const resolvedMetrics = resolveDataFromCache("metrics", response, latestMetrics ?? FALLBACK_METRICS);
     const normalized = normalizeMetrics(resolvedMetrics);
@@ -876,6 +959,16 @@ function formatUpdatedLabel(timestamp) {
   return updatedFormatter.format(date);
 }
 
+function formatFreshnessSourceSuffix(source) {
+  if (source === "cache") {
+    return "（缓存）";
+  }
+  if (source === "fallback") {
+    return "（内置数据）";
+  }
+  return "";
+}
+
 async function bootstrap() {
   const statusEndpoint = getEndpoint("status");
   const roadmapEndpoint = getEndpoint("roadmap");
@@ -905,12 +998,42 @@ async function bootstrap() {
   renderTests(latestCards.tests, latestMetrics);
   renderLocales(formatLocaleOptions(resolvedLocales));
   const supportedLanguages = resolvedConfiguration?.supportedLanguages ?? FALLBACK_LANGUAGES;
-  if (resolvedConfiguration !== null && resolvedConfiguration !== undefined) {
-    writeCachedValue("configuration", resolvedConfiguration);
-  }
   renderLanguages(supportedLanguages);
+
+  const statusFreshness = getDatasetFreshness("status");
+  const statusUpdated = document.querySelector("[data-status-updated]");
+  if (statusUpdated) {
+    const suffix = formatFreshnessSourceSuffix(statusFreshness.source);
+    statusUpdated.textContent = `最近同步：${formatUpdatedLabel(statusFreshness.timestamp)}${suffix}`;
+    if (statusFreshness.source) {
+      statusUpdated.dataset.source = statusFreshness.source;
+    } else if (statusUpdated.dataset) {
+      delete statusUpdated.dataset.source;
+    }
+  }
+
+  const roadmapFreshness = getDatasetFreshness("roadmap");
+  const roadmapUpdated = document.querySelector("[data-roadmap-updated]");
+  if (roadmapUpdated) {
+    const suffix = formatFreshnessSourceSuffix(roadmapFreshness.source);
+    roadmapUpdated.textContent = `路线同步：${formatUpdatedLabel(roadmapFreshness.timestamp)}${suffix}`;
+    if (roadmapFreshness.source) {
+      roadmapUpdated.dataset.source = roadmapFreshness.source;
+    } else if (roadmapUpdated.dataset) {
+      delete roadmapUpdated.dataset.source;
+    }
+  }
+
   setupMetricsRefresh();
 }
+
+export const __dashboardInternals = {
+  getDatasetFreshness,
+  resolveDataFromCache,
+  resetDatasetFreshness,
+  formatUpdatedLabel,
+  formatFreshnessSourceSuffix
+};
 
 if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
   document.addEventListener("DOMContentLoaded", bootstrap);

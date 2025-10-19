@@ -177,6 +177,22 @@ body {
   text-align: right;
 }
 
+.card__updated {
+  margin: -4px 0 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.card__updated[data-source="cache"],
+.metrics__updated[data-source="cache"] {
+  color: #9bd4ff;
+}
+
+.card__updated[data-source="fallback"],
+.metrics__updated[data-source="fallback"] {
+  color: #f6c560;
+}
+
 .progress {
   position: relative;
   height: 12px;
