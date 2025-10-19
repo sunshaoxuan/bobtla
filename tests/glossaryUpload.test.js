@@ -5,6 +5,7 @@ import {
   renderGlossaryUploadFeedback,
   renderGlossaryEntries
 } from "../src/webapp/app.js";
+import { getString, formatString } from "../src/webapp/localization.js";
 
 class StubFormData {
   constructor() {
@@ -112,7 +113,8 @@ test("handleGlossaryUpload sends form data and refreshes glossary", async () => 
   assert.equal(elements.resultsContainer.hidden, false);
   assert.ok(elements.summaryLabel.textContent.includes("2"));
   assert.ok(elements.glossaryList.innerHTML.includes("CPU"));
-  assert.ok(elements.statusLabel.textContent.includes("已导入"));
+  const expectedSummary = formatString(getString("tla.settings.upload.summary"), 2, 1);
+  assert.equal(elements.statusLabel.textContent, expectedSummary);
 });
 
 test("handleGlossaryUpload reports conflicts and keeps glossary refreshed", async () => {
@@ -181,5 +183,5 @@ test("handleGlossaryUpload surfaces server validation errors", async () => {
 test("renderGlossaryEntries prints placeholder when list empty", () => {
   const listElement = { innerHTML: "" };
   renderGlossaryEntries(listElement, []);
-  assert.ok(listElement.innerHTML.includes("暂无术语条目"));
+  assert.ok(listElement.innerHTML.includes(getString("tla.settings.glossary.empty")));
 });
