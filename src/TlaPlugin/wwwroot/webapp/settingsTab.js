@@ -1,4 +1,5 @@
 import { fetchJson } from "./network.js";
+import { getString, formatString, initializeLocalization } from "./localization.js";
 
 const DEFAULT_FETCH = typeof fetch === "function" ? fetch.bind(globalThis) : undefined;
 
@@ -62,7 +63,7 @@ export function renderGlossaryList(container, entries) {
         return `${entry?.source ?? ""} → ${entry?.target ?? ""}${scope}`;
       })
     : [];
-  renderList(container, items, "暂无术语");
+  renderList(container, items, getString("tla.settings.glossary.empty"));
 }
 
 export function renderConflictList(container, conflicts) {
@@ -74,7 +75,7 @@ export function renderConflictList(container, conflicts) {
         `${conflict?.source ?? ""}: ${conflict?.existingTarget ?? ""} → ${conflict?.incomingTarget ?? ""}`
       )
     : [];
-  renderList(container, rows, "未检测到冲突");
+  renderList(container, rows, getString("tla.settings.glossary.noConflicts"));
 }
 
 export function renderErrorList(container, errors) {
@@ -83,6 +84,89 @@ export function renderErrorList(container, errors) {
   }
   const lines = Array.isArray(errors) ? errors.filter(Boolean) : [];
   renderList(container, lines, "");
+}
+
+function setTextContent(element, value) {
+  if (!element) {
+    return;
+  }
+  if ("textContent" in element) {
+    element.textContent = value;
+  } else {
+    element.value = value;
+  }
+}
+
+function setInnerHtml(element, html) {
+  if (!element) {
+    return;
+  }
+  if ("innerHTML" in element) {
+    element.innerHTML = html;
+  } else {
+    element.content = html;
+  }
+}
+
+export function renderGlossaryEntries(container, entries) {
+  renderGlossaryList(container, entries);
+  if (!container) {
+    return;
+  }
+
+  const items = Array.isArray(entries) && entries.length > 0
+    ? entries.map((entry) => {
+        const scope = entry?.scope ? `（${entry.scope}）` : "";
+        return `${entry?.source ?? ""} → ${entry?.target ?? ""}${scope}`;
+      })
+    : [getString("tla.settings.glossary.empty")];
+
+  const markup = items.map((item) => `<li>${item}</li>`).join("");
+  setInnerHtml(container, markup);
+}
+
+export function renderGlossaryUploadFeedback(elements, result = {}) {
+  if (!elements) {
+    return;
+  }
+
+  const imported = Number(result.imported ?? 0);
+  const updated = Number(result.updated ?? 0);
+  const conflicts = Array.isArray(result.conflicts) ? result.conflicts : [];
+  const errors = Array.isArray(result.errors) ? result.errors : [];
+
+  updateVisibility(elements.resultsContainer, true);
+  setTextContent(elements.importedCount, String(imported));
+  setTextContent(elements.updatedCount, String(updated));
+  setTextContent(elements.conflictCount, String(conflicts.length));
+  setTextContent(elements.errorCount, String(errors.length));
+
+  renderConflictList(elements.conflictList, conflicts);
+  const conflictMarkup = conflicts
+    .map((conflict) => {
+      const scope = conflict?.scope ? `（${conflict.scope}）` : "";
+      return `<li>${conflict?.source ?? ""}: ${conflict?.existingTarget ?? ""} → ${conflict?.incomingTarget ?? ""}${scope}</li>`;
+    })
+    .join("");
+  setInnerHtml(elements.conflictList, conflictMarkup);
+
+  renderErrorList(elements.errorList, errors);
+  const errorMarkup = errors.map((error) => `<li>${error}</li>`).join("");
+  setInnerHtml(elements.errorList, errorMarkup);
+
+  updateVisibility(elements.conflictContainer, conflicts.length > 0);
+  updateVisibility(elements.errorContainer, errors.length > 0);
+
+  const summaryTemplate = getString("tla.settings.upload.summary");
+  const summary = typeof result.message === "string" && result.message.trim() !== ""
+    ? result.message
+    : formatString(summaryTemplate, imported, updated);
+  if (elements.summaryLabel) {
+    elements.summaryLabel.textContent = summary;
+  }
+  if (elements.statusLabel) {
+    elements.statusLabel.textContent = summary;
+  }
 }
 
 function updateVisibility(element, visible) {
@@ -117,24 +201,24 @@ async function refreshGlossary(elements, fetchImpl) {
   try {
     const entries = await fetchJson("/api/glossary", {
       fetchImpl,
-      toastMessage: "无法加载术语表，请稍后重试。",
+      toastMessage: () => getString("tla.toast.settings.glossaryFetch"),
       toastKey: "settings-glossary"
     });
-    renderGlossaryList(elements.glossaryList, entries);
+    renderGlossaryEntries(elements.glossaryList, entries);
   } catch (error) {
     console.warn("无法加载术语列表", error);
-    renderGlossaryList(elements.glossaryList, []);
+    renderGlossaryEntries(elements.glossaryList, []);
   }
 }
 
 function renderPolicies(elements, policies) {
   if (!policies) {
-    renderList(elements.bannedList, [], "暂无禁译词");
-    renderList(elements.styleList, [], "暂无风格模板");
+    renderList(elements.bannedList, [], getString("tla.settings.policies.noBannedTerms"));
+    renderList(elements.styleList, [], getString("tla.settings.policies.noStyleTemplates"));
     return;
   }
-  renderList(elements.bannedList, policies.bannedTerms ?? [], "暂无禁译词");
-  renderList(elements.styleList, policies.styleTemplates ?? [], "暂无风格模板");
+  renderList(elements.bannedList, policies.bannedTerms ?? [], getString("tla.settings.policies.noBannedTerms"));
+  renderList(elements.styleList, policies.styleTemplates ?? [], getString("tla.settings.policies.noStyleTemplates"));
   if (elements.scopeInput && !elements.scopeInput.value && policies.tenantId) {
     elements.scopeInput.value = policies.tenantId;
   }
@@ -173,14 +257,14 @@ async function handleUpload(event, elements, fetchImpl, formDataFactory) {
 
   const file = elements.fileInput?.files?.[0];
   if (!file) {
-    renderErrorList(elements.errorList, ["请先选择 CSV 或 TermBase 文件。"]);
+    renderErrorList(elements.errorList, [getString("tla.settings.upload.selectFile")]);
     updateVisibility(elements.errorContainer, true);
     return;
   }
 
   updateVisibility(elements.errorContainer, false);
   updateVisibility(elements.conflictContainer, false);
-  updateProgress(elements, 10, "上传中…");
+  updateProgress(elements, 10, getString("tla.settings.upload.progress.uploading"));
 
   let formData;
   try {
@@ -197,7 +281,7 @@ async function handleUpload(event, elements, fetchImpl, formDataFactory) {
     formData.file = file;
   }
 
-  updateProgress(elements, 35, "解析文件…");
+  updateProgress(elements, 35, getString("tla.settings.upload.progress.parsing"));
 
   try {
     const response = await (fetchImpl ?? DEFAULT_FETCH)("/api/glossary/upload", {
@@ -206,11 +290,12 @@ async function handleUpload(event, elements, fetchImpl, formDataFactory) {
     });
     if (!response.ok) {
       const text = await response.text?.();
-      throw new Error(text || `上传失败: ${response.status}`);
+      const defaultError = formatString(getString("tla.settings.upload.error.http"), response.status ?? "");
+      throw new Error(text || defaultError);
     }
     const result = await response.json();
 
-    updateProgress(elements, 100, "上传完成");
+    updateProgress(elements, 100, getString("tla.settings.upload.progress.complete"));
     renderConflictList(elements.conflictList, result?.conflicts ?? []);
     updateVisibility(elements.conflictContainer, Array.isArray(result?.conflicts) && result.conflicts.length > 0);
 
@@ -220,13 +305,139 @@ async function handleUpload(event, elements, fetchImpl, formDataFactory) {
     if (elements.statusLabel) {
       const imported = Number(result?.imported ?? 0);
       const updated = Number(result?.updated ?? 0);
-      elements.statusLabel.textContent = `已导入 ${imported} 条，更新 ${updated} 条。`;
+      elements.statusLabel.textContent = formatString(getString("tla.settings.upload.summary"), imported, updated);
     }
 
     await refreshGlossary(elements, fetchImpl ?? DEFAULT_FETCH);
   } catch (error) {
     renderErrorList(elements.errorList, [error.message ?? String(error)]);
     updateVisibility(elements.errorContainer, true);
+  }
+}
+
+export async function handleGlossaryUpload({
+  elements,
+  fetchImpl = DEFAULT_FETCH,
+  formDataFactory
+} = {}) {
+  const resolved = elements ?? {};
+  const submitButton = resolved.submitButton;
+  if (submitButton) {
+    submitButton.disabled = true;
+  }
+
+  try {
+    const file = resolved.fileInput?.files?.[0];
+    if (!file) {
+      const missingFileMessage = getString("tla.settings.upload.error.noFile");
+      renderGlossaryUploadFeedback(resolved, {
+        imported: 0,
+        updated: 0,
+        conflicts: [],
+        errors: [missingFileMessage],
+        message: missingFileMessage
+      });
+      updateVisibility(resolved.errorContainer, true);
+      return;
+    }
+
+    let formData;
+    try {
+      const factory = typeof formDataFactory === "function"
+        ? formDataFactory
+        : (current) => new FormData(current);
+      formData = factory(resolved.form);
+    } catch (error) {
+      const message = error?.message ?? String(error);
+      renderGlossaryUploadFeedback(resolved, {
+        imported: 0,
+        updated: 0,
+        conflicts: [],
+        errors: [message],
+        message
+      });
+      updateVisibility(resolved.errorContainer, true);
+      return;
+    }
+
+    const scope = resolved.scopeInput?.value ?? "tenant";
+    const overwrite = resolved.overrideInput?.checked ? "true" : "false";
+
+    if (typeof formData.set === "function") {
+      formData.set("scope", scope);
+      formData.set("overwrite", overwrite);
+      formData.set("file", file);
+    } else if (typeof formData.append === "function") {
+      formData.append("scope", scope);
+      formData.append("overwrite", overwrite);
+      formData.append("file", file);
+    } else {
+      formData.scope = scope;
+      formData.overwrite = overwrite;
+      formData.file = file;
+    }
+
+    const uploadResponse = await (fetchImpl ?? DEFAULT_FETCH)("/api/glossary/upload", {
+      method: "POST",
+      body: formData
+    });
+
+    if (!uploadResponse?.ok) {
+      let payload;
+      try {
+        payload = await uploadResponse?.json?.();
+      } catch (error) {
+        console.warn("解析上传失败响应时出错", error);
+        payload = {};
+      }
+
+      const message = payload?.error
+        ?? formatString(getString("tla.settings.upload.error.http"), uploadResponse?.status ?? "");
+      renderGlossaryUploadFeedback(resolved, {
+        imported: Number(payload?.imported ?? 0),
+        updated: Number(payload?.updated ?? 0),
+        conflicts: payload?.conflicts ?? [],
+        errors: Array.isArray(payload?.errors) ? payload.errors : [],
+        message
+      });
+      updateVisibility(resolved.errorContainer, true);
+      return;
+    }
+
+    const result = await uploadResponse.json?.();
+    const successMessage = formatString(
+      getString("tla.settings.upload.summary"),
+      Number(result?.imported ?? 0),
+      Number(result?.updated ?? 0)
+    );
+    renderGlossaryUploadFeedback(resolved, {
+      ...result,
+      message: successMessage
+    });
+
+    try {
+      const glossaryResponse = await (fetchImpl ?? DEFAULT_FETCH)("/api/glossary", { method: "GET" });
+      if (glossaryResponse?.ok) {
+        const entries = await glossaryResponse.json?.();
+        renderGlossaryEntries(resolved.glossaryList, entries);
+      }
+    } catch (error) {
+      console.warn("刷新术语列表失败", error);
+    }
+  } catch (error) {
+    const message = error?.message ?? String(error);
+    renderGlossaryUploadFeedback(resolved, {
+      imported: 0,
+      updated: 0,
+      conflicts: [],
+      errors: [message],
+      message
+    });
+    updateVisibility(resolved.errorContainer, true);
+  } finally {
+    if (submitButton) {
+      submitButton.disabled = false;
+    }
   }
 }
 
@@ -237,10 +448,12 @@ export async function initSettingsPage({
 } = {}) {
   const elements = resolveElements(root);
 
+  await initializeLocalization(undefined, { fetchImpl });
+
   try {
     const configuration = await fetchJson("/api/configuration", {
       fetchImpl,
-      toastMessage: "无法加载租户策略，将使用默认设置。",
+      toastMessage: () => getString("tla.toast.settings.configuration"),
       toastKey: "settings-configuration"
     });
     renderPolicies(elements, configuration?.tenantPolicies);
@@ -268,5 +481,8 @@ export default {
   initSettingsPage,
   renderGlossaryList,
   renderConflictList,
-  renderErrorList
+  renderErrorList,
+  renderGlossaryEntries,
+  renderGlossaryUploadFeedback,
+  handleGlossaryUpload
 };

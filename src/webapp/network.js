@@ -1,5 +1,6 @@
 import { showToast } from "./toast.js";
 import { emitTelemetry } from "./telemetry.js";
+import { getString, formatString } from "./localization.js";
 
 const DEFAULT_FETCH = typeof fetch === "function" ? fetch.bind(globalThis) : undefined;
 
@@ -120,8 +121,16 @@ export async function fetchJson(url, options = {}) {
       }
 
       if (toast) {
-        const message = toastMessage ?? `无法获取 ${url}，请稍后重试。`;
-        showToast(message, "danger", { key: toastKey });
+        let resolvedMessage = typeof toastMessage === "function"
+          ? toastMessage({ url, error: lastError })
+          : toastMessage;
+
+        if (typeof resolvedMessage !== "string" || resolvedMessage.trim() === "") {
+          const template = getString("tla.toast.fetchGeneric", `无法获取 {0}，请稍后重试。`);
+          resolvedMessage = formatString(template, url);
+        }
+
+        showToast(resolvedMessage, "danger", { key: toastKey });
       }
 
       if (typeof onFailure === "function") {

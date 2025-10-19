@@ -1,5 +1,7 @@
 import { buildStatusCards, formatLocaleOptions } from "./viewModel.js";
 import { fetchJson } from "./network.js";
+import { getString, initializeLocalization } from "./localization.js";
+export { handleGlossaryUpload, renderGlossaryUploadFeedback, renderGlossaryEntries } from "./settingsTab.js";
 
 const FALLBACK_STATUS = {
   currentStageId: "phase5",
@@ -38,27 +40,27 @@ const FALLBACK_STATUS = {
 const DASHBOARD_ENDPOINTS = {
   status: {
     url: "/api/status",
-    toastMessage: "无法加载项目状态，仪表盘展示的是缓存数据。",
+    toastMessage: () => getString("tla.toast.dashboard.status"),
     toastKey: "dashboard-status"
   },
   roadmap: {
     url: "/api/roadmap",
-    toastMessage: "无法加载路线图信息，展示的是内置模板。",
+    toastMessage: () => getString("tla.toast.dashboard.roadmap"),
     toastKey: "dashboard-roadmap"
   },
   locales: {
     url: "/api/localization/locales",
-    toastMessage: "无法加载可用语言列表，将使用默认配置。",
+    toastMessage: () => getString("tla.toast.dashboard.locales"),
     toastKey: "dashboard-locales"
   },
   configuration: {
     url: "/api/configuration",
-    toastMessage: "无法加载配置，语言列表基于本地默认值。",
+    toastMessage: () => getString("tla.toast.dashboard.configuration"),
     toastKey: "dashboard-configuration"
   },
   metrics: {
     url: "/api/metrics",
-    toastMessage: "无法获取实时指标，显示的是最近一次缓存。",
+    toastMessage: () => getString("tla.toast.dashboard.metrics"),
     toastKey: "dashboard-metrics"
   }
 };
@@ -280,8 +282,11 @@ const FALLBACK_ROADMAP = {
 };
 
 const FALLBACK_LOCALES = [
-  { id: "ja-JP", displayName: "日本語", isDefault: true },
-  { id: "zh-CN", displayName: "简体中文" }
+  { id: "ja-JP", displayName: "日本語 (日本)", isDefault: true },
+  { id: "en-US", displayName: "English (United States)" },
+  { id: "zh-CN", displayName: "简体中文 (中国)" },
+  { id: "fr-FR", displayName: "French (France)" },
+  { id: "es-ES", displayName: "Spanish (Spain)" }
 ];
 
 const FALLBACK_LANGUAGES = [
@@ -992,6 +997,8 @@ function updateFreshnessIndicator(datasetKey, selector, prefix) {
 }
 
 async function bootstrap() {
+  await initializeLocalization();
+
   const statusEndpoint = getEndpoint("status");
   const roadmapEndpoint = getEndpoint("roadmap");
   const localesEndpoint = getEndpoint("locales");
