@@ -20,6 +20,20 @@ Following the 86% completion assessment, the remaining scope targets Stage 5 rea
    - 完成密钥回退策略清理：更新服务器配置关闭 HMAC 回退，提交变更记录，并在 `StageFiveDiagnostics` 中同步状态标记。
    - 执行 Graph 权限验证脚本：编写/运行自动化脚本校验所需作用域，输出结果至 Runbook。
    - 准备 `Stage5SmokeTests` 流水线：在 CI/CD 中植入 secrets/reply/metrics 冒烟脚本并记录最新运行结果。
+   - 2025-10-19 变更记录：`appsettings.Stage.json` 与部署 override 已指向 `tla-stage-kv`、`contoso-stage-kv`、`enterprise-stage-kv`，并统一 Graph 作用域/模型 Provider，确保 `ConfigurableChatModelProvider` 读取真实 Key Vault 凭据。【F:src/TlaPlugin/appsettings.Stage.json†L1-L49】【F:deploy/stage.appsettings.override.json†L1-L41】【F:src/TlaPlugin/appsettings.json†L241-L266】
+   - 冒烟命令在容器内因缺少 .NET SDK 未执行：`dotnet` 不存在导致 `secrets`/`reply`/`metrics` 三条命令返回 `command not found`，需在具备 SDK 的环境（或 CI 阶段）重试并落盘输出。【dd1477†L1-L4】【94bc32†L1-L3】【a2f815†L1-L3】
+   - 告警预案：准备下列 KQL 作为 Application Insights 告警规则，监测模型提供方回退/失败峰值并提醒密钥或 Graph 链路异常：
+
+     ```kusto
+     let window = ago(15m);
+     AppTraces
+     | where TimeGenerated >= window
+     | where Properties["Category"] == "TlaPlugin.Providers.ConfigurableChatModelProvider"
+     | where Message has "Provider" and (Message has "使用回退模型" or SeverityLevel >= 3)
+     | summarize FallbackCount = count() by ProviderId = tostring(Properties["ProviderId"]), bin(TimeGenerated, 5m)
+     | where FallbackCount > 0
+     ```
+   - 下一步：在具备 .NET SDK 的 Stage 自动化流水线重跑冒烟，并将 `metrics` 输出与 Stage 就绪文件时间戳附加到变更票据；完成后启用上述查询的阈值告警（例如连续两窗出现回退或错误）。
 
 2. **Live Model Provider Enablement**
    - 在基础设施仓库中登记 Key Vault secrets，编写校验脚本检查密钥有效期并告警。
