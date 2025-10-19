@@ -1,6 +1,6 @@
 # Stage 5 Completion Synchronous Workstreams
 
-Following the 85% completion assessment, the remaining scope targets Stage 5 readiness and production hardening. The tasks below are structured as parallel workstreams so multiple owners can progress simultaneously toward 100% completion.
+Following the 86% completion assessment, the remaining scope targets Stage 5 readiness and production hardening. The tasks below are structured as parallel workstreams so multiple owners can progress simultaneously toward 100% completion.
 
 ## Progress Assessment (as of current review)
 
@@ -8,7 +8,7 @@ Following the 85% completion assessment, the remaining scope targets Stage 5 rea
 | --- | --- | --- |
 | Secrets & Compliance Readiness | 🟡 部分完成 | `Stage5SmokeTests` 新增 `--verify-readiness` 与 `ready` 命令，可在 HMAC/Graph 检查后探测 Stage 就绪文件并写入时间戳，为 StageFiveDiagnostics 提供真实信号。 【F:scripts/SmokeTests/Stage5SmokeTests/Program.cs†L40-L214】【F:scripts/SmokeTests/Stage5SmokeTests/Program.cs†L430-L520】 |
 | Live Model Provider Enablement | 🟡 部分完成 | `ConfigurableChatModelProvider` 现记录模型调用起止、密钥解析与回退原因，`ModelProviderFactory` 注入 ILogger 以支撑 live 模式诊断。 【F:src/TlaPlugin/Providers/ConfigurableChatModelProvider.cs†L22-L208】【F:src/TlaPlugin/Services/ModelProviderFactory.cs†L1-L56】 |
-| Frontend Telemetry Dashboard Integration | 🟡 部分完成 | 在重试/告警与缓存的基础上，`resolveDataFromCache` 现会记录数据来源与时间戳，`index.html` 以“最近同步/路线同步”标签提示缓存或内置数据来源，并新增 Node 测试锁定新鲜度计算。 【F:src/webapp/app.js†L39-L214】【F:src/webapp/index.html†L15-L53】【F:tests/dashboard.freshness.test.js†L1-L78】 |
+| Frontend Telemetry Dashboard Integration | 🟡 部分完成 | 在重试/告警与缓存的基础上，`resolveDataFromCache` 记录数据来源与时间戳，新增 `updateFreshnessIndicator` 统一驱动“最近同步/路线同步/最近更新”标签并携带来源提示，Node 测试覆盖 metrics 标签的来源切换。 【F:src/webapp/app.js†L39-L214】【F:src/webapp/app.js†L912-L1056】【F:tests/dashboard.freshness.test.js†L1-L120】 |
 | Reply Service & Teams Integration Hardening | 🟡 部分完成 | `ReplyService` 与 `TeamsReplyClient` 增加 OBO 交换、附加语种与 Graph 调用的结构化日志，可追踪消息 ID、状态码与预算/权限异常，为 Stage 回帖冒烟提供可观测性。 【F:src/TlaPlugin/Services/ReplyService.cs†L24-L334】【F:src/TlaPlugin/Services/TeamsReplyClient.cs†L1-L214】 |
 | Observability & Rollout Operations | 🟡 部分完成 | `BudgetGuard`、`ContextRetrievalService`、`ReplyService` 与 `TeamsReplyClient` 输出结构化日志，记录预算拒绝、RAG 抓取耗时与 Graph 回复状态，为后续 Application Insights 查询奠定数据基础。 【F:src/TlaPlugin/Services/BudgetGuard.cs†L1-L90】【F:src/TlaPlugin/Services/ContextRetrievalService.cs†L1-L225】【F:src/TlaPlugin/Services/ReplyService.cs†L24-L334】【F:src/TlaPlugin/Services/TeamsReplyClient.cs†L1-L214】 |
 | Documentation & Stakeholder Alignment | 🟡 部分完成 | 当前文档已列出工作流与负责人框架，但尚缺 burndown、风险与会议纪要等动态内容。 【F:docs/stage5_task_plan.md†L1-L32】 |

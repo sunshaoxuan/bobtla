@@ -7,9 +7,9 @@
 | 分类 | 权重 | 完成度 | 说明 |
 | --- | --- | --- | --- |
 | Must (R1, R2, R3, R5, R7, R9, R10) | 60% | 0.54 | 自动检测/翻译、回帖、术语、预算守卫、审计链路均已落地；新增预算、RAG 与回帖链路的结构化日志覆盖 OBO、Graph 回帖与失败诊断，Teams Compose/设置页仍待 Stage 验证，合规侧缺少真实密钥托管演练，因此按 ~90% 计入。 |
-| Should (R4, R6, R8, R11) | 25% | 0.22 | 多模型路由、RAG 上下文、MCP 工具链均完备；仪表盘在缓存基础上新增“最近同步/路线同步”标签，`resolveDataFromCache` 会标记网络或缓存来源并通过测试锁定逻辑，折算 ~88%。 【F:src/webapp/app.js†L39-L214】【F:src/webapp/index.html†L15-L53】【F:tests/dashboard.freshness.test.js†L1-L78】 |
+| Should (R4, R6, R8, R11) | 25% | 0.23 | 多模型路由、RAG 上下文、MCP 工具链均完备；仪表盘在缓存基础上新增“最近同步/路线同步/最近更新”标签，`resolveDataFromCache` 与 `updateFreshnessIndicator` 会标记网络/缓存/内置来源并通过测试锁定逻辑，折算 ~92%。 【F:src/webapp/app.js†L39-L214】【F:src/webapp/app.js†L912-L1056】【F:tests/dashboard.freshness.test.js†L1-L120】 |
 | Could (R12, R13, R14) | 15% | 0.09 | 离线草稿/分片与术语上传管理实现度高；多语广播目前以单卡片附带附加译文方式呈现，未拆分多条公告，折算 60%。 |
-| **总体** | **100%** | **85%** | 结合权重折算后的当前完成度约 **85%**。 |
+| **总体** | **100%** | **86%** | 结合权重折算后的当前完成度约 **86%**。 |
 
 ## 需求映射详情
 

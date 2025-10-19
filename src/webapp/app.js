@@ -919,6 +919,7 @@ async function handleMetricsRefresh() {
       renderSummary(latestCards, latestMetrics);
       renderTests(latestCards.tests, latestMetrics);
     }
+    updateFreshnessIndicator("metrics", "[data-metrics-updated]", "最近更新：");
   } finally {
     if (refreshButton) {
       refreshButton.disabled = false;
@@ -970,6 +971,27 @@ function formatFreshnessSourceSuffix(source) {
   return "";
 }
 
+function updateFreshnessIndicator(datasetKey, selector, prefix) {
+  if (typeof document === "undefined") {
+    return;
+  }
+
+  const target = document.querySelector(selector);
+  if (!target) {
+    return;
+  }
+
+  const freshness = getDatasetFreshness(datasetKey);
+  const suffix = formatFreshnessSourceSuffix(freshness.source);
+  target.textContent = `${prefix}${formatUpdatedLabel(freshness.timestamp)}${suffix}`;
+
+  if (freshness.source) {
+    target.dataset.source = freshness.source;
+  } else if (target.dataset) {
+    delete target.dataset.source;
+  }
+}
+
 async function bootstrap() {
   const statusEndpoint = getEndpoint("status");
   const roadmapEndpoint = getEndpoint("roadmap");
@@ -1001,29 +1023,9 @@ async function bootstrap() {
   const supportedLanguages = resolvedConfiguration?.supportedLanguages ?? FALLBACK_LANGUAGES;
   renderLanguages(supportedLanguages);
 
-  const statusFreshness = getDatasetFreshness("status");
-  const statusUpdated = document.querySelector("[data-status-updated]");
-  if (statusUpdated) {
-    const suffix = formatFreshnessSourceSuffix(statusFreshness.source);
-    statusUpdated.textContent = `最近同步：${formatUpdatedLabel(statusFreshness.timestamp)}${suffix}`;
-    if (statusFreshness.source) {
-      statusUpdated.dataset.source = statusFreshness.source;
-    } else if (statusUpdated.dataset) {
-      delete statusUpdated.dataset.source;
-    }
-  }
-
-  const roadmapFreshness = getDatasetFreshness("roadmap");
-  const roadmapUpdated = document.querySelector("[data-roadmap-updated]");
-  if (roadmapUpdated) {
-    const suffix = formatFreshnessSourceSuffix(roadmapFreshness.source);
-    roadmapUpdated.textContent = `路线同步：${formatUpdatedLabel(roadmapFreshness.timestamp)}${suffix}`;
-    if (roadmapFreshness.source) {
-      roadmapUpdated.dataset.source = roadmapFreshness.source;
-    } else if (roadmapUpdated.dataset) {
-      delete roadmapUpdated.dataset.source;
-    }
-  }
+  updateFreshnessIndicator("status", "[data-status-updated]", "最近同步：");
+  updateFreshnessIndicator("roadmap", "[data-roadmap-updated]", "路线同步：");
+  updateFreshnessIndicator("metrics", "[data-metrics-updated]", "最近更新：");
 
   setupMetricsRefresh();
 }
@@ -1033,7 +1035,8 @@ export const __dashboardInternals = {
   resolveDataFromCache,
   resetDatasetFreshness,
   formatUpdatedLabel,
-  formatFreshnessSourceSuffix
+  formatFreshnessSourceSuffix,
+  updateFreshnessIndicator
 };
 
 if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
