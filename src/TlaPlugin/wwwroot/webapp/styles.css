@@ -177,6 +177,22 @@ body {
   text-align: right;
 }
 
+.card__updated {
+  margin: -4px 0 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.card__updated[data-source="cache"],
+.metrics__updated[data-source="cache"] {
+  color: #9bd4ff;
+}
+
+.card__updated[data-source="fallback"],
+.metrics__updated[data-source="fallback"] {
+  color: #f6c560;
+}
+
 .progress {
   position: relative;
   height: 12px;
@@ -557,4 +573,44 @@ input[type="text"] {
 .settings__status {
   color: var(--text-secondary);
   min-height: 24px;
+}
+
+.toast-container {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  display: grid;
+  gap: 12px;
+  z-index: 1000;
+  max-width: 320px;
+}
+
+.toast {
+  background: rgba(14, 22, 35, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  padding: 12px 16px;
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.45;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.toast--info {
+  border-color: rgba(88, 178, 240, 0.6);
+}
+
+.toast--success {
+  border-color: rgba(94, 231, 193, 0.6);
+}
+
+.toast--danger {
+  border-color: rgba(255, 120, 120, 0.7);
+}
+
+.toast--leaving {
+  opacity: 0;
+  transform: translateY(8px);
 }

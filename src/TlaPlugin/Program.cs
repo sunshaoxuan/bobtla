@@ -127,7 +127,12 @@ builder.Services.AddSingleton(provider =>
 builder.Services.AddSingleton<ToneTemplateService>();
 builder.Services.AddSingleton<LanguageDetector>();
 builder.Services.AddSingleton(provider => new ComplianceGateway(provider.GetService<IOptions<PluginOptions>>()));
-builder.Services.AddSingleton(provider => new BudgetGuard(provider.GetService<IOptions<PluginOptions>>()?.Value));
+builder.Services.AddSingleton(provider =>
+{
+    var options = provider.GetService<IOptions<PluginOptions>>()?.Value;
+    var logger = provider.GetService<ILogger<BudgetGuard>>();
+    return new BudgetGuard(options, logger);
+});
 builder.Services.AddSingleton<AuditLogger>();
 builder.Services.AddSingleton(provider => new OfflineDraftStore(provider.GetService<IOptions<PluginOptions>>()));
 builder.Services.AddSingleton<TranslationCache>();

@@ -75,7 +75,8 @@ public class ConfigurableChatModelProviderTests
         };
         var factory = new StubHttpClientFactory(httpClient);
         var resolver = new KeyVaultSecretResolver(pluginOptions);
-        var provider = new ConfigurableChatModelProvider(providerOptions, factory, resolver);
+        var logger = new TestLogger<ConfigurableChatModelProvider>();
+        var provider = new ConfigurableChatModelProvider(providerOptions, factory, resolver, logger);
 
         var result = await provider.TranslateAsync("hello", "en", "ja", "prompt", CancellationToken.None);
 
@@ -85,6 +86,28 @@ public class ConfigurableChatModelProviderTests
         Assert.True(httpClient.Timeout <= TimeSpan.FromSeconds(12));
         Assert.Equal("gpt-4o-mini", result.ModelId);
         Assert.Equal("translated", result.Text);
+        Assert.Contains(logger.Entries, entry => entry.Message.Contains("已解析密钥", StringComparison.Ordinal));
+        Assert.Contains(logger.Entries, entry => entry.Message.Contains("完成 translate 调用", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task TranslateAsyncFallsBackWhenPrerequisitesMissing_LogsWarning()
+    {
+        var providerOptions = new ModelProviderOptions
+        {
+            Id = "openai-gpt-4o",
+            Kind = ModelProviderKind.OpenAi,
+            TranslationPrefix = "[MockFallback]"
+        };
+
+        var logger = new TestLogger<ConfigurableChatModelProvider>();
+        var provider = new ConfigurableChatModelProvider(providerOptions, httpClientFactory: null, secretResolver: null, logger);
+
+        var result = await provider.TranslateAsync("sample", "en", "ja", "prompt", CancellationToken.None);
+
+        Assert.StartsWith("[MockFallback]", result.Text, StringComparison.Ordinal);
+        var warning = Assert.Single(logger.Entries, entry => entry.Level == Microsoft.Extensions.Logging.LogLevel.Warning);
+        Assert.Contains("回退模型", warning.Message, StringComparison.Ordinal);
     }
 
     private sealed class StubHttpClientFactory : IHttpClientFactory
