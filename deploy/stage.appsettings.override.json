@@ -1,34 +1,29 @@
 {
   "Plugin": {
     "StageReadinessFilePath": "/mnt/stage/shared/stage-readiness.txt",
-    "_stageReadinessFilePathNote": "Stage 环境应指向挂载的共享卷（示例：Azure Files、NetApp 或 AKS PVC）内的持久化文件，以便多实例间共享就绪状态。",
     "Security": {
-      "KeyVaultUri": "https://tla-stage-kv.vault.azure.net/",
       "UseHmacFallback": false,
       "FailOnSeedFallback": true,
-      "_failOnSeedFallbackNote": "Stage 环境默认禁止 SeedSecrets 回退，请确认 Key Vault 中已存在所有运行所需的机密。",
+      "RequireVaultSecrets": true,
+      "KeyVaultUri": "https://tla-stage-kv.vault.azure.net/",
       "GraphScopes": [
         "https://graph.microsoft.com/.default",
         "https://graph.microsoft.com/Chat.ReadWrite",
         "https://graph.microsoft.com/ChannelMessage.Send",
         "https://graph.microsoft.com/Team.ReadBasic.All"
       ],
-      "_graphScopesNote": "GraphScopes 必须与 Azure AD 授权范围一致（示例：.default 或特定权限的资源限定形式），否则 OBO 将返回 invalid_scope。",
-      "_secretsReference": "需要在 Key Vault 中预配 docs/stage5-integration-runbook.md 所列的 tla-client-secret、openai-api-key、enterprise-graph-secret 等机密。",
       "TenantOverrides": {
         "contoso.onmicrosoft.com": {
           "KeyVaultUri": "https://contoso-stage-kv.vault.azure.net/",
           "ClientId": "b77dd5d8-011d-4ad4-b321-5edc95d14f5d",
           "ClientSecretName": "tla-client-secret",
-          "UserAssertionAudience": "api://tla-plugin-stage",
-          "_note": "tla-client-secret 对应通用 Graph OBO 凭据，需由租户管理员在 Stage Key Vault 中维护。"
+          "UserAssertionAudience": "api://tla-plugin-stage"
         },
         "enterprise.onmicrosoft.com": {
           "KeyVaultUri": "https://enterprise-stage-kv.vault.azure.net/",
           "ClientId": "4f5e1901-76d5-4c88-8b71-e50e54f9b89c",
           "ClientSecretName": "enterprise-graph-secret",
-          "UserAssertionAudience": "api://enterprise-graph-stage",
-          "_note": "enterprise-graph-secret 用于企业租户 Graph 客户端机密，名称来自 Runbook 密钥清单。"
+          "UserAssertionAudience": "api://enterprise-graph-stage"
         }
       }
     },

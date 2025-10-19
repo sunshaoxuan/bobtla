@@ -27,7 +27,7 @@
 
 - **R4 多模型路由** — `ModelProviderFactory` 从配置构建多家模型，`TranslationRouter` 在合规/预算校验后按优先级回退。 【F:src/TlaPlugin/Services/ModelProviderFactory.cs†L12-L61】【F:src/TlaPlugin/Services/TranslationRouter.cs†L17-L139】
 - **R6 RAG 上下文增强** — `ContextRetrievalService` 通过 OBO 交换令牌并缓存频道上下文，`TranslationPipeline` 在翻译前调用。 【F:src/TlaPlugin/Services/ContextRetrievalService.cs†L16-L126】【F:src/TlaPlugin/Services/TranslationPipeline.cs†L90-L118】
-- **R8 多语言与语气** — `PluginOptions.SupportedLanguages` 预置超过 100 种语言；`ToneTemplateService` 提供多语气提示，但 `LocalizationCatalogService` 目前仅含日/中 UI 资源。 【F:src/TlaPlugin/Configuration/PluginOptions.cs†L10-L143】【F:src/TlaPlugin/Services/ToneTemplateService.cs†L5-L44】【F:src/TlaPlugin/Services/LocalizationCatalogService.cs†L13-L95】
+- **R8 多语言与语气** — `PluginOptions.SupportedLanguages` 预置超过 100 种语言；`LocalizationCatalogService` 现提供 30+ 核心语言（含英语、法语、西班牙语等）的 UI 字典并回退到英文字符串，前端仪表盘与设置页的 Toast/提示通过 `/api/localization/catalog` 同步；`ToneTemplateService` 提供多语气提示。 【F:src/TlaPlugin/Configuration/PluginOptions.cs†L10-L143】【F:src/TlaPlugin/Services/LocalizationCatalogService.cs†L13-L236】【F:src/webapp/app.js†L1-L120】【F:src/webapp/settingsTab.js†L1-L200】
 - **R11 MCP 工具** — `McpServer` 和 `McpToolRegistry` 暴露翻译、检测、术语与回帖工具，并执行参数校验。 【F:src/TlaPlugin/Services/McpServer.cs†L13-L123】
 
 ### Could 级需求

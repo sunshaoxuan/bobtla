@@ -1,4 +1,5 @@
 import { fetchJson } from "./network.js";
+import { getString, formatString, initializeLocalization } from "./localization.js";
 
 const DEFAULT_FETCH = typeof fetch === "function" ? fetch.bind(globalThis) : undefined;
 
@@ -62,7 +63,7 @@ export function renderGlossaryList(container, entries) {
         return `${entry?.source ?? ""} → ${entry?.target ?? ""}${scope}`;
       })
     : [];
-  renderList(container, items, "暂无术语");
+  renderList(container, items, getString("tla.settings.glossary.empty"));
 }
 
 export function renderConflictList(container, conflicts) {
@@ -74,7 +75,7 @@ export function renderConflictList(container, conflicts) {
         `${conflict?.source ?? ""}: ${conflict?.existingTarget ?? ""} → ${conflict?.incomingTarget ?? ""}`
       )
     : [];
-  renderList(container, rows, "未检测到冲突");
+  renderList(container, rows, getString("tla.settings.glossary.noConflicts"));
 }
 
 export function renderErrorList(container, errors) {
@@ -118,7 +119,7 @@ export function renderGlossaryEntries(container, entries) {
         const scope = entry?.scope ? `（${entry.scope}）` : "";
         return `${entry?.source ?? ""} → ${entry?.target ?? ""}${scope}`;
       })
-    : ["暂无术语条目"];
+    : [getString("tla.settings.glossary.empty")];
 
   const markup = items.map((item) => `<li>${item}</li>`).join("");
   setInnerHtml(container, markup);
@@ -156,9 +157,10 @@ export function renderGlossaryUploadFeedback(elements, result = {}) {
   updateVisibility(elements.conflictContainer, conflicts.length > 0);
   updateVisibility(elements.errorContainer, errors.length > 0);
 
-  const summary = typeof result.message === "string"
+  const summaryTemplate = getString("tla.settings.upload.summary");
+  const summary = typeof result.message === "string" && result.message.trim() !== ""
     ? result.message
-    : `已导入 ${imported} 条，更新 ${updated} 条。`;
+    : formatString(summaryTemplate, imported, updated);
   if (elements.summaryLabel) {
     elements.summaryLabel.textContent = summary;
   }
@@ -199,7 +201,7 @@ async function refreshGlossary(elements, fetchImpl) {
   try {
     const entries = await fetchJson("/api/glossary", {
       fetchImpl,
-      toastMessage: "无法加载术语表，请稍后重试。",
+      toastMessage: () => getString("tla.toast.settings.glossaryFetch"),
       toastKey: "settings-glossary"
     });
     renderGlossaryEntries(elements.glossaryList, entries);
@@ -211,12 +213,12 @@ async function refreshGlossary(elements, fetchImpl) {
 
 function renderPolicies(elements, policies) {
   if (!policies) {
-    renderList(elements.bannedList, [], "暂无禁译词");
-    renderList(elements.styleList, [], "暂无风格模板");
+    renderList(elements.bannedList, [], getString("tla.settings.policies.noBannedTerms"));
+    renderList(elements.styleList, [], getString("tla.settings.policies.noStyleTemplates"));
     return;
   }
-  renderList(elements.bannedList, policies.bannedTerms ?? [], "暂无禁译词");
-  renderList(elements.styleList, policies.styleTemplates ?? [], "暂无风格模板");
+  renderList(elements.bannedList, policies.bannedTerms ?? [], getString("tla.settings.policies.noBannedTerms"));
+  renderList(elements.styleList, policies.styleTemplates ?? [], getString("tla.settings.policies.noStyleTemplates"));
   if (elements.scopeInput && !elements.scopeInput.value && policies.tenantId) {
     elements.scopeInput.value = policies.tenantId;
   }
@@ -255,14 +257,14 @@ async function handleUpload(event, elements, fetchImpl, formDataFactory) {
 
   const file = elements.fileInput?.files?.[0];
   if (!file) {
-    renderErrorList(elements.errorList, ["请先选择 CSV 或 TermBase 文件。"]);
+    renderErrorList(elements.errorList, [getString("tla.settings.upload.selectFile")]);
     updateVisibility(elements.errorContainer, true);
     return;
   }
 
   updateVisibility(elements.errorContainer, false);
   updateVisibility(elements.conflictContainer, false);
-  updateProgress(elements, 10, "上传中…");
+  updateProgress(elements, 10, getString("tla.settings.upload.progress.uploading"));
 
   let formData;
   try {
@@ -279,7 +281,7 @@ async function handleUpload(event, elements, fetchImpl, formDataFactory) {
     formData.file = file;
   }
 
-  updateProgress(elements, 35, "解析文件…");
+  updateProgress(elements, 35, getString("tla.settings.upload.progress.parsing"));
 
   try {
     const response = await (fetchImpl ?? DEFAULT_FETCH)("/api/glossary/upload", {
@@ -288,11 +290,12 @@ async function handleUpload(event, elements, fetchImpl, formDataFactory) {
     });
     if (!response.ok) {
       const text = await response.text?.();
-      throw new Error(text || `上传失败: ${response.status}`);
+      const defaultError = formatString(getString("tla.settings.upload.error.http"), response.status ?? "");
+      throw new Error(text || defaultError);
     }
     const result = await response.json();
 
-    updateProgress(elements, 100, "上传完成");
+    updateProgress(elements, 100, getString("tla.settings.upload.progress.complete"));
     renderConflictList(elements.conflictList, result?.conflicts ?? []);
     updateVisibility(elements.conflictContainer, Array.isArray(result?.conflicts) && result.conflicts.length > 0);
 
@@ -302,7 +305,7 @@ async function handleUpload(event, elements, fetchImpl, formDataFactory) {
     if (elements.statusLabel) {
       const imported = Number(result?.imported ?? 0);
       const updated = Number(result?.updated ?? 0);
-      elements.statusLabel.textContent = `已导入 ${imported} 条，更新 ${updated} 条。`;
+      elements.statusLabel.textContent = formatString(getString("tla.settings.upload.summary"), imported, updated);
     }
 
     await refreshGlossary(elements, fetchImpl ?? DEFAULT_FETCH);
@@ -326,12 +329,13 @@ export async function handleGlossaryUpload({
   try {
     const file = resolved.fileInput?.files?.[0];
     if (!file) {
+      const missingFileMessage = getString("tla.settings.upload.error.noFile");
       renderGlossaryUploadFeedback(resolved, {
         imported: 0,
         updated: 0,
         conflicts: [],
-        errors: ["请先选择术语文件。"],
-        message: "请先选择术语文件。"
+        errors: [missingFileMessage],
+        message: missingFileMessage
       });
       updateVisibility(resolved.errorContainer, true);
       return;
@@ -387,7 +391,8 @@ export async function handleGlossaryUpload({
         payload = {};
       }
 
-      const message = payload?.error ?? `上传失败: ${uploadResponse?.status ?? ""}`.trim();
+      const message = payload?.error
+        ?? formatString(getString("tla.settings.upload.error.http"), uploadResponse?.status ?? "");
       renderGlossaryUploadFeedback(resolved, {
         imported: Number(payload?.imported ?? 0),
         updated: Number(payload?.updated ?? 0),
@@ -400,7 +405,11 @@ export async function handleGlossaryUpload({
     }
 
     const result = await uploadResponse.json?.();
-    const successMessage = `已导入 ${Number(result?.imported ?? 0)} 条，更新 ${Number(result?.updated ?? 0)} 条。`;
+    const successMessage = formatString(
+      getString("tla.settings.upload.summary"),
+      Number(result?.imported ?? 0),
+      Number(result?.updated ?? 0)
+    );
     renderGlossaryUploadFeedback(resolved, {
       ...result,
       message: successMessage
@@ -439,10 +448,12 @@ export async function initSettingsPage({
 } = {}) {
   const elements = resolveElements(root);
 
+  await initializeLocalization(undefined, { fetchImpl });
+
   try {
     const configuration = await fetchJson("/api/configuration", {
       fetchImpl,
-      toastMessage: "无法加载租户策略，将使用默认设置。",
+      toastMessage: () => getString("tla.toast.settings.configuration"),
       toastKey: "settings-configuration"
     });
     renderPolicies(elements, configuration?.tenantPolicies);

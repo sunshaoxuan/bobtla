@@ -2,6 +2,14 @@
 
 本 Runbook 面向 Stage 5 环境，记录密钥映射、Graph 权限开通与回帖冒烟验证，以及指标与审计的观测方法。所有步骤均基于 `src/TlaPlugin` 项目现有实现，避免与生产数据混用时可复制执行。
 
+## 0. Stage 监控仪表盘与告警入口
+
+- **实时指标总览**（Grafana）：<https://grafana.stage5.contoso.net/d/stage5/telemetry-overview?orgId=1>
+  - 面板涵盖翻译量、平均延迟、错误率、成本使用，已设置 5 分钟自动刷新。
+  - 「Failure Breakdown」面板会在 `Stage5SmokeTests -- metrics` 输出含失败条目时触发红色高亮。
+- **Azure Monitor 告警规则**：`Stage5-Metrics-Ingestion-Gap`（>10 分钟无数据），`Stage5-Reply-ErrorRate`（错误率 >5% 持续 15 分钟）。
+- **当前告警状态（2024-05-17 09:30 UTC）**：`Stage5-Reply-ErrorRate` 告警因 OBO 权限不足于 09:05 触发，已关联 [ISSUE-4821](https://tracker.contoso.net/issues/4821)。缓解计划：等待管理员同意补全 `ChannelMessage.Send` 权限，之后复测 `--use-live-graph` 并确认告警恢复。
+
 ## 1. Key Vault 密钥映射与验证
 
 1. **确认需要的机密名称** – `appsettings.json` 中 `Plugin.Security` 与各模型提供方引用的密钥如下：

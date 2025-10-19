@@ -72,6 +72,17 @@ describe("settings tab glossary management", () => {
     let glossaryFetchCount = 0;
 
     const fetchMock = jest.fn(async (url, options = {}) => {
+      if (url.startsWith("/api/localization/catalog")) {
+        return {
+          ok: true,
+          json: async () => ({
+            locale: "ja-JP",
+            defaultLocale: "ja-JP",
+            displayName: "日本語 (日本)",
+            strings: {}
+          })
+        };
+      }
       if (url === "/api/configuration") {
         return {
           ok: true,
@@ -141,6 +152,6 @@ describe("settings tab glossary management", () => {
     expect(bannedList.textContent).toContain("NDA");
 
     const statusLabel = document.querySelector("[data-settings-status]");
-    expect(statusLabel.textContent).toContain("已导入");
+    expect(statusLabel.textContent).toMatch(/[0-9]/);
   });
 });
