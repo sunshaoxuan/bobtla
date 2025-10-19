@@ -22,6 +22,7 @@ function resolveComposeUi(root = typeof document !== "undefined" ? document : un
     preview: root.querySelector?.("[data-compose-preview]"),
     terminologyToggle: root.querySelector?.("[data-terminology-toggle]"),
     toneToggle: root.querySelector?.("[data-tone-toggle]"),
+    broadcastToggle: root.querySelector?.("[data-compose-broadcast]"),
     costHint: root.querySelector?.("[data-compose-cost]")
   };
 }
@@ -208,6 +209,13 @@ export async function initComposePlugin({ ui = resolveComposeUi(), teams, fetche
     ui.toneToggle.checked = state.tone === "formal";
     ui.toneToggle.addEventListener?.("change", (event) => {
       state.tone = event.target.checked ? "formal" : "neutral";
+    });
+  }
+
+  if (ui.broadcastToggle) {
+    ui.broadcastToggle.checked = Boolean(state.broadcastAdditionalLanguages);
+    ui.broadcastToggle.addEventListener?.("change", (event) => {
+      state.broadcastAdditionalLanguages = Boolean(event.target.checked);
     });
   }
 

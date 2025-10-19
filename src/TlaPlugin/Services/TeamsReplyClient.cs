@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -52,7 +53,8 @@ public class TeamsReplyClient : ITeamsReplyClient
             ["ChannelId"] = request.ChannelId ?? string.Empty,
             ["TenantId"] = request.TenantId,
             ["Language"] = request.Language,
-            ["Tone"] = request.Tone
+            ["Tone"] = request.Tone,
+            ["DeliveryMode"] = request.DeliveryMode
         });
 
         _logger.LogInformation("Sending Teams reply via Graph path {GraphPath}", path);
@@ -81,8 +83,18 @@ public class TeamsReplyClient : ITeamsReplyClient
                 {
                     language = request.Language,
                     tone = request.Tone,
-                    additionalTranslations = request.AdditionalTranslations.Count > 0
+                    deliveryMode = request.DeliveryMode,
+                    translations = request.AdditionalTranslations.Count > 0
                         ? request.AdditionalTranslations
+                            .Select(translation => new
+                            {
+                                translation.Language,
+                                translation.Text,
+                                translation.ModelId,
+                                translation.CostUsd,
+                                translation.LatencyMs
+                            })
+                            .ToArray()
                         : null
                 }
             },
@@ -227,8 +239,22 @@ public sealed record TeamsReplyRequest(
     string Language,
     string Tone,
     string AccessToken,
-    IReadOnlyDictionary<string, string> AdditionalTranslations,
-    JsonObject? AdaptiveCard);
+    IReadOnlyList<TeamsReplyTranslation> AdditionalTranslations,
+    JsonObject? AdaptiveCard,
+    string DeliveryMode);
+
+public sealed record TeamsReplyTranslation(
+    string Language,
+    string Text,
+    string ModelId,
+    decimal CostUsd,
+    int LatencyMs);
+
+public static class TeamsReplyDeliveryMode
+{
+    public const string Attachment = "attachment";
+    public const string Broadcast = "broadcast";
+}
 
 public sealed record TeamsReplyResponse(string MessageId, DateTimeOffset SentAt, string Status);
 

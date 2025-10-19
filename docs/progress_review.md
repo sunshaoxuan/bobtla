@@ -33,13 +33,13 @@
 ### Could 级需求
 
 - **R12 离线草稿/长文本分片** — `OfflineDraftStore` 基于 SQLite 存储草稿，`TranslationPipeline` 将超长文本拆分入队并返回排队卡片。 【F:src/TlaPlugin/Services/OfflineDraftStore.cs†L13-L132】【F:src/TlaPlugin/Services/TranslationPipeline.cs†L108-L182】
-- **R13 多语广播** — 回帖时可生成附加译文并在卡片中展示，但仍是单条消息，没有按成员语言拆分多帖。 【F:src/TlaPlugin/Services/ReplyService.cs†L182-L320】
+- **R13 多语广播** — Compose 回帖新增“多帖广播附加译文”开关：关闭时继续在单贴中附带附加语种；开启后会为每个语种额外发送 Graph 回复，并在卡片与审计记录中写入语言/模型/成本。 【F:src/TlaPlugin/Services/ReplyService.cs†L182-L340】【F:src/TlaPlugin/Services/TeamsReplyClient.cs†L1-L240】
 - **R14 术语上传与管理** — Minimal API 支持 multipart 上传 CSV/TSV 并返回冲突/错误，前端设置页调用 `fetchJson` 渲染结果。 【F:src/TlaPlugin/Program.cs†L482-L520】【F:src/webapp/settingsTab.js†L1-L120】
 
 ## 下一步建议
 
 1. **补齐合规演练**：在 Stage 环境实际配置 Key Vault、Graph 权限并运行 `Stage5SmokeTests` 新增的 readiness 命令，闭环 R10 缺口。 【F:scripts/SmokeTests/Stage5SmokeTests/Program.cs†L40-L214】
-2. **多语言验收**：在 Stage 环境验证仪表盘/设置页 Toast 与提示是否随 `LocalizationCatalogService` 切换语言，并收集重点语言截图。
-3. **多语广播策略**：为 R13 增加“按目标语言拆分多条回帖”开关或批量发送逻辑，兼容现有 `AdditionalTargetLanguages` 数据结构。
+2. **扩展前端国际化**：补充 `LocalizationCatalogService` 及静态资源的多语言文案，与 `PluginOptions.SupportedLanguages` 对齐，提升 R8 完成度。
+3. **多语广播观测**：在 Stage 环境执行广播/单贴两种模式的 Graph 冒烟，验证 `Dispatches` 列表与 `/api/audit` 的 `translations` 数量、成本数据是否与预算守卫一致。
 4. **Stage 验证记录**：将仪表盘/Compose 插件在 Stage 环境的真实调用、失败路径截图或日志沉淀至 `stage5_task_plan.md`，便于 go-live 评审。
 

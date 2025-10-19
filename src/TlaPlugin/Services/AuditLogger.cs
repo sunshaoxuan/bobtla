@@ -14,7 +14,16 @@ public class AuditLogger
 {
     private readonly IList<JsonObject> _logs = new List<JsonObject>();
 
-    public void Record(string tenantId, string userId, string modelId, string text, string translation, decimal cost, int latencyMs, string? audience = null, IReadOnlyDictionary<string, string>? additionalTranslations = null)
+    public void Record(
+        string tenantId,
+        string userId,
+        string modelId,
+        string text,
+        string translation,
+        decimal cost,
+        int latencyMs,
+        string? audience = null,
+        IReadOnlyList<TranslationAuditEntry>? translations = null)
     {
         var hashed = HashText(text);
         var entry = new JsonObject
@@ -32,17 +41,26 @@ public class AuditLogger
         {
             entry["audience"] = audience;
         }
-        if (additionalTranslations is { Count: > 0 })
+        if (translations is { Count: > 0 })
         {
-            var extras = new JsonObject();
-            foreach (var kvp in additionalTranslations)
+            var extras = new JsonArray();
+            foreach (var item in translations)
             {
-                extras[kvp.Key] = kvp.Value;
+                extras.Add(new JsonObject
+                {
+                    ["language"] = item.Language,
+                    ["modelId"] = item.ModelId,
+                    ["costUsd"] = item.CostUsd,
+                    ["latencyMs"] = item.LatencyMs,
+                    ["text"] = item.Text
+                });
             }
-            entry["additionalTranslations"] = extras;
+            entry["translations"] = extras;
         }
         _logs.Add(entry);
     }
+
+    public sealed record TranslationAuditEntry(string Language, string ModelId, decimal CostUsd, int LatencyMs, string Text);
 
     private static string HashText(string text)
     {

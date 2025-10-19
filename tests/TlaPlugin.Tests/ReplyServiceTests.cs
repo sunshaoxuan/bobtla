@@ -120,24 +120,89 @@ public class ReplyServiceTests
         Assert.Equal("sent", result.Status);
         Assert.NotNull(teamsClient.LastRequest);
         var additional = teamsClient.LastRequest!.AdditionalTranslations;
-        Assert.True(additional.ContainsKey("en"));
-        Assert.True(additional.ContainsKey("de"));
+        Assert.Contains(additional, item => item.Language.Equals("en", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(additional, item => item.Language.Equals("de", StringComparison.OrdinalIgnoreCase));
+        Assert.All(additional, item => Assert.True(item.CostUsd >= 0));
+        Assert.Equal(TeamsReplyDeliveryMode.Attachment, teamsClient.LastRequest!.DeliveryMode);
         var card = teamsClient.LastRequest!.AdaptiveCard;
         Assert.NotNull(card);
         var body = card!["body"]?.AsArray();
         Assert.NotNull(body);
-        var primaryInfo = body![1]!.AsObject();
-        Assert.Equal("Primary language: fr", primaryInfo["text"]!.GetValue<string>());
-        var translationBlocks = body
-            .Skip(2)
-            .Select(node => node!.AsObject()["text"]!.GetValue<string>())
+        var texts = body!
+            .Select(node => node!.AsObject()["text"]?.GetValue<string>())
+            .Where(text => !string.IsNullOrEmpty(text))
             .ToList();
-        Assert.Collection(translationBlocks,
-            text => Assert.StartsWith("en:", text, StringComparison.OrdinalIgnoreCase),
-            text => Assert.StartsWith("de:", text, StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("Primary language: fr", texts);
+        var enIndex = texts.FindIndex(text => text!.StartsWith("en:", StringComparison.OrdinalIgnoreCase));
+        Assert.True(enIndex >= 0);
+        Assert.Contains("Model", texts[enIndex + 1], StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("USD", texts[enIndex + 1], StringComparison.OrdinalIgnoreCase);
+        var deIndex = texts.FindIndex(text => text!.StartsWith("de:", StringComparison.OrdinalIgnoreCase));
+        Assert.True(deIndex >= 0);
+        Assert.Contains("Model", texts[deIndex + 1], StringComparison.OrdinalIgnoreCase);
         Assert.Equal(result.FinalText, teamsClient.LastRequest!.FinalText);
         Assert.Contains("[en]", result.FinalText, StringComparison.Ordinal);
         Assert.Contains("[de]", result.FinalText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task BroadcastsAdditionalTranslationsSeparately()
+    {
+        var options = Options.Create(new PluginOptions
+        {
+            Providers = new List<ModelProviderOptions> { new() { Id = "primary" } }
+        });
+
+        var metrics = new UsageMetricsService();
+        var teamsClient = new RecordingTeamsClient();
+        teamsClient.Responses.Enqueue(new TeamsReplyResponse("msg-primary", DateTimeOffset.UtcNow, "sent"));
+        teamsClient.Responses.Enqueue(new TeamsReplyResponse("msg-en", DateTimeOffset.UtcNow, "sent"));
+        teamsClient.Responses.Enqueue(new TeamsReplyResponse("msg-de", DateTimeOffset.UtcNow, "sent"));
+        var service = CreateService(options, teamsClient, metrics);
+
+        var result = await service.SendReplyAsync(new ReplyRequest
+        {
+            ThreadId = "thread",
+            ReplyText = "Bonjour",
+            TenantId = "contoso",
+            UserId = "user",
+            UserAssertion = "assertion",
+            ChannelId = "general",
+            LanguagePolicy = new ReplyLanguagePolicy { TargetLang = "fr", Tone = ToneTemplateService.Business },
+            AdditionalTargetLanguages = new List<string> { "en", "de" },
+            BroadcastAdditionalLanguages = true
+        }, CancellationToken.None);
+
+        Assert.Equal("msg-primary", result.MessageId);
+        Assert.Equal(3, teamsClient.Requests.Count);
+        Assert.Equal(3, result.Dispatches.Count);
+        Assert.DoesNotContain("[en]", result.FinalText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("[de]", result.FinalText, StringComparison.OrdinalIgnoreCase);
+
+        var primary = teamsClient.Requests[0];
+        Assert.Equal(TeamsReplyDeliveryMode.Broadcast, primary.DeliveryMode);
+        Assert.Equal("fr", primary.Language);
+        Assert.Equal(2, primary.AdditionalTranslations.Count);
+        Assert.NotNull(primary.AdaptiveCard);
+
+        var enRequest = teamsClient.Requests.Single(req => req.Language == "en" && req != primary);
+        Assert.Equal(TeamsReplyDeliveryMode.Broadcast, enRequest.DeliveryMode);
+        Assert.Empty(enRequest.AdditionalTranslations);
+
+        var deRequest = teamsClient.Requests.Single(req => req.Language == "de");
+        Assert.Equal(TeamsReplyDeliveryMode.Broadcast, deRequest.DeliveryMode);
+
+        var enDispatch = Assert.Single(result.Dispatches.Where(dispatch => dispatch.Language == "en"));
+        Assert.Equal("msg-en", enDispatch.MessageId);
+        Assert.False(string.IsNullOrWhiteSpace(enDispatch.ModelId));
+        Assert.True(enDispatch.CostUsd >= 0);
+
+        var summaryTexts = primary.AdaptiveCard!["body"]!.AsArray()
+            .Select(node => node!.AsObject()["text"]?.GetValue<string>())
+            .Where(text => !string.IsNullOrEmpty(text))
+            .ToList();
+        Assert.Contains(summaryTexts, text => text!.StartsWith("en:", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(summaryTexts, text => text!.StartsWith("de:", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -272,9 +337,12 @@ public class ReplyServiceTests
         var metadata = root.GetProperty("channelData").GetProperty("metadata");
         Assert.Equal("ja", metadata.GetProperty("language").GetString());
         Assert.Equal(ToneTemplateService.Casual, metadata.GetProperty("tone").GetString());
-        var extras = metadata.GetProperty("additionalTranslations");
-        Assert.Equal("fr", Assert.Single(extras.EnumerateObject()).Name);
-        Assert.Contains("fr", extras.GetProperty("fr").GetString());
+        Assert.Equal(TeamsReplyDeliveryMode.Attachment, metadata.GetProperty("deliveryMode").GetString());
+        var extras = metadata.GetProperty("translations");
+        var translation = Assert.Single(extras.EnumerateArray());
+        Assert.Equal("fr", translation.GetProperty("language").GetString());
+        Assert.Contains("fr", translation.GetProperty("text").GetString(), StringComparison.OrdinalIgnoreCase);
+        Assert.False(string.IsNullOrWhiteSpace(translation.GetProperty("modelId").GetString()));
         var html = root.GetProperty("body").GetProperty("content").GetString();
         Assert.Contains("グラフ投稿", html, StringComparison.Ordinal);
         Assert.Contains("[fr]", html, StringComparison.Ordinal);
@@ -363,11 +431,21 @@ public class ReplyServiceTests
     {
         public TeamsReplyRequest? LastRequest { get; private set; }
 
+        public IList<TeamsReplyRequest> Requests { get; } = new List<TeamsReplyRequest>();
+
+        public Queue<TeamsReplyResponse> Responses { get; } = new();
+
         public TeamsReplyResponse Response { get; set; } = new TeamsReplyResponse("message", DateTimeOffset.UtcNow, "sent");
 
         public Task<TeamsReplyResponse> SendReplyAsync(TeamsReplyRequest request, CancellationToken cancellationToken)
         {
             LastRequest = request;
+            Requests.Add(request);
+            if (Responses.Count > 0)
+            {
+                return Task.FromResult(Responses.Dequeue());
+            }
+
             return Task.FromResult(Response);
         }
     }

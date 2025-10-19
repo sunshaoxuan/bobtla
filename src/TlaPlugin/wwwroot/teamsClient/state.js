@@ -60,6 +60,7 @@ export function buildDialogState({ models, languages, context } = {}) {
       targetLanguage,
       availableTargets
     ),
+    broadcastAdditionalLanguages: false,
     availableTargetLanguages: availableTargets,
     threadId: resolveThreadId(context),
     useTerminology: true,
@@ -184,6 +185,7 @@ export function buildReplyPayload(state, context, text) {
     sourceLanguage: state.sourceLanguage === "auto" ? state.detectedLanguage : state.sourceLanguage,
     targetLanguage: state.targetLanguage,
     additionalTargetLanguages,
+    broadcastAdditionalLanguages: Boolean(state.broadcastAdditionalLanguages),
     tenantId: context?.tenant?.id,
     userId: context?.user?.id,
     channelId: context?.channel?.id,

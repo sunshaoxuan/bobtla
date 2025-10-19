@@ -250,7 +250,8 @@ public class MessageExtensionHandler
                 ChannelId = request.ChannelId,
                 Language = request.Language,
                 UiLocale = request.UiLocale,
-                LanguagePolicy = languagePolicy
+                LanguagePolicy = languagePolicy,
+                BroadcastAdditionalLanguages = request.BroadcastAdditionalLanguages
             };
 
             replyPayload.UserAssertion = request.UserAssertion;

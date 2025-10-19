@@ -106,7 +106,8 @@ public class TranslationRouter
             }
 
             allowedProviders++;
-            var estimatedCost = request.Text.Length * provider.Options.CostPerCharUsd * translationCount;
+            var unitCost = request.Text.Length * provider.Options.CostPerCharUsd;
+            var estimatedCost = unitCost * translationCount;
             using var reservation = ReserveBudgetOrThrow(request.TenantId, estimatedCost, "本日の翻訳予算を使い切りました。");
             try
             {
@@ -114,14 +115,19 @@ public class TranslationRouter
                     var rewritten = await provider.RewriteAsync(result.Text, request.Tone, cancellationToken);
 
                     var additional = new Dictionary<string, string>();
+                    var auditEntries = new List<AuditLogger.TranslationAuditEntry>
+                    {
+                        new(request.TargetLanguage, result.ModelId, unitCost, result.LatencyMs, rewritten)
+                    };
                     foreach (var extraLanguage in request.AdditionalTargetLanguages)
                     {
                         var extraResult = await provider.TranslateAsync(request.Text, sourceLanguage!, extraLanguage, promptPrefix, cancellationToken);
                         var extraRewritten = await provider.RewriteAsync(extraResult.Text, request.Tone, cancellationToken);
                         additional[extraLanguage] = extraRewritten;
+                        auditEntries.Add(new AuditLogger.TranslationAuditEntry(extraLanguage, extraResult.ModelId, unitCost, extraResult.LatencyMs, extraRewritten));
                     }
 
-                    _audit.Record(request.TenantId, request.UserId, result.ModelId, request.Text, rewritten, estimatedCost, result.LatencyMs, token.Audience, additional);
+                    _audit.Record(request.TenantId, request.UserId, result.ModelId, request.Text, rewritten, estimatedCost, result.LatencyMs, token.Audience, auditEntries);
                     _metrics.RecordSuccess(request.TenantId, result.ModelId, estimatedCost, result.LatencyMs, translationCount);
                     reservation.Commit();
 
@@ -140,7 +146,7 @@ public class TranslationRouter
                         CostUsd = estimatedCost,
                         UiLocale = catalog.Locale,
                         AdditionalTranslations = additional,
-                        AdaptiveCard = BuildAdaptiveCard(catalog, rewritten, sourceLanguage!, request.TargetLanguage, result.ModelId, estimatedCost, result.LatencyMs, additional)
+                        AdaptiveCard = BuildAdaptiveCard(catalog, rewritten, sourceLanguage!, request.TargetLanguage, result.ModelId, estimatedCost, result.LatencyMs, additional, auditEntries)
                     };
             }
             catch (Exception ex) when (ex is InvalidOperationException or TaskCanceledException)
@@ -342,7 +348,8 @@ public class TranslationRouter
         string modelId,
         decimal cost,
         int latency,
-        IReadOnlyDictionary<string, string> additionalTranslations)
+        IReadOnlyDictionary<string, string> additionalTranslations,
+        IReadOnlyList<AuditLogger.TranslationAuditEntry> auditEntries)
     {
         static string Resolve(LocalizationCatalog catalog, string key) =>
             catalog.Strings.TryGetValue(key, out var value) ? value : key;
@@ -380,6 +387,10 @@ public class TranslationRouter
             }
         };
 
+        var metadata = auditEntries
+            .GroupBy(entry => entry.Language, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+
         if (additionalTranslations.Count > 0)
         {
             body.Add(new JsonObject
@@ -399,6 +410,19 @@ public class TranslationRouter
                     ["text"] = string.Format(CultureInfo.InvariantCulture, "{0}: {1}", kvp.Key, kvp.Value),
                     ["wrap"] = true
                 });
+
+                if (metadata.TryGetValue(kvp.Key, out var entry))
+                {
+                    body.Add(new JsonObject
+                    {
+                        ["type"] = "TextBlock",
+                        ["text"] = string.Format(CultureInfo.InvariantCulture, "Model {0} • USD {1:F6} • {2} ms", entry.ModelId, entry.CostUsd, entry.LatencyMs),
+                        ["wrap"] = true,
+                        ["spacing"] = "None",
+                        ["isSubtle"] = true,
+                        ["size"] = "Small"
+                    });
+                }
             }
         }
 
