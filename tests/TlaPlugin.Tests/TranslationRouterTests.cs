@@ -564,18 +564,21 @@ public class TranslationRouterTests
         var result = await router.TranslateAsync(request, CancellationToken.None);
 
         var body = result.AdaptiveCard["body"]!.AsArray().Select(node => node!.AsObject()).ToList();
-        Assert.Contains(body, block => block["text"]?.GetValue<string>() == "追加の翻訳");
-        Assert.Contains(body, block => block["text"]?.GetValue<string>()?.StartsWith("fr:") == true);
-        Assert.Contains(body, block => block["text"]?.GetValue<string>()?.StartsWith("de:") == true);
+        var cardTexts = body.Select(block => block["text"]?.GetValue<string>()).Where(text => !string.IsNullOrEmpty(text)).ToList();
+        Assert.Contains("追加の翻訳", cardTexts);
+        Assert.Contains(cardTexts, text => text!.StartsWith("fr:", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(cardTexts, text => text!.StartsWith("de:", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(cardTexts, text => text!.Contains("Model", StringComparison.OrdinalIgnoreCase));
         var actions = result.AdaptiveCard["actions"]!.AsArray();
         Assert.Contains(actions.Select(a => a!.AsObject()["data"]!.AsObject()["language"]!.GetValue<string>()), language => language == "fr");
         Assert.Contains(actions.Select(a => a!.AsObject()["data"]!.AsObject()["language"]!.GetValue<string>()), language => language == "de");
 
         var log = audit.Export().Single();
-        var extras = log["additionalTranslations"]!.AsObject();
-        Assert.Equal(2, extras.Count);
-        Assert.True(extras.ContainsKey("fr"));
-        Assert.True(extras.ContainsKey("de"));
+        var extras = log["translations"]!.AsArray();
+        Assert.Equal(3, extras.Count);
+        var frEntry = Assert.Single(extras.Where(node => node!.AsObject()["language"]!.GetValue<string>() == "fr"));
+        Assert.Contains("fr", frEntry!.AsObject()["text"]!.GetValue<string>(), StringComparison.OrdinalIgnoreCase);
+        Assert.False(string.IsNullOrWhiteSpace(frEntry.AsObject()["modelId"]!.GetValue<string>()));
 
         var report = metrics.GetReport();
         var tenant = Assert.Single(report.Tenants, snapshot => snapshot.TenantId == "contoso");

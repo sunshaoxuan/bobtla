@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
 using System.Net;
 using System.Security.Authentication;
-using System.Text.Json.Nodes;
 using System.Text;
+using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -166,6 +168,7 @@ public class ReplyService
             request.UiLocale,
             targetLanguage,
             tone,
+            request.BroadcastAdditionalLanguages,
             normalizedAdditionalLanguages,
             request.UserAssertion);
     }
@@ -191,15 +194,33 @@ public class ReplyService
         var metadataTone = toneApplied ?? context.Tone ?? TranslationRequest.DefaultTone;
 
         var additionalTranslations = await TranslateAdditionalLanguagesAsync(context, finalText, cancellationToken).ConfigureAwait(false);
-        var finalMessage = BuildMultilingualMessage(finalText, additionalTranslations, context.AdditionalTargetLanguages);
-        var adaptiveCard = BuildAdaptiveCard(finalText, context.TargetLanguage, context.AdditionalTargetLanguages, additionalTranslations);
+        var teamsTranslations = additionalTranslations
+            .Select(translation => new TeamsReplyTranslation(
+                translation.Language,
+                translation.Text,
+                translation.ModelId,
+                translation.CostUsd,
+                translation.LatencyMs))
+            .ToList();
+
+        var finalMessage = context.BroadcastAdditionalLanguages
+            ? finalText
+            : BuildMultilingualMessage(finalText, additionalTranslations, context.AdditionalTargetLanguages);
+
+        var adaptiveCard = BuildAdaptiveCard(
+            finalText,
+            context.TargetLanguage,
+            context.AdditionalTargetLanguages,
+            additionalTranslations);
 
         _logger.LogInformation(
-            "Posting Teams reply with {AdditionalCount} additional languages",
-            context.AdditionalTargetLanguages.Count);
+            "Posting Teams reply with {AdditionalCount} additional languages via {Mode}",
+            context.AdditionalTargetLanguages.Count,
+            context.BroadcastAdditionalLanguages ? "broadcast" : "attachment");
 
         try
         {
+            var dispatches = new List<ReplyDispatch>();
             var response = await _teamsClient.SendReplyAsync(new TeamsReplyRequest(
                 context.ThreadId,
                 context.ChannelId,
@@ -208,18 +229,56 @@ public class ReplyService
                 context.TargetLanguage,
                 metadataTone,
                 token.Value,
-                additionalTranslations,
-                adaptiveCard), cancellationToken).ConfigureAwait(false);
+                teamsTranslations,
+                adaptiveCard,
+                context.BroadcastAdditionalLanguages ? TeamsReplyDeliveryMode.Broadcast : TeamsReplyDeliveryMode.Attachment), cancellationToken).ConfigureAwait(false);
+
+            dispatches.Add(new ReplyDispatch(response.MessageId, context.TargetLanguage, response.Status, response.SentAt));
+
+            if (context.BroadcastAdditionalLanguages)
+            {
+                foreach (var translation in additionalTranslations)
+                {
+                    var broadcastResponse = await _teamsClient.SendReplyAsync(new TeamsReplyRequest(
+                        context.ThreadId,
+                        context.ChannelId,
+                        context.TenantId,
+                        translation.Text,
+                        translation.Language,
+                        metadataTone,
+                        token.Value,
+                        Array.Empty<TeamsReplyTranslation>(),
+                        null,
+                        TeamsReplyDeliveryMode.Broadcast), cancellationToken).ConfigureAwait(false);
+
+                    dispatches.Add(new ReplyDispatch(
+                        broadcastResponse.MessageId,
+                        translation.Language,
+                        broadcastResponse.Status,
+                        broadcastResponse.SentAt,
+                        translation.ModelId,
+                        translation.CostUsd,
+                        translation.LatencyMs));
+                }
+            }
 
             _logger.LogInformation(
                 "Reply posted successfully with message {MessageId} and status {Status}",
                 response.MessageId,
                 response.Status);
 
+            if (context.BroadcastAdditionalLanguages && additionalTranslations.Count > 0)
+            {
+                _logger.LogInformation(
+                    "Broadcasted {Count} additional translations",
+                    additionalTranslations.Count);
+            }
+
             return new ReplyResult(response.MessageId, response.Status, finalMessage, toneApplied)
             {
                 Language = context.TargetLanguage,
-                PostedAt = response.SentAt
+                PostedAt = response.SentAt,
+                Dispatches = dispatches
             };
         }
         catch (TeamsReplyException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
@@ -257,18 +316,18 @@ public class ReplyService
         }
     }
 
-    private async Task<IReadOnlyDictionary<string, string>> TranslateAdditionalLanguagesAsync(ReplyExecutionContext context, string finalText, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<TranslationDelivery>> TranslateAdditionalLanguagesAsync(ReplyExecutionContext context, string finalText, CancellationToken cancellationToken)
     {
         if (context.AdditionalTargetLanguages.Count == 0)
         {
-            return new Dictionary<string, string>();
+            return Array.Empty<TranslationDelivery>();
         }
 
         _logger.LogDebug(
             "Translating additional languages: {Languages}",
             context.AdditionalTargetLanguages);
 
-        var results = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var results = new List<TranslationDelivery>();
 
         foreach (var language in context.AdditionalTargetLanguages)
         {
@@ -287,7 +346,12 @@ public class ReplyService
                 UserAssertion = context.UserAssertion
             }, cancellationToken).ConfigureAwait(false);
 
-            results[language] = translation.TranslatedText;
+            results.Add(new TranslationDelivery(
+                language,
+                translation.TranslatedText,
+                translation.ModelId,
+                translation.CostUsd,
+                translation.LatencyMs));
         }
 
         return results;
@@ -295,7 +359,7 @@ public class ReplyService
 
     private static string BuildMultilingualMessage(
         string primaryText,
-        IReadOnlyDictionary<string, string> additionalTranslations,
+        IReadOnlyList<TranslationDelivery> additionalTranslations,
         IReadOnlyList<string> languageOrder)
     {
         if (additionalTranslations.Count == 0)
@@ -303,12 +367,17 @@ public class ReplyService
             return primaryText;
         }
 
+        var lookup = additionalTranslations.ToDictionary(
+            translation => translation.Language,
+            translation => translation.Text,
+            StringComparer.OrdinalIgnoreCase);
+
         var builder = new StringBuilder();
         builder.Append(primaryText);
 
         foreach (var language in languageOrder)
         {
-            if (!additionalTranslations.TryGetValue(language, out var translation))
+            if (!lookup.TryGetValue(language, out var translation))
             {
                 continue;
             }
@@ -333,12 +402,16 @@ public class ReplyService
         string finalText,
         string primaryLanguage,
         IReadOnlyList<string> languageOrder,
-        IReadOnlyDictionary<string, string> additionalTranslations)
+        IReadOnlyList<TranslationDelivery> additionalTranslations)
     {
         if (additionalTranslations.Count == 0)
         {
             return null;
         }
+
+        var lookup = additionalTranslations.ToDictionary(
+            translation => translation.Language,
+            StringComparer.OrdinalIgnoreCase);
 
         var body = new JsonArray
         {
@@ -363,36 +436,23 @@ public class ReplyService
 
         foreach (var language in languageOrder)
         {
-            if (!additionalTranslations.TryGetValue(language, out var translation))
+            if (!lookup.TryGetValue(language, out var translation))
             {
                 continue;
             }
 
             seen.Add(language);
-
-            body.Add(new JsonObject
-            {
-                ["type"] = "TextBlock",
-                ["text"] = string.Format(System.Globalization.CultureInfo.InvariantCulture, "{0}: {1}", language, translation),
-                ["wrap"] = true,
-                ["spacing"] = "Medium"
-            });
+            AppendTranslationBlocks(body, translation);
         }
 
-        foreach (var kvp in additionalTranslations)
+        foreach (var translation in additionalTranslations)
         {
-            if (!seen.Add(kvp.Key))
+            if (!seen.Add(translation.Language))
             {
                 continue;
             }
 
-            body.Add(new JsonObject
-            {
-                ["type"] = "TextBlock",
-                ["text"] = string.Format(System.Globalization.CultureInfo.InvariantCulture, "{0}: {1}", kvp.Key, kvp.Value),
-                ["wrap"] = true,
-                ["spacing"] = "Medium"
-            });
+            AppendTranslationBlocks(body, translation);
         }
 
         return new JsonObject
@@ -402,6 +462,34 @@ public class ReplyService
             ["body"] = body
         };
     }
+
+    private static void AppendTranslationBlocks(JsonArray body, TranslationDelivery translation)
+    {
+        body.Add(new JsonObject
+        {
+            ["type"] = "TextBlock",
+            ["text"] = string.Format(System.Globalization.CultureInfo.InvariantCulture, "{0}: {1}", translation.Language, translation.Text),
+            ["wrap"] = true,
+            ["spacing"] = "Medium"
+        });
+
+        body.Add(new JsonObject
+        {
+            ["type"] = "TextBlock",
+            ["text"] = string.Format(System.Globalization.CultureInfo.InvariantCulture, "Model {0} • USD {1:F6} • {2} ms", translation.ModelId, translation.CostUsd, translation.LatencyMs),
+            ["wrap"] = true,
+            ["spacing"] = "None",
+            ["isSubtle"] = true,
+            ["size"] = "Small"
+        });
+    }
+
+    private sealed record TranslationDelivery(
+        string Language,
+        string Text,
+        string ModelId,
+        decimal CostUsd,
+        int LatencyMs);
 
     private sealed record ReplyExecutionContext(
         string ThreadId,
@@ -413,6 +501,7 @@ public class ReplyService
         string? UiLocale,
         string TargetLanguage,
         string? Tone,
+        bool BroadcastAdditionalLanguages,
         IReadOnlyList<string> AdditionalTargetLanguages,
         string UserAssertion);
 
@@ -426,7 +515,8 @@ public class ReplyService
             ["ChannelId"] = context.ChannelId ?? string.Empty,
             ["TargetLanguage"] = context.TargetLanguage,
             ["Tone"] = context.Tone ?? TranslationRequest.DefaultTone,
-            ["AdditionalLanguages"] = context.AdditionalTargetLanguages.Count
+            ["AdditionalLanguages"] = context.AdditionalTargetLanguages.Count,
+            ["Broadcast"] = context.BroadcastAdditionalLanguages
         });
     }
 }

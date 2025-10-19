@@ -75,6 +75,8 @@ test -f ./artifacts/stage-publish/appsettings.Stage.json && echo "✔ Stage 覆�
    - 通过 `TeamsReplyClient.SendReplyAsync` 发起 Graph 请求（可模拟或直连）；
    - 输出 `/api/metrics` 中同源的数据结构与审计日志样例。
 
+   > Compose 插件中新增“多帖广播附加译文”开关：关闭时会沿用单帖附带模式，将附加语种拼接在同一消息与自适应卡片中；开启后会为每个附加语种额外发送一条 Graph 回复，并在主贴卡片中列出语言、模型与成本。Stage 联调时建议同时验证两种模式，确认 `Dispatches` 返回数组与 `/api/audit` 中的 `translations` 元素数量一致。
+
    > 提示：`TokenBroker` 在默认配置下继续使用 HMAC 令牌便于单元测试。若要打通真实 Graph OBO，请在 `Plugin.Security` 中将 `UseHmacFallback` 设置为 `false`，填充所需的 `GraphScopes`（推荐 `https://graph.microsoft.com/.default` 加上必要的精细化权限），并按租户覆盖 `ClientId`/`ClientSecretName`。冒烟脚本会记录成功调用时的 Authorization 头部，并输出作用域检查结果，便于比对 AAD 返回的访问令牌。
 
    `reply` 命令新增 `--assertion` 用于传入用户断言 (JWT)。在默认的 HMAC 回退模式下可以省略，脚本会生成带有 `aud/tid/sub` 字段的模拟 JWT 触发后续流程；若需要对比实际 OBO 行为，则必须提供真实的用户令牌。

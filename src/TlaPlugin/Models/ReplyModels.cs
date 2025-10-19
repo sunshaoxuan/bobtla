@@ -34,6 +34,8 @@ public class ReplyRequest
         = null;
     public string? UserAssertion { get; set; }
         = null;
+    public bool BroadcastAdditionalLanguages { get; set; }
+        = false;
 
     public IList<string> AdditionalTargetLanguages
     {
@@ -54,6 +56,7 @@ public class ReplyResult
         FinalText = finalText;
         ToneApplied = toneApplied;
         PostedAt = DateTimeOffset.UtcNow;
+        Dispatches = new List<ReplyDispatch>();
     }
 
     public string MessageId { get; }
@@ -68,4 +71,16 @@ public class ReplyResult
 
     public DateTimeOffset PostedAt { get; init; }
         = DateTimeOffset.UtcNow;
+
+    public IList<ReplyDispatch> Dispatches { get; init; }
+        = new List<ReplyDispatch>();
 }
+
+public record ReplyDispatch(
+    string MessageId,
+    string Language,
+    string Status,
+    DateTimeOffset PostedAt,
+    string? ModelId = null,
+    decimal? CostUsd = null,
+    int? LatencyMs = null);
