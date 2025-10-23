@@ -194,8 +194,24 @@ test.describe("Stage compose broadcast and budget guards", () => {
         replyAuthHeaders.push(route.request().headers().authorization);
         const response = buildReplyResponse({
           dispatches: [
-            { messageId: "msg-primary", language: "es", status: "sent", postedAt: new Date().toISOString() },
-            { messageId: "msg-ja", language: "ja", status: "sent", postedAt: new Date().toISOString() }
+            {
+              messageId: "msg-primary",
+              language: "es",
+              status: "sent",
+              postedAt: new Date().toISOString(),
+              modelId: "azure:gpt4o",
+              costUsd: 0.011,
+              latencyMs: 1100
+            },
+            {
+              messageId: "msg-ja",
+              language: "ja",
+              status: "sent",
+              postedAt: new Date().toISOString(),
+              modelId: "azure:gpt4o",
+              costUsd: 0.009,
+              latencyMs: 950
+            }
           ]
         });
         replyResponses.push(response);
@@ -249,6 +265,19 @@ test.describe("Stage compose broadcast and budget guards", () => {
 
     const [responsePayload] = replyResponses;
     expect(responsePayload.dispatches).toHaveLength(2);
+    const dispatchSummary = responsePayload.dispatches.map((dispatch) => ({
+      language: dispatch.language,
+      status: dispatch.status,
+      modelId: dispatch.modelId
+    }));
+    expect(dispatchSummary).toEqual([
+      { language: "es", status: "sent", modelId: "azure:gpt4o" },
+      { language: "ja", status: "sent", modelId: "azure:gpt4o" }
+    ]);
+    responsePayload.dispatches.forEach((dispatch) => {
+      expect(typeof dispatch.costUsd).toBe("number");
+      expect(typeof dispatch.latencyMs).toBe("number");
+    });
     expect(replyAuthHeaders.at(-1)).toBe("Bearer stage-token");
     const messages = await page.evaluate(() => window.sentMessages);
     expect(messages).toHaveLength(1);
@@ -259,7 +288,10 @@ test.describe("Stage compose broadcast and budget guards", () => {
       return res.json();
     });
     expect(auditSnapshot).toHaveLength(1);
-    expect(auditSnapshot[0].translations[0].language).toBe("ja");
+    const [translationAudit] = auditSnapshot[0].translations;
+    expect(translationAudit.language).toBe("ja");
+    expect(translationAudit.modelId).toBe("azure:gpt4o");
+    expect(translationAudit.text).toBe("ja-translation");
   });
 
   test("enables broadcast flag and records audit entries", async ({ page }) => {
@@ -267,6 +299,7 @@ test.describe("Stage compose broadcast and budget guards", () => {
     const replyAuthHeaders = [];
 
     let auditLog = [];
+    const replyResponses = [];
 
     await setupStageCompose(page, {
       replyHandler: async (route) => {
@@ -275,10 +308,27 @@ test.describe("Stage compose broadcast and budget guards", () => {
         replyAuthHeaders.push(route.request().headers().authorization);
         const response = buildReplyResponse({
           dispatches: [
-            { messageId: "msg-es", language: "es", status: "sent", postedAt: new Date().toISOString() },
-            { messageId: "msg-fr", language: "fr", status: "sent", postedAt: new Date().toISOString(), modelId: "contoso:neural" }
+            {
+              messageId: "msg-es",
+              language: "es",
+              status: "sent",
+              postedAt: new Date().toISOString(),
+              modelId: "azure:gpt4o",
+              costUsd: 0.0105,
+              latencyMs: 900
+            },
+            {
+              messageId: "msg-fr",
+              language: "fr",
+              status: "sent",
+              postedAt: new Date().toISOString(),
+              modelId: "contoso:neural",
+              costUsd: 0.009,
+              latencyMs: 880
+            }
           ]
         });
+        replyResponses.push(response);
         auditLog = [
           {
             tenantId: payload.tenantId,
@@ -324,6 +374,21 @@ test.describe("Stage compose broadcast and budget guards", () => {
     expect(new Set(payload.additionalTargetLanguages)).toEqual(new Set(["ja", "fr"]));
     expect(payload.metadata.tone).toBe("formal");
 
+    expect(replyResponses).toHaveLength(1);
+    const dispatches = replyResponses[0].dispatches.map((dispatch) => ({
+      language: dispatch.language,
+      modelId: dispatch.modelId,
+      status: dispatch.status
+    }));
+    expect(dispatches).toEqual([
+      { language: "es", modelId: "azure:gpt4o", status: "sent" },
+      { language: "fr", modelId: "contoso:neural", status: "sent" }
+    ]);
+    replyResponses[0].dispatches.forEach((dispatch) => {
+      expect(typeof dispatch.costUsd).toBe("number");
+      expect(typeof dispatch.latencyMs).toBe("number");
+    });
+
     const auditSnapshot = await page.evaluate(async () => {
       const res = await fetch("/api/audit");
       return res.json();
@@ -332,6 +397,9 @@ test.describe("Stage compose broadcast and budget guards", () => {
     expect(auditSnapshot).toHaveLength(1);
     const translations = auditSnapshot[0]?.translations ?? [];
     expect(new Set(translations.map((entry) => entry.language))).toEqual(new Set(["ja", "fr"]));
+    const auditModels = Object.fromEntries(translations.map((entry) => [entry.language, entry.modelId]));
+    expect(auditModels.fr).toBe("contoso:neural");
+    expect(auditModels.ja).toBe("azure:gpt4o");
     expect(replyAuthHeaders.at(-1)).toBe("Bearer stage-token");
   });
 
@@ -355,7 +423,7 @@ test.describe("Stage compose broadcast and budget guards", () => {
     await page.locator("[data-compose-apply]").click();
 
     expect(replyRequests).toHaveLength(1);
-    await expect(page.locator("[data-compose-preview]")).toHaveValue(/发送失败：/);
+    await expect(page.locator("[data-compose-preview]")).toHaveValue(/发送失败：预算已用尽.*Budget/);
     const messages = await page.evaluate(() => window.sentMessages);
     expect(messages).toHaveLength(0);
   });

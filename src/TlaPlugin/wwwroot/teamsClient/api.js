@@ -23,11 +23,56 @@ const FALLBACK_METADATA = {
 };
 
 async function parseJsonResponse(response, errorMessage) {
+  const fallbackMessage = typeof errorMessage === "string" && errorMessage.trim()
+    ? errorMessage.trim()
+    : "请求失败";
+  const rawText = await response.text();
+
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`${errorMessage}: ${response.status} ${text}`);
+    let detail = "";
+    let errorCode = "";
+    if (rawText) {
+      try {
+        const parsed = JSON.parse(rawText);
+        const errorPayload = parsed && typeof parsed === "object" ? parsed.error ?? parsed : null;
+        const messageCandidate = [
+          errorPayload?.message,
+          errorPayload?.title,
+          parsed?.message,
+          parsed?.error_description
+        ].find((value) => typeof value === "string" && value.trim());
+        if (messageCandidate) {
+          detail = messageCandidate.trim();
+        }
+        const codeCandidate = [errorPayload?.code, parsed?.code]
+          .find((value) => typeof value === "string" && value.trim());
+        if (codeCandidate) {
+          errorCode = codeCandidate.trim();
+        }
+      } catch {
+        detail = rawText.trim();
+      }
+    }
+
+    let message = detail || `${fallbackMessage}: ${response.status}`;
+    if (detail && errorCode && !detail.includes(errorCode)) {
+      message = `${detail} (${errorCode})`;
+    } else if (!detail && rawText.trim()) {
+      message = `${fallbackMessage}: ${response.status} ${rawText.trim()}`;
+    }
+
+    throw new Error(message);
   }
-  return response.json();
+
+  if (!rawText) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(rawText);
+  } catch {
+    return rawText;
+  }
 }
 
 export async function fetchMetadata(fetchImpl = fetch) {
