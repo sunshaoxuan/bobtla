@@ -10,6 +10,17 @@
 - **Azure Monitor 告警规则**：`Stage5-Metrics-Ingestion-Gap`（>10 分钟无数据），`Stage5-Reply-ErrorRate`（错误率 >5% 持续 15 分钟）。
 - **当前告警状态（2024-05-17 09:30 UTC）**：`Stage5-Reply-ErrorRate` 告警因 OBO 权限不足于 09:05 触发，已关联 [ISSUE-4821](https://tracker.contoso.net/issues/4821)。缓解计划：等待管理员同意补全 `ChannelMessage.Send` 权限，之后复测 `--use-live-graph` 并确认告警恢复。
 
+### 冒烟日志与可视化归档
+
+- **日志汇总目录**：`artifacts/logs/2024-05-19/`（由 CI 任务 `stage5-smoke` 自动上传）。
+  - `secrets-smoke-20240519.log` — 对应 `Stage5SmokeTests -- secrets` 输出，包含密钥解析详情与 Graph scope 校验结果。
+  - `reply-obo-20240519.log` — 真实 OBO 冒烟日志，记录 403 失败栈以供权限排查。
+  - `metrics-summary-20240519.json` — 指标摘要快照，可用于周报与 go/no-go 判据核查。
+- **Grafana 关键截图**：<https://contoso.sharepoint.com/sites/stage5/Shared%20Documents/grafana/stage5-telemetry-20240519.png>
+  - 截图更新时间：2024-05-19 18:45 UTC，由 @nora.zhu 提供。
+  - 包含延迟、错误率双坐标及告警条幅，需在周报模板中引用。
+- **Burndown/指标附件**：参照 `artifacts/burndown/stage5-burndown-20240520.csv` 与 `docs/stage5_task_plan.md` 中的 Mermaid 图表。
+
 ## 1. Key Vault 密钥映射与验证
 
 1. **确认需要的机密名称** – `appsettings.json` 中 `Plugin.Security` 与各模型提供方引用的密钥如下：
@@ -189,15 +200,24 @@ test -f ./artifacts/stage-publish/appsettings.Stage.json && echo "✔ Stage 覆�
    }
 
    审计记录样例:
-   [
-     {
-       "tenantId": "contoso.onmicrosoft.com",
-       "status": "Success",
-       "language": "ja-JP",
-       "toneApplied": "business"
-     }
-   ]
-   ```
+  [
+    {
+      "tenantId": "contoso.onmicrosoft.com",
+      "status": "Success",
+      "language": "ja-JP",
+      "toneApplied": "business"
+    }
+  ]
+  ```
+
+## 附录 B：Stage 5 go/no-go 判据（更新于 2024-05-20）
+
+| 序号 | 判据 | 验收方式 | 最新状态 |
+| --- | --- | --- | --- |
+| G1 | Graph OBO 回帖在 Stage 环境成功执行 3 次，错误率 <5% | 查看 `reply-obo-*.log` 并在 Grafana `Failure Breakdown` 面板确认 | 阻塞：ISSUE-4821 未完成管理员同意，最近一次（2024-05-19）仍为 403。 |
+| G2 | `openai-api-key` 新密钥在 Stage 与生产 Key Vault 中生效，成本监控与配额告警正常 | 对比 `secrets-smoke-*.log` 中的密钥有效期，与 Azure Monitor 告警仪表 | Stage Vault 已验证，通过生产审批后复测。 |
+| G3 | Metrics API 与仪表盘刷新延迟 <5 分钟，并留存截图 | 运行 `Stage5SmokeTests -- metrics`，比对 Grafana 截图与 `metrics-summary` | 2024-05-19 截图确认达标，持续跟踪下一次冒烟。 |
+| G4 | `stage-ready.json` 时间戳与 `StageFiveDiagnostics` 显示一致，Runbook/周报留存证据 | 在 `Stage5SmokeTests -- ready` 后比对 `artifacts/logs` 与诊断页面 | 初版流程已就绪，等待 CI 校验任务完成。 |
 
    成功运行后，控制台会打印一次 Graph 请求与指标快照，可用于变更记录留痕：
 
