@@ -24,22 +24,60 @@ Following the 86% completion assessment, the remaining scope targets Stage 5 rea
 
 > 注：所有冒烟测试日志归档在 `artifacts/logs/2024-05-17/`，Runbook 中新增了仪表盘入口用于快速查阅。
 
-## 风险列表与缓解计划（更新于 2024-05-17）
+## 风险列表与缓解计划（更新于 2024-05-20）
 
-| 风险 ID | 描述 | 影响 | 概率 | 负责人 | 缓解计划 | 状态 |
+| 风险 ID | 描述 | 影响 | 概率 | 负责人 | 缓解计划 | 最新状态 / 阻塞项 |
 | --- | --- | --- | --- | --- | --- | --- |
-| R1 | Enterprise 租户 Graph 权限未完全同意，阻塞真实 Teams 回帖链路 | 高 | 中 | @liang.chen | 跟踪 [ISSUE-4821](https://tracker.contoso.net/issues/4821)，在管理员同意完成前继续使用 HMAC 回退并限制真实租户冒烟；获批后复测 OBO。 | 进行中 |
-| R2 | 真实模型 Provider 密钥 6 月 1 日到期，可能导致 live 模式失败 | 中 | 中 | @ariel.wang | 已提交 `openai-api-key` 续期请求（服务单 [REQ-9937](https://servicehub.contoso.net/requests/9937)），Runbook 加入 Key Vault 轮换步骤并设置 5 月 25 日提醒。 | 风险受控 |
-| R3 | 前端仪表盘刷新率不足，告警延迟 >15 分钟 | 中 | 低 | @nora.zhu | Grafana Dashboard 中启用 5 分钟自动刷新，并在 Azure Monitor 设定 >10 分钟无数据告警，Runbook 记录复现步骤。 | 已缓解 |
+| R1 | Enterprise 租户 Graph 权限未完全同意，阻塞真实 Teams 回帖链路 | 高 | 中 | @liang.chen | 跟踪 [ISSUE-4821](https://tracker.contoso.net/issues/4821)，在管理员同意完成前继续使用 HMAC 回退并限制真实租户冒烟；获批后复测 OBO。 | 管理员已排期 2024-05-21 变更窗口，同意请求仍待执行；冒烟脚本 `--use-live-graph` 继续被 403 阻塞。 |
+| R2 | 真实模型 Provider 密钥 6 月 1 日到期，可能导致 live 模式失败 | 中 | 中 | @ariel.wang | 已提交 `openai-api-key` 续期请求（服务单 [REQ-9937](https://servicehub.contoso.net/requests/9937)），Runbook 加入 Key Vault 轮换步骤并设置 5 月 25 日提醒。 | 新密钥草稿已在 Key Vault 中创建，等待安全审核完成后替换生产值；若 5 月 23 日前未批准需升级至安全团队。 |
+| R3 | 前端仪表盘刷新率不足，告警延迟 >15 分钟 | 中 | 低 | @nora.zhu | Grafana Dashboard 中启用 5 分钟自动刷新，并在 Azure Monitor 设定 >10 分钟无数据告警，Runbook 记录复现步骤。 | 最新一次（2024-05-19）冒烟确认指标延迟 <5 分钟，Grafana 截图已归档；持续观察无新增阻塞。 |
+| R4 | Stage 就绪文件 (`stage-ready.json`) 未与冒烟脚本输出对齐，可能导致诊断误报 | 中 | 低 | @matt.hu | 在 `Stage5SmokeTests -- ready` 写入后同步触发 `StageFiveDiagnostics` 轮询，Runbook 加入核对步骤并在周报跟踪时间戳。 | 初版脚本已输出文件，但缺少自动化校验；需在 CI 中添加校验任务，责任人 @matt.hu 预计 2024-05-22 完成。 |
 
-## 负责人进度对齐（截至 2024-05-17）
+## 负责人进度对齐（截至 2024-05-20）
 
-| 负责人 | 核心任务 | 完成度 | 下一步 |
-| --- | --- | --- | --- |
-| @liang.chen | Graph 权限开通、OBO 冒烟 | 70% | 等待管理员同意完成（ISSUE-4821），随后在 Stage 环境复跑 `--use-live-graph` 并更新 Runbook。 |
-| @ariel.wang | Live 模型密钥轮换、成本监控 | 60% | 续期密钥后在 CI 中补充过期校验脚本，并在 Dashboard 上验证成本指标。 |
-| @nora.zhu | 前端仪表盘集成、缓存策略验证 | 80% | 根据 Metrics API 日志调整重试阈值，并在 Playwright 测试中覆盖缓存回退。 |
-| @matt.hu | 文档与 Stakeholder 对齐、风险登记 | 65% | 向 PM 发布周报，整合冒烟结果至周会材料并确保 Runbook 入口更新。 |
+| 负责人 | 核心任务 | 完成度 | 最新进展 | 阻塞项 / 下一步 |
+| --- | --- | --- | --- | --- |
+| @liang.chen | Graph 权限开通、OBO 冒烟 | 72% | 管理员变更请求通过 CAB 审批，已在测试租户验证新 `ChannelMessage.Send` 范围。 | 等待 2024-05-21 管理员同意后重新运行 `--use-live-graph` 并更新 go/no-go 记录。 |
+| @ariel.wang | Live 模型密钥轮换、成本监控 | 65% | 新密钥已在 Stage Key Vault 中以 `openai-api-key-202405` 存档并验证读取。 | 安全部门尚未批准生产替换，需在批准后更新 `stage-ready.json` 并附运行截图。 |
+| @nora.zhu | 前端仪表盘集成、缓存策略验证 | 82% | 完成 Grafana 刷新率调整并输出 2024-05-19 截图，Playwright 脚本覆盖缓存回退。 | 需在下一次 `metrics` 冒烟后验证指标卡片高亮；计划 2024-05-22 跟进。 |
+| @matt.hu | 文档与 Stakeholder 对齐、风险登记 | 70% | 新增周报模版与 go/no-go 判据，整理冒烟日志归档。 | CI 尚未产出自动 burndown 快照，需与 @liang.chen 协调在流水线中注入。 |
+
+## Burndown 与进度图表（更新于 2024-05-20，由 @matt.hu 维护）
+
+```mermaid
+%% Stage 5 scope burndown from 2024-05-13 to 2024-05-27
+line
+  title Stage 5 Remaining Story Points
+  xAxis 2024-05-13,2024-05-15,2024-05-17,2024-05-20,2024-05-22,2024-05-24,2024-05-27
+  yAxis 0,20
+  series Baseline: 20,17,14,10,6,3,0
+  series Actual: 20,18,16,12,9,6,3
+```
+
+- 最新导出时间：2024-05-20 10:00 UTC
+- 数据来源：`artifacts/burndown/stage5-burndown-20240520.csv`
+- 查看高清图：<https://contoso.sharepoint.com/sites/stage5/burndown>
+- 下一次更新由 @matt.hu 在 2024-05-22 前完成，并将差异同步至周报。
+
+## 下一次 Stakeholder 评审议程草案（拟定 2024-05-23，主持：@matt.hu）
+
+1. **开场与目标校准（5 分钟）**
+   - 回顾 Stage 5 整体 burndown 走势与 86% 完成度基线。
+   - 明确本次会议需确认 go/no-go 判据与未决风险。
+2. **技术联调进展（15 分钟）**
+   - Graph 权限与 OBO 冒烟：@liang.chen 汇报管理员同意窗口及复测计划；依赖项：ISSUE-4821 完成管理员同意。
+   - 模型密钥轮换与成本监控：@ariel.wang 展示 Key Vault 更新日志与成本曲线；依赖项：安全团队批准 REQ-9937。
+   - 前端仪表盘与指标观测：@nora.zhu 展示最新 Grafana 截图与指标刷新验证；依赖项：2024-05-22 metrics 冒烟输出。
+3. **风险与阻塞复盘（10 分钟）**
+   - 逐条检查 R1-R4 进展，确认是否需要升级或新增 Owner。
+   - 审阅 `stage-ready.json` 与 `StageFiveDiagnostics` 状态比对，决定是否纳入 go/no-go 条件。
+4. **决策待办与成功标准确认（10 分钟）**
+   - 审议 go/no-go 判据是否满足（详见 Runbook 附录 B）。
+   - 确认发布窗口及回滚预案是否准备完毕。
+5. **行动项与时间线（5 分钟）**
+   - 收敛行动项负责人、目标日期与同步渠道（Teams/电子邮件）。
+   - 安排下一次里程碑检查（建议 2024-05-27 之前）。
+
 
 ## 下一步并行任务拆解
 
