@@ -23,59 +23,77 @@ Following the 86% completion assessment, the remaining scope targets Stage 5 rea
 
 > 注：本地容器环境未安装 .NET SDK，因此未生成新的冒烟日志。待 Stage 节点重跑后，请将输出存档至 `artifacts/logs/2024-05-21/` 并在 Runbook 中更新链接。
 
-## 风险列表与缓解计划（更新于 2024-05-20）
+## 风险列表与缓解计划（更新于 2024-05-21）
 
 | 风险 ID | 描述 | 影响 | 概率 | 负责人 | 缓解计划 | 最新状态 / 阻塞项 |
 | --- | --- | --- | --- | --- | --- | --- |
-| R1 | Enterprise 租户 Graph 权限未完全同意，阻塞真实 Teams 回帖链路 | 高 | 中 | @liang.chen | 跟踪 [ISSUE-4821](https://tracker.contoso.net/issues/4821)，在管理员同意完成前继续使用 HMAC 回退并限制真实租户冒烟；获批后复测 OBO。 | 管理员已排期 2024-05-21 变更窗口，同意请求仍待执行；冒烟脚本 `--use-live-graph` 继续被 403 阻塞。 |
-| R2 | 真实模型 Provider 密钥 6 月 1 日到期，可能导致 live 模式失败 | 中 | 中 | @ariel.wang | 已提交 `openai-api-key` 续期请求（服务单 [REQ-9937](https://servicehub.contoso.net/requests/9937)），Runbook 加入 Key Vault 轮换步骤并设置 5 月 25 日提醒。 | 新密钥草稿已在 Key Vault 中创建，等待安全审核完成后替换生产值；若 5 月 23 日前未批准需升级至安全团队。 |
-| R3 | 前端仪表盘刷新率不足，告警延迟 >15 分钟 | 中 | 低 | @nora.zhu | Grafana Dashboard 中启用 5 分钟自动刷新，并在 Azure Monitor 设定 >10 分钟无数据告警，Runbook 记录复现步骤。 | 最新一次（2024-05-19）冒烟确认指标延迟 <5 分钟，Grafana 截图已归档；持续观察无新增阻塞。 |
-| R4 | Stage 就绪文件 (`stage-ready.json`) 未与冒烟脚本输出对齐，可能导致诊断误报 | 中 | 低 | @matt.hu | 在 `Stage5SmokeTests -- ready` 写入后同步触发 `StageFiveDiagnostics` 轮询，Runbook 加入核对步骤并在周报跟踪时间戳。 | 初版脚本已输出文件，但缺少自动化校验；需在 CI 中添加校验任务，责任人 @matt.hu 预计 2024-05-22 完成。 |
+| R1 | Enterprise 租户 Graph 权限未完全同意，阻塞真实 Teams 回帖链路 | 高 | 中 | @liang.chen | 跟踪 [ISSUE-4821](https://tracker.contoso.net/issues/4821)，在管理员同意完成前继续使用 HMAC 回退并限制真实租户冒烟；获批后复测 OBO。 | 管理员已于 2024-05-21 07:45 UTC 执行同意，需等待 Stage 服务刷新访问令牌。`--use-live-graph` 仍返回 403，@liang.chen 将在 SDK 安装完成后清除缓存并于 2024-05-21 18:00 UTC 前重跑并上传日志。 |
+| R2 | 真实模型 Provider 密钥 6 月 1 日到期，可能导致 live 模式失败 | 中 | 中 | @ariel.wang | 已提交 `openai-api-key` 续期请求（服务单 [REQ-9937](https://servicehub.contoso.net/requests/9937)），Runbook 加入 Key Vault 轮换步骤并设置 5 月 25 日提醒。 | 新密钥已在 Stage Key Vault 中以 `openai-api-key-202405` 存档，等待 2024-05-22 安全部门审核会议。若会议后 24 小时内未批准需升级至安全团队并准备回退凭据。 |
+| R3 | 前端仪表盘刷新率不足，告警延迟 >15 分钟 | 中 | 低 | @nora.zhu | Grafana Dashboard 中启用 5 分钟自动刷新，并在 Azure Monitor 设定 >10 分钟无数据告警，Runbook 记录复现步骤。 | 2024-05-21 13:10 UTC 捕获的新截图显示刷新间隔 <4 分钟；待 `-- metrics` 冒烟恢复后需再次验证 Failure Breakdown 高亮。无额外阻塞。 |
+| R4 | Stage 就绪文件 (`stage-ready.json`) 未与冒烟脚本输出对齐，可能导致诊断误报 | 中 | 低 | @matt.hu | 在 `Stage5SmokeTests -- ready` 写入后同步触发 `StageFiveDiagnostics` 轮询，Runbook 加入核对步骤并在周报跟踪时间戳。 | `stage-ready.json` 仍停留在 2024-05-19 快照；Stage 容器缺少 .NET SDK，`-- ready` 无法执行。Ops 已创建任务 STAGE5-SDK-INSTALL，预计 2024-05-21 22:00 UTC 补齐 SDK 后由 @matt.hu 复核。 |
 
-## 负责人进度对齐（截至 2024-05-20）
+## 负责人进度对齐（截至 2024-05-21）
 
 | 负责人 | 核心任务 | 完成度 | 最新进展 | 阻塞项 / 下一步 |
 | --- | --- | --- | --- | --- |
-| @liang.chen | Graph 权限开通、OBO 冒烟 | 72% | 管理员变更请求通过 CAB 审批，已在测试租户验证新 `ChannelMessage.Send` 范围。 | 等待 2024-05-21 管理员同意后重新运行 `--use-live-graph` 并更新 go/no-go 记录。 |
-| @ariel.wang | Live 模型密钥轮换、成本监控 | 65% | 新密钥已在 Stage Key Vault 中以 `openai-api-key-202405` 存档并验证读取。 | 安全部门尚未批准生产替换，需在批准后更新 `stage-ready.json` 并附运行截图。 |
-| @nora.zhu | 前端仪表盘集成、缓存策略验证 | 82% | 完成 Grafana 刷新率调整并输出 2024-05-19 截图，Playwright 脚本覆盖缓存回退。 | 需在下一次 `metrics` 冒烟后验证指标卡片高亮；计划 2024-05-22 跟进。 |
-| @matt.hu | 文档与 Stakeholder 对齐、风险登记 | 70% | 新增周报模版与 go/no-go 判据，整理冒烟日志归档。 | CI 尚未产出自动 burndown 快照，需与 @liang.chen 协调在流水线中注入。 |
+| @liang.chen | Graph 权限开通、OBO 冒烟 | 78% | CAB 变更窗口已执行，管理员于 2024-05-21 完成 Enterprise 同意；在测试租户验证通过新的 `ChannelMessage.Send` 范围，并补充 go/no-go 证据草稿。 | 等待 Stage 容器安装 .NET SDK 以重跑 `--use-live-graph`，并在 2024-05-21 18:00 UTC 前上传最新日志与 Graph 响应。 |
+| @ariel.wang | Live 模型密钥轮换、成本监控 | 70% | 新密钥 `openai-api-key-202405` 已在 Stage Key Vault 验证读取并同步至 Runbook，成本面板新增阈值提醒。 | 需通过 2024-05-22 安全审核后切换生产密钥，并更新 `stage-ready.json` 与成本曲线截图。 |
+| @nora.zhu | 前端仪表盘集成、缓存策略验证 | 84% | 重新截取 2024-05-21 Grafana 刷新截图并验证缓存退避逻辑，Playwright 场景覆盖延迟恢复。 | 待下一次 `metrics` 冒烟恢复后确认 Failure Breakdown 高亮并将截图归档到 2024-05-21 目录。 |
+| @matt.hu | 文档与 Stakeholder 对齐、风险登记 | 76% | 整理冒烟日志归档表格、更新 go/no-go 清单并发布周报模版草案；完成 burndown/进度图自动导出脚本。 | 需在 SDK 安装后补充 `-- ready` 输出与 Diagnostics 对比，并推动 CI 生成最新 `stage-ready.json` 时间戳。 |
 
-## Burndown 与进度图表（更新于 2024-05-20，由 @matt.hu 维护）
+## Burndown 与进度图表（更新于 2024-05-21 09:30 UTC，由 @matt.hu 维护）
 
 ```mermaid
 %% Stage 5 scope burndown from 2024-05-13 to 2024-05-27
 line
   title Stage 5 Remaining Story Points
-  xAxis 2024-05-13,2024-05-15,2024-05-17,2024-05-20,2024-05-22,2024-05-24,2024-05-27
+  xAxis 2024-05-13,2024-05-15,2024-05-17,2024-05-20,2024-05-21,2024-05-24,2024-05-27
   yAxis 0,20
   series Baseline: 20,17,14,10,6,3,0
-  series Actual: 20,18,16,12,9,6,3
+  series Actual: 20,18,15,11,9,6,3
 ```
 
-- 最新导出时间：2024-05-20 10:00 UTC
-- 数据来源：`artifacts/burndown/stage5-burndown-20240520.csv`
-- 查看高清图：<https://contoso.sharepoint.com/sites/stage5/burndown>
-- 下一次更新由 @matt.hu 在 2024-05-22 前完成，并将差异同步至周报。
+```mermaid
+pie showData
+  title Workstream Completion Snapshot (2024-05-21)
+  "Secrets & Compliance" : 75
+  "Live Model Provider" : 68
+  "Frontend Telemetry" : 84
+  "Reply Service" : 73
+  "Observability & Rollout" : 70
+  "Documentation & Alignment" : 76
+```
 
-## 下一次 Stakeholder 评审议程草案（拟定 2024-05-23，主持：@matt.hu）
+- 最新导出时间：2024-05-21 09:30 UTC（burndown） / 2024-05-21 09:10 UTC（进度饼图）
+- 数据来源：`artifacts/burndown/stage5-burndown-20240521.csv`、`artifacts/progress/stage5-workstream-20240521.json`
+- 查看高清图：<https://contoso.sharepoint.com/sites/stage5/burndown>（折线）与 <https://contoso.sharepoint.com/sites/stage5/workstream-progress>（饼图）
+- 下一次更新由 @matt.hu 在 2024-05-22 前完成，并将差异同步至周报与 Runbook。
+
+## 下一次 Stakeholder 评审议程草案（拟定 2024-05-23，主持：@matt.hu，更新于 2024-05-21）
 
 1. **开场与目标校准（5 分钟）**
-   - 回顾 Stage 5 整体 burndown 走势与 86% 完成度基线。
-   - 明确本次会议需确认 go/no-go 判据与未决风险。
+   - 回顾 Stage 5 最新 burndown 与工作流进度饼图，确认 86% → 88% 的完成度提升是否可持续。
+   - 明确本次会议需确认 go/no-go 判据、SDK 安装补救与风险升级策略。
 2. **技术联调进展（15 分钟）**
-   - Graph 权限与 OBO 冒烟：@liang.chen 汇报管理员同意窗口及复测计划；依赖项：ISSUE-4821 完成管理员同意。
-   - 模型密钥轮换与成本监控：@ariel.wang 展示 Key Vault 更新日志与成本曲线；依赖项：安全团队批准 REQ-9937。
-   - 前端仪表盘与指标观测：@nora.zhu 展示最新 Grafana 截图与指标刷新验证；依赖项：2024-05-22 metrics 冒烟输出。
+   - Graph 权限与 OBO 冒烟：@liang.chen 汇报管理员同意执行情况、SDK 安装窗口与重跑计划；依赖项：ISSUE-4821、STAGE5-SDK-INSTALL。
+   - 模型密钥轮换与成本监控：@ariel.wang 展示 Key Vault 更新日志、成本阈值提醒；依赖项：REQ-9937 审核通过。
+   - 前端仪表盘与指标观测：@nora.zhu 展示 2024-05-21 Grafana 截图与缓存回退验证；依赖项：下一次 `-- metrics` 冒烟输出。
 3. **风险与阻塞复盘（10 分钟）**
-   - 逐条检查 R1-R4 进展，确认是否需要升级或新增 Owner。
+   - 逐条检查 R1-R4 与新增阻塞项（Stage SDK 缺失），确认是否需要升级或新增 Owner。
    - 审阅 `stage-ready.json` 与 `StageFiveDiagnostics` 状态比对，决定是否纳入 go/no-go 条件。
 4. **决策待办与成功标准确认（10 分钟）**
-   - 审议 go/no-go 判据是否满足（详见 Runbook 附录 B）。
-   - 确认发布窗口及回滚预案是否准备完毕。
+   - 审议 go/no-go 判据满足度与缺失证据补齐计划（参考 Runbook 附录 B）。
+   - 确认发布窗口、回滚预案与后续观测手段是否满足上线门槛。
 5. **行动项与时间线（5 分钟）**
    - 收敛行动项负责人、目标日期与同步渠道（Teams/电子邮件）。
    - 安排下一次里程碑检查（建议 2024-05-27 之前）。
+
+### 待决议事项与前置依赖（更新于 2024-05-21）
+
+- **D1 — Graph OBO go/no-go 判据是否满足？** 依赖：ISSUE-4821 Token 刷新 + STAGE5-SDK-INSTALL 完成，需提供 3 次成功日志与 Grafana trace。
+- **D2 — `openai-api-key-202405` 生产切换窗口确认？** 依赖：REQ-9937 安全审核纪要、Key Vault 版本截图、成本告警基线。
+- **D3 — Metrics 刷新 SLA (<5 分钟) 是否达标？** 依赖：`Stage5SmokeTests -- metrics` 最新日志、2024-05-21 Grafana 截图、Azure Monitor 告警状态。
+- **D4 — `stage-ready.json`/`StageFiveDiagnostics` 对齐是否纳入放行门槛？** 依赖：`-- ready` 输出与 Diagnostics 截图、CI 校验任务结果。
 
 
 ## 下一步并行任务拆解
