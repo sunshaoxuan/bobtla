@@ -4,7 +4,7 @@ export default defineConfig({
   testDir: "tests/playwright",
   use: {
     trace: "retain-on-failure",
-    screenshot: "only-on-failure",
+    screenshot: "on",
     video: "retain-on-failure"
   },
   reporter: [
