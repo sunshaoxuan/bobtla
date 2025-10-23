@@ -126,17 +126,23 @@ internal static class Program
             : CollectTenantIds(options);
 
         Console.WriteLine("🔐 正在检查 Key Vault 机密解析状态：");
+        var hasSecretFailures = false;
+        var hasSecretWarnings = false;
         foreach (var secret in secretNames)
         {
             if (tenantsToCheck.Count == 0)
             {
-                ReportSecret(resolver, secret, tenantId: null);
+                var outcome = ReportSecret(resolver, secret, tenantId: null);
+                hasSecretFailures |= !outcome.Success;
+                hasSecretWarnings |= outcome.Warning;
                 continue;
             }
 
             foreach (var tenant in tenantsToCheck)
             {
-                ReportSecret(resolver, secret, tenant);
+                var outcome = ReportSecret(resolver, secret, tenant);
+                hasSecretFailures |= !outcome.Success;
+                hasSecretWarnings |= outcome.Warning;
             }
         }
 
@@ -160,7 +166,13 @@ internal static class Program
         Console.WriteLine();
         ReportStageReadinessFile(options.StageReadinessFilePath, verifyReadiness);
 
-        return 0;
+        if (hasSecretWarnings)
+        {
+            Console.WriteLine();
+            Console.WriteLine("⚠️ 发现缺少到期信息的机密，请在 Key Vault 中设置 ExpiresOn 以便自动告警。");
+        }
+
+        return hasSecretFailures ? 41 : 0;
     }
 
     private static int RunReady(string[] args)
@@ -420,6 +432,59 @@ internal static class Program
         var payloadJson = JsonSerializer.Serialize(payload, JsonOptions);
         Console.WriteLine("  Body:");
         Console.WriteLine(payloadJson);
+
+        if (useLiveModel)
+        {
+            Console.WriteLine();
+            Console.WriteLine("🧪 正在触发真实模型链路…");
+            var harness = new LiveModelSmokeHarness(options, secretResolver: resolver);
+            var liveResult = harness
+                .ExecuteAsync(translationRequest, CancellationToken.None, additionalLanguages)
+                .GetAwaiter()
+                .GetResult();
+
+            if (liveResult.FallbackProviders.Count > 0)
+            {
+                Console.WriteLine("  ⚠ 已触发回退 Provider:");
+                foreach (var fallback in liveResult.FallbackProviders)
+                {
+                    Console.WriteLine($"    - {fallback}");
+                }
+            }
+            else
+            {
+                Console.WriteLine("  ✔ 所有 Provider 均满足外部调用条件。");
+            }
+
+            if (liveResult.Failures.Count > 0)
+            {
+                Console.WriteLine("  ✘ 以下 Provider 调用失败:");
+                foreach (var failure in liveResult.Failures)
+                {
+                    Console.WriteLine($"    - {failure.ProviderId}: {failure.Message}");
+                }
+            }
+
+            if (liveResult.Success is { } success)
+            {
+                var preview = success.TranslatedText.Length > 160
+                    ? success.TranslatedText[..160] + "…"
+                    : success.TranslatedText;
+                Console.WriteLine("  ✔ 最终 Provider:");
+                Console.WriteLine($"    Id:        {success.ProviderId}");
+                Console.WriteLine($"    Model:     {success.ModelId}");
+                Console.WriteLine($"    Latency:   {success.LatencyMs} ms");
+                Console.WriteLine($"    Response:  {preview}");
+                if (success.AdditionalTranslations.Count > 0)
+                {
+                    Console.WriteLine("    Additional:");
+                    foreach (var entry in success.AdditionalTranslations)
+                    {
+                        Console.WriteLine($"      - {entry.Key}: {entry.Value}");
+                    }
+                }
+            }
+        }
 
         var metrics = new
         {
@@ -700,24 +765,69 @@ internal static class Program
         return options.Security.TenantOverrides.Keys.ToList();
     }
 
-    private static void ReportSecret(KeyVaultSecretResolver resolver, string secretName, string? tenantId)
+    private static SecretCheckResult ReportSecret(KeyVaultSecretResolver resolver, string secretName, string? tenantId)
     {
         try
         {
-            var value = resolver.GetSecretAsync(secretName, tenantId, cancellationToken: default)
+            var snapshot = resolver
+                .GetSecretSnapshotAsync(secretName, tenantId, cancellationToken: default)
                 .GetAwaiter()
                 .GetResult();
-            var masked = string.IsNullOrEmpty(value) ? "<empty>" : new string('*', Math.Min(8, value.Length));
-            Console.WriteLine(tenantId is null
-                ? $"  ✔ {secretName} -> {masked}"
-                : $"  ✔ {tenantId} :: {secretName} -> {masked}");
+
+            var prefix = tenantId is null ? secretName : $"{tenantId} :: {secretName}";
+            if (string.IsNullOrWhiteSpace(snapshot.Value))
+            {
+                Console.WriteLine($"  ✘ {prefix} -> <empty> (未解析到值)");
+                return SecretCheckResult.Failed;
+            }
+
+            var masked = new string('*', Math.Min(8, snapshot.Value.Length));
+            if (snapshot.Source == SecretSource.Unknown)
+            {
+                Console.WriteLine($"  ✘ {prefix} -> {masked} (来源未知)");
+                return SecretCheckResult.Failed;
+            }
+
+            if (snapshot.ExpiresOnUtc is { } expiry)
+            {
+                if (expiry <= DateTimeOffset.UtcNow)
+                {
+                    Console.WriteLine($"  ✘ {prefix} -> {masked} (已于 {expiry:O} 过期)");
+                    return SecretCheckResult.Failed;
+                }
+
+                if (expiry <= DateTimeOffset.UtcNow.AddDays(7))
+                {
+                    Console.WriteLine($"  ✘ {prefix} -> {masked} (即将于 {expiry:O} 过期，< 7 天)");
+                    return SecretCheckResult.Failed;
+                }
+
+                Console.WriteLine(snapshot.Source == SecretSource.KeyVault
+                    ? $"  ✔ {prefix} -> {masked} (KeyVault, 到期 {expiry:O})"
+                    : $"  ✔ {prefix} -> {masked} (Seed, 到期 {expiry:O})");
+                return SecretCheckResult.Passed;
+            }
+
+            var warningMessage = snapshot.Source == SecretSource.KeyVault
+                ? "KeyVault 未设置到期时间"
+                : "Seed 缺少到期信息";
+            Console.WriteLine($"  ⚠ {prefix} -> {masked} ({warningMessage})");
+            return SecretCheckResult.Warning;
         }
         catch (SecretRetrievalException ex)
         {
             Console.WriteLine(tenantId is null
                 ? $"  ✘ {secretName} -> {ex.Message}"
                 : $"  ✘ {tenantId} :: {secretName} -> {ex.Message}");
+            return SecretCheckResult.Failed;
         }
+    }
+
+    private readonly record struct SecretCheckResult(bool Success, bool Warning)
+    {
+        public static readonly SecretCheckResult Passed = new(true, false);
+        public static readonly SecretCheckResult Warning = new(true, true);
+        public static readonly SecretCheckResult Failed = new(false, false);
     }
 
     private static string RequireValue(string[] args, ref int index)

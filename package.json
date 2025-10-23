@@ -11,7 +11,8 @@
     "build:webapp": "node ./scripts/build-webapp.js",
     "test": "node --test",
     "test:jest": "jest --config jest.config.cjs",
-    "test:playwright": "playwright test"
+    "test:playwright": "playwright test",
+    "ci:validate-secrets": "./scripts/ci/validate-secrets.sh"
   },
   "keywords": [
     "teams",
