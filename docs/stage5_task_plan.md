@@ -13,15 +13,16 @@ Following the 86% completion assessment, the remaining scope targets Stage 5 rea
 | Observability & Rollout Operations | 🟡 部分完成 | `BudgetGuard`、`ContextRetrievalService`、`ReplyService` 与 `TeamsReplyClient` 输出结构化日志，记录预算拒绝、RAG 抓取耗时与 Graph 回复状态，为后续 Application Insights 查询奠定数据基础。 【F:src/TlaPlugin/Services/BudgetGuard.cs†L1-L90】【F:src/TlaPlugin/Services/ContextRetrievalService.cs†L1-L225】【F:src/TlaPlugin/Services/ReplyService.cs†L24-L334】【F:src/TlaPlugin/Services/TeamsReplyClient.cs†L1-L214】 |
 | Documentation & Stakeholder Alignment | 🟡 部分完成 | 当前文档已列出工作流与负责人框架，但尚缺 burndown、风险与会议纪要等动态内容。 【F:docs/stage5_task_plan.md†L1-L32】 |
 
-## 最新冒烟测试结果（2024-05-21 14:20 UTC）
+## 最新冒烟测试结果（2025-10-23 09:23 UTC）
 
 | 冒烟脚本 | 命令 | 结果 | 记录与依赖 |
 | --- | --- | --- | --- |
-| 密钥解析 + 就绪探针 | `dotnet run --project scripts/SmokeTests/Stage5SmokeTests -- secrets --verify-readiness --appsettings src/TlaPlugin/appsettings.json --override appsettings.Stage.json` | ⚠️ 阻塞 | Stage 容器缺少 .NET SDK，命令返回 `command not found`。需在具备 SDK 的 Stage 节点重试并归档日志。【8249d2†L1-L4】 |
-| Reply + Graph（真实 OBO） | `dotnet run --project scripts/SmokeTests/Stage5SmokeTests -- reply --use-live-graph` | ⚠️ 阻塞 | 同上，待 Stage 节点补齐 SDK 后重跑并附加 Graph 诊断输出。【355bc8†L1-L2】 |
-| Metrics API | `dotnet run --project scripts/SmokeTests/Stage5SmokeTests -- metrics` | ⚠️ 阻塞 | 同上，未生成最新 `/api/metrics` 摘要。Stage 环境恢复后需同步更新仪表盘截图与日志链接，并校验新的 [Stage5 Telemetry Dashboard](https://grafana.stage5.contoso.net/d/tla-stage5/telemetry-ops?orgId=1&var-env=Stage)。【8bfaf5†L1-L2】 |
+| 密钥解析 + 就绪探针 | `dotnet run --project scripts/SmokeTests/Stage5SmokeTests -- secrets --verify-readiness --appsettings src/TlaPlugin/appsettings.json --override appsettings.Stage.json` | ⚠️ 阻塞 | Stage 容器缺少 .NET SDK，命令返回 `command not found`。需在具备 SDK 的 Stage 节点重试并归档日志。【aaac2f†L1-L3】 |
+| Reply + Graph（真实 OBO） | `dotnet run --project scripts/SmokeTests/Stage5SmokeTests -- reply --use-live-graph` | ⚠️ 阻塞 | 同上，待 Stage 节点补齐 SDK 后重跑并附加 Graph 诊断输出。【89980a†L1-L2】 |
+| Metrics API | `dotnet run --project scripts/SmokeTests/Stage5SmokeTests -- metrics` | ⚠️ 阻塞 | 同上，未生成最新 `/api/metrics` 摘要。Stage 环境恢复后需同步更新仪表盘截图与日志链接，并校验新的 [Stage5 Telemetry Dashboard](https://grafana.stage5.contoso.net/d/tla-stage5-alerts/telemetry-ops?orgId=1&var-env=Stage&var-service=TLAPlugin)。【1d1e51†L1-L2】 |
+| 就绪时间戳写入 | `dotnet run --project scripts/SmokeTests/Stage5SmokeTests -- ready --appsettings src/TlaPlugin/appsettings.json --override appsettings.Stage.json` | ⚠️ 阻塞 | 同上，Stage 就绪文件未更新；待 Stage 节点具备 .NET SDK 后重试并将时间戳写入共享卷。【80756a†L1-L3】 |
 
-> 注：本地容器环境未安装 .NET SDK，因此未生成新的冒烟日志。待 Stage 节点重跑后，请将输出存档至 `artifacts/logs/2024-05-21/` 并在 Runbook 中更新链接。
+> 注：本地容器环境未安装 .NET SDK，因此未生成新的冒烟日志。待 Stage 节点重跑后，请将输出存档至 `artifacts/logs/2025-10-23/` 并在 Runbook 中更新链接。
 
 ## 风险列表与缓解计划（更新于 2024-05-21）
 
@@ -104,7 +105,7 @@ pie showData
    - 执行 Graph 权限验证脚本：编写/运行自动化脚本校验所需作用域，输出结果至 Runbook。
    - 准备 `Stage5SmokeTests` 流水线：在 CI/CD 中植入 secrets/reply/metrics 冒烟脚本并记录最新运行结果。
   - 2025-10-19 变更记录：`appsettings.Stage.json` 与部署 override 已指向 `tla-stage-kv`、`contoso-stage-kv`、`enterprise-stage-kv`，并统一 Graph 作用域/模型 Provider；GraphScopes 现包含 `.default/Chat.ReadWrite/ChatMessage.Send/ChannelMessage.Send/Group.ReadWrite.All/Team.ReadBasic.All` 以满足 Stage Graph 验证，确保 `ConfigurableChatModelProvider` 读取真实 Key Vault 凭据。【F:src/TlaPlugin/appsettings.Stage.json†L1-L49】【F:deploy/stage.appsettings.override.json†L1-L41】【F:src/TlaPlugin/appsettings.json†L241-L266】
-  - 冒烟命令在容器内因缺少 .NET SDK 未执行：`dotnet` 不存在导致 `secrets`/`reply`/`metrics` 三条命令返回 `command not found`，需在具备 SDK 的环境（或 CI 阶段）重试并落盘输出。【8249d2†L1-L4】【355bc8†L1-L2】【8bfaf5†L1-L2】
+  - 冒烟命令在容器内因缺少 .NET SDK 未执行：`dotnet` 不存在导致 `secrets`/`reply`/`metrics`/`ready` 四条命令返回 `command not found`，需在具备 SDK 的环境（或 CI 阶段）重试并落盘输出。【aaac2f†L1-L3】【89980a†L1-L2】【1d1e51†L1-L2】【80756a†L1-L3】
    - 告警预案：准备下列 KQL 作为 Application Insights 告警规则，监测模型提供方回退/失败峰值并提醒密钥或 Graph 链路异常：
 
      ```kusto
