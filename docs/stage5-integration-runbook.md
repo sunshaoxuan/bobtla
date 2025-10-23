@@ -77,7 +77,7 @@ test -f ./artifacts/stage-publish/appsettings.Stage.json && echo "✔ Stage 覆�
    dotnet run --project scripts/SmokeTests/Stage5SmokeTests -- secrets --appsettings src/TlaPlugin/appsettings.json --override appsettings.Stage.json
    ```
 
-   输出中的 ✔ 表示成功解析；如遇 ✘ 项目，按错误提示检查 Key Vault 引用或环境变量是否配置正确。Stage 模板默认启用 `Plugin.Security.FailOnSeedFallback=true`，因此脚本会在缺失机密时立即报错提醒补齐 Key Vault 映射。脚本会同步打印 `GraphScopes` 列表并标记是否符合资源限定格式，提醒现场工程师确认作用域与 Azure AD 授权一致，避免因无效 scope 造成 OBO 失败。建议将命令输出保存在联调记录中，作为 Stage 凭据映射已完成的佐证。【F:scripts/SmokeTests/Stage5SmokeTests/Program.cs†L82-L147】【F:src/TlaPlugin/appsettings.Stage.json†L1-L23】
+   输出首段新增「模型 Provider 凭据检查」，会按照 `ConfigurableChatModelProvider` 的 `Id :: ApiKeySecretName` 分组打印 Key Vault 解析状态与到期时间；✔ 表示解析成功，⚠ 指示缺少 `ExpiresOn`，✘ 则会给出缺失或过期原因。随后仍会输出其他 Key Vault 机密与租户覆盖结果，并对 `GraphScopes` 列表给出格式校验，提醒现场工程师确认作用域与 Azure AD 授权一致，避免因无效 scope 造成 OBO 失败。Stage 模板默认启用 `Plugin.Security.FailOnSeedFallback=true`，因此脚本会在缺失机密时立即报错。建议将命令输出保存在联调记录中，作为 Stage 凭据映射已完成的佐证。【F:scripts/SmokeTests/Stage5SmokeTests/Program.cs†L82-L210】【F:src/TlaPlugin/appsettings.Stage.json†L1-L23】
 
 ## 2. Graph 权限与 ReplyService 冒烟
 
@@ -132,7 +132,7 @@ test -f ./artifacts/stage-publish/appsettings.Stage.json && echo "✔ Stage 覆�
      --assertion "$USER_ASSERTION"
    ```
 
-   **真实模型 Provider** – 在成本预算可接受的场景下，可追加 `--use-live-model` 以跳过 Stub 模型并复用配置中的真实 Provider 列表。该模式会使用 `ModelProviderFactory.CreateProviders()` 解析 Key Vault API Key、按顺序触发多模型回退，并保留预算、审计与失败统计逻辑，用于验证密钥接入与容灾链路：
+   **真实模型 Provider** – 在成本预算可接受的场景下，可追加 `--use-live-model` 以跳过 Stub 模型并复用配置中的真实 Provider 列表。该模式会使用 `ModelProviderFactory.CreateProviders()` 解析 Key Vault API Key、按顺序触发多模型回退，并保留预算、审计与失败统计逻辑，用于验证密钥接入与容灾链路；新增的 `LiveModelCommandTests` 会模拟真实模型成功 + 回退输出并断言控制台包含相关日志，可作为发布前验证脚本的基线样例：
 
    ```bash
    dotnet run --project scripts/SmokeTests/Stage5SmokeTests -- reply \
@@ -295,12 +295,12 @@ test -f ./artifacts/stage-publish/appsettings.Stage.json && echo "✔ Stage 覆�
 
 ## 4. CI 密钥校验与告警
 
-1. **CI 密钥有效期守护** – 流水线新增 `npm run ci:validate-secrets` 步骤，会执行 `scripts/ci/validate-secrets.sh` 调用 `Stage5SmokeTests -- secrets`。脚本会读取 `deploy/stage.appsettings.override.json`，逐一解析 `ConfigurableChatModelProvider.ApiKeySecretName` 对应的 Key Vault 机密：
+1. **CI 密钥有效期守护** – GitHub Actions 工作流新增 `validate-secrets` 任务，会在 `stage-playwright.yml` 中先于 UI 测试执行 `npm run ci:validate-secrets`（内部调用 `scripts/ci/validate-secrets.sh` 与 `Stage5SmokeTests -- secrets`）。任务需注入 `AZURE_CLIENT_ID/AZURE_TENANT_ID/AZURE_CLIENT_SECRET` 等凭据，以便 `DefaultAzureCredential` 访问 Stage Key Vault。脚本会读取 `deploy/stage.appsettings.override.json`，逐一解析 `ConfigurableChatModelProvider.ApiKeySecretName` 对应的 Key Vault 机密：
    - 未解析到值或值为空直接失败；
    - Key Vault 返回的 `ExpiresOn` 在 7 天内（含已过期）同样判定失败；
    - 未配置到期时间将返回 ⚠️，提示后续在 Key Vault 中补齐。任何失败都会导致脚本以 `41` 退出码中止流水线，需轮换密钥后再触发部署。【F:scripts/SmokeTests/Stage5SmokeTests/Program.cs†L266-L343】【F:scripts/ci/validate-secrets.sh†L1-L15】【F:package.json†L11-L17】
 
-   **响应策略**：CI 失败后，请在 Key Vault 中续期或新建密钥，更新 `ApiKeySecretName` 映射并记录到变更工单，随后重新执行 `npm run ci:validate-secrets` 直至返回 0，最后补充 Runbook 与 Stage 凭据台账中的过期时间。为降低误差，可提前 7 天安排轮换计划并在成功后更新 Grafana/AI 告警的到期阈值。
+   **响应策略**：CI 失败后，请在 Key Vault 中续期或新建密钥，更新 `ApiKeySecretName` 映射并记录到变更工单，随后重新执行 `npm run ci:validate-secrets` 直至返回 0，最后补充 Runbook 与 Stage 凭据台账中的过期时间。为降低误差，可提前 7 天安排轮换计划并在成功后更新 Grafana/AI 告警的到期阈值。若 `validate-secrets` 任务失败，后续 Playwright 作业会被 `needs` 依赖阻断，确保发布流程在密钥问题解决前暂停。【F:.github/workflows/stage-playwright.yml†L1-L82】
 
 2. **应用日志告警模板** – `ConfigurableChatModelProvider` 统一输出 `Provider {ProviderId}`、`Operation`、`Duration`、`HasHttpClient` 等字段，可在 Application Insights 中使用以下 Kusto 查询建立告警规则：
 

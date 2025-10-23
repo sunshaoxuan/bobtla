@@ -24,6 +24,9 @@ internal static class Program
         WriteIndented = true
     };
 
+    internal static Func<PluginOptions, KeyVaultSecretResolver, LiveModelSmokeHarness> LiveModelHarnessFactory { get; set; }
+        = (options, resolver) => new LiveModelSmokeHarness(options, secretResolver: resolver);
+
     private static int Main(string[] args)
     {
         if (args.Length == 0)
@@ -120,14 +123,42 @@ internal static class Program
         var options = LoadOptions(appsettings, overrides);
         var resolver = new KeyVaultSecretResolver(Options.Create(options));
 
-        var secretNames = CollectSecretNames(options);
+        var providerSecretGroups = options.Providers
+            .Where(p => !string.IsNullOrWhiteSpace(p.ApiKeySecretName))
+            .GroupBy(p => p.ApiKeySecretName!, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var secretNames = new HashSet<string>(CollectSecretNames(options), StringComparer.OrdinalIgnoreCase);
+        foreach (var providerGroup in providerSecretGroups)
+        {
+            secretNames.Remove(providerGroup.Key);
+        }
         var tenantsToCheck = tenants.Count > 0
             ? tenants
             : CollectTenantIds(options);
 
-        Console.WriteLine("🔐 正在检查 Key Vault 机密解析状态：");
         var hasSecretFailures = false;
         var hasSecretWarnings = false;
+
+        Console.WriteLine("🤖 模型 Provider 凭据检查：");
+        if (providerSecretGroups.Count == 0)
+        {
+            Console.WriteLine("  ⚠ 未配置任何 ApiKeySecretName，跳过模型密钥检查。");
+        }
+        else
+        {
+            foreach (var group in providerSecretGroups)
+            {
+                var providerIds = string.Join(", ", group.Select(p => p.Id));
+                var displayName = $"{providerIds} :: {group.Key}";
+                var outcome = ReportSecret(resolver, group.Key, tenantId: null, displayName);
+                hasSecretFailures |= !outcome.Success;
+                hasSecretWarnings |= outcome.Warning;
+            }
+        }
+
+        Console.WriteLine();
+        Console.WriteLine("🔐 正在检查 Key Vault 机密解析状态：");
         foreach (var secret in secretNames)
         {
             if (tenantsToCheck.Count == 0)
@@ -235,7 +266,7 @@ internal static class Program
         return 0;
     }
 
-    private static int RunReply(string[] args)
+    internal static int RunReply(string[] args)
     {
         var overrides = new List<string>();
         string? appsettings = null;
@@ -437,7 +468,7 @@ internal static class Program
         {
             Console.WriteLine();
             Console.WriteLine("🧪 正在触发真实模型链路…");
-            var harness = new LiveModelSmokeHarness(options, secretResolver: resolver);
+            var harness = LiveModelHarnessFactory(options, resolver);
             var liveResult = harness
                 .ExecuteAsync(translationRequest, CancellationToken.None, additionalLanguages)
                 .GetAwaiter()
@@ -765,7 +796,11 @@ internal static class Program
         return options.Security.TenantOverrides.Keys.ToList();
     }
 
-    private static SecretCheckResult ReportSecret(KeyVaultSecretResolver resolver, string secretName, string? tenantId)
+    private static SecretCheckResult ReportSecret(
+        KeyVaultSecretResolver resolver,
+        string secretName,
+        string? tenantId,
+        string? displayName = null)
     {
         try
         {
@@ -774,7 +809,7 @@ internal static class Program
                 .GetAwaiter()
                 .GetResult();
 
-            var prefix = tenantId is null ? secretName : $"{tenantId} :: {secretName}";
+            var prefix = displayName ?? (tenantId is null ? secretName : $"{tenantId} :: {secretName}");
             if (string.IsNullOrWhiteSpace(snapshot.Value))
             {
                 Console.WriteLine($"  ✘ {prefix} -> <empty> (未解析到值)");

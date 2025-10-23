@@ -1,0 +1,29 @@
+{
+  "Plugin": {
+    "Security": {
+      "UseHmacFallback": true,
+      "KeyVaultUri": "https://localhost.vault.azure.net/",
+      "ClientSecretName": "tla-client-secret",
+      "SeedSecrets": {
+        "tla-client-secret": "local-dev-secret",
+        "live-model-key": "primary-secret"
+      },
+      "GraphScopes": []
+    },
+    "Providers": [
+      {
+        "Id": "incomplete",
+        "Kind": "OpenAi",
+        "Endpoint": "",
+        "ApiKeySecretName": "missing-secret"
+      },
+      {
+        "Id": "primary",
+        "Kind": "OpenAi",
+        "Endpoint": "https://api.test/v1/chat/completions",
+        "Model": "gpt-4o-mini",
+        "ApiKeySecretName": "live-model-key"
+      }
+    ]
+  }
+}
