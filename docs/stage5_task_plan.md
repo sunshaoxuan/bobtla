@@ -13,16 +13,15 @@ Following the 86% completion assessment, the remaining scope targets Stage 5 rea
 | Observability & Rollout Operations | 🟡 部分完成 | `BudgetGuard`、`ContextRetrievalService`、`ReplyService` 与 `TeamsReplyClient` 输出结构化日志，记录预算拒绝、RAG 抓取耗时与 Graph 回复状态，为后续 Application Insights 查询奠定数据基础。 【F:src/TlaPlugin/Services/BudgetGuard.cs†L1-L90】【F:src/TlaPlugin/Services/ContextRetrievalService.cs†L1-L225】【F:src/TlaPlugin/Services/ReplyService.cs†L24-L334】【F:src/TlaPlugin/Services/TeamsReplyClient.cs†L1-L214】 |
 | Documentation & Stakeholder Alignment | 🟡 部分完成 | 当前文档已列出工作流与负责人框架，但尚缺 burndown、风险与会议纪要等动态内容。 【F:docs/stage5_task_plan.md†L1-L32】 |
 
-## 最新冒烟测试结果（2024-05-17 09:30 UTC）
+## 最新冒烟测试结果（2024-05-21 14:20 UTC）
 
 | 冒烟脚本 | 命令 | 结果 | 记录与依赖 |
 | --- | --- | --- | --- |
-| 密钥解析 | `dotnet run --project scripts/SmokeTests/Stage5SmokeTests -- secrets --appsettings src/TlaPlugin/appsettings.json --override appsettings.Stage.json` | ✅ 通过 | 解析 12 条 Key Vault 机密，确认 `FailOnSeedFallback=true` 未触发回退。输出存档于 `artifacts/logs/secrets-smoke-20240517.log`。 |
-| Reply + Graph（HMAC 回退） | `dotnet run --project scripts/SmokeTests/Stage5SmokeTests -- reply --tenant contoso.onmicrosoft.com --user stage-user --thread 19:stage-thread@thread.tacv2 --channel 19:stage-channel --language ja --tone business --text "Stage 5 手动联调验证"` | ✅ 通过 | 本地 HMAC 回退链路完成，验证 `TeamsReplyClient` 日志包含 messageId 与耗时。 |
-| Reply + Graph（真实 OBO） | `dotnet run --project scripts/SmokeTests/Stage5SmokeTests -- reply --tenant contoso.onmicrosoft.com --user stage-user --thread 19:stage-thread@thread.tacv2 --language ja --tone business --text "Stage 5 OBO" --use-live-graph --assertion "$USER_ASSERTION"` | ⚠️ 告警 | Graph API 返回 `403 Forbidden`，诊断为 Enterprise 租户缺少 `ChannelMessage.Send`。已在 [ISSUE-4821](https://tracker.contoso.net/issues/4821) 跟踪，并提交管理员同意请求，预计 2024-05-20 完成。 |
-| Metrics API | `dotnet run --project scripts/SmokeTests/Stage5SmokeTests -- metrics --baseUrl https://stage5.contoso.net` | ✅ 通过 | `/api/metrics` 返回 200，最新延迟 310ms、错误率 0%。结果已同步至 [Stage5 Telemetry Dashboard](https://grafana.stage5.contoso.net/d/stage5/telemetry-overview?orgId=1)。 |
+| 密钥解析 + 就绪探针 | `dotnet run --project scripts/SmokeTests/Stage5SmokeTests -- secrets --verify-readiness --appsettings src/TlaPlugin/appsettings.json --override appsettings.Stage.json` | ⚠️ 阻塞 | Stage 容器缺少 .NET SDK，命令返回 `command not found`。需在具备 SDK 的 Stage 节点重试并归档日志。【8249d2†L1-L4】 |
+| Reply + Graph（真实 OBO） | `dotnet run --project scripts/SmokeTests/Stage5SmokeTests -- reply --use-live-graph` | ⚠️ 阻塞 | 同上，待 Stage 节点补齐 SDK 后重跑并附加 Graph 诊断输出。【355bc8†L1-L2】 |
+| Metrics API | `dotnet run --project scripts/SmokeTests/Stage5SmokeTests -- metrics` | ⚠️ 阻塞 | 同上，未生成最新 `/api/metrics` 摘要。Stage 环境恢复后需同步更新仪表盘截图与日志链接，并校验新的 [Stage5 Telemetry Dashboard](https://grafana.stage5.contoso.net/d/tla-stage5/telemetry-ops?orgId=1&var-env=Stage)。【8bfaf5†L1-L2】 |
 
-> 注：所有冒烟测试日志归档在 `artifacts/logs/2024-05-17/`，Runbook 中新增了仪表盘入口用于快速查阅。
+> 注：本地容器环境未安装 .NET SDK，因此未生成新的冒烟日志。待 Stage 节点重跑后，请将输出存档至 `artifacts/logs/2024-05-21/` 并在 Runbook 中更新链接。
 
 ## 风险列表与缓解计划（更新于 2024-05-17）
 
@@ -48,8 +47,8 @@ Following the 86% completion assessment, the remaining scope targets Stage 5 rea
    - 完成密钥回退策略清理：更新服务器配置关闭 HMAC 回退，提交变更记录，并在 `StageFiveDiagnostics` 中同步状态标记。
    - 执行 Graph 权限验证脚本：编写/运行自动化脚本校验所需作用域，输出结果至 Runbook。
    - 准备 `Stage5SmokeTests` 流水线：在 CI/CD 中植入 secrets/reply/metrics 冒烟脚本并记录最新运行结果。
-   - 2025-10-19 变更记录：`appsettings.Stage.json` 与部署 override 已指向 `tla-stage-kv`、`contoso-stage-kv`、`enterprise-stage-kv`，并统一 Graph 作用域/模型 Provider，确保 `ConfigurableChatModelProvider` 读取真实 Key Vault 凭据。【F:src/TlaPlugin/appsettings.Stage.json†L1-L49】【F:deploy/stage.appsettings.override.json†L1-L41】【F:src/TlaPlugin/appsettings.json†L241-L266】
-   - 冒烟命令在容器内因缺少 .NET SDK 未执行：`dotnet` 不存在导致 `secrets`/`reply`/`metrics` 三条命令返回 `command not found`，需在具备 SDK 的环境（或 CI 阶段）重试并落盘输出。【dd1477†L1-L4】【94bc32†L1-L3】【a2f815†L1-L3】
+  - 2025-10-19 变更记录：`appsettings.Stage.json` 与部署 override 已指向 `tla-stage-kv`、`contoso-stage-kv`、`enterprise-stage-kv`，并统一 Graph 作用域/模型 Provider；GraphScopes 现包含 `.default/Chat.ReadWrite/ChatMessage.Send/ChannelMessage.Send/Group.ReadWrite.All/Team.ReadBasic.All` 以满足 Stage Graph 验证，确保 `ConfigurableChatModelProvider` 读取真实 Key Vault 凭据。【F:src/TlaPlugin/appsettings.Stage.json†L1-L49】【F:deploy/stage.appsettings.override.json†L1-L41】【F:src/TlaPlugin/appsettings.json†L241-L266】
+  - 冒烟命令在容器内因缺少 .NET SDK 未执行：`dotnet` 不存在导致 `secrets`/`reply`/`metrics` 三条命令返回 `command not found`，需在具备 SDK 的环境（或 CI 阶段）重试并落盘输出。【8249d2†L1-L4】【355bc8†L1-L2】【8bfaf5†L1-L2】
    - 告警预案：准备下列 KQL 作为 Application Insights 告警规则，监测模型提供方回退/失败峰值并提醒密钥或 Graph 链路异常：
 
      ```kusto
