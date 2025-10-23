@@ -11,16 +11,29 @@
 - **最新冒烟尝试（2025-10-23 09:23 UTC）**：`Stage5SmokeTests -- secrets --verify-readiness`、`-- reply --use-live-graph`、`-- metrics` 与 `-- ready` 均因容器缺少 .NET SDK 返回 `command not found`，未产生新的日志或 Stage 就绪文件更新。请在具备 SDK 的 Stage 节点重跑并归档输出。【aaac2f†L1-L3】【89980a†L1-L2】【1d1e51†L1-L2】【80756a†L1-L3】
 - **当前告警状态（2025-10-23 09:23 UTC）**：Stage 容器暂缺 .NET SDK，`Stage5SmokeTests` 无法在本地复跑，导致 `Stage5-Reply-ErrorRate` 告警仍保持待恢复状态且未生成新的 `/api/metrics` 采集记录。待 Stage 节点补齐 SDK 后重跑 `--use-live-graph` 与 `-- metrics`，并在 Grafana Dashboard 校验恢复情况。【aaac2f†L1-L3】【89980a†L1-L2】【1d1e51†L1-L2】
 
-### 冒烟日志与可视化归档
+### 冒烟日志与可视化归档（更新于 2024-05-21 14:30 UTC，协调人：@matt.hu）
 
-- **日志汇总目录**：`artifacts/logs/2024-05-19/`（由 CI 任务 `stage5-smoke` 自动上传）。
-  - `secrets-smoke-20240519.log` — 对应 `Stage5SmokeTests -- secrets` 输出，包含密钥解析详情与 Graph scope 校验结果。
-  - `reply-obo-20240519.log` — 真实 OBO 冒烟日志，记录 403 失败栈以供权限排查。
-  - `metrics-summary-20240519.json` — 指标摘要快照，可用于周报与 go/no-go 判据核查。
-- **Grafana 关键截图**：<https://contoso.sharepoint.com/sites/stage5/Shared%20Documents/grafana/stage5-telemetry-20240519.png>
-  - 截图更新时间：2024-05-19 18:45 UTC，由 @nora.zhu 提供。
-  - 包含延迟、错误率双坐标及告警条幅，需在周报模板中引用。
-- **Burndown/指标附件**：参照 `artifacts/burndown/stage5-burndown-20240520.csv` 与 `docs/stage5_task_plan.md` 中的 Mermaid 图表。
+| 项目 | 最新记录 | 路径 / 链接 | 责任人 | 阻塞 / 下一步 |
+| --- | --- | --- | --- | --- |
+| `Stage5SmokeTests -- secrets` | 2024-05-19 21:40 UTC | `artifacts/logs/2024-05-19/secrets-smoke-20240519.log` | @matt.hu | 等待 STAGE5-SDK-INSTALL 完成后重跑，并在 2024-05-21 目录追加成功日志与 Key Vault 验证截图。 |
+| `Stage5SmokeTests -- reply --use-live-graph` | 2024-05-19 21:50 UTC（403 样例） | `artifacts/logs/2024-05-19/reply-obo-20240519.log` | @liang.chen | 需在管理员同意刷新后于 2024-05-21 18:00 UTC 前提供 3 次成功调用日志并补充 Graph Trace 链接。 |
+| `Stage5SmokeTests -- metrics` | 2024-05-19 22:05 UTC | `artifacts/logs/2024-05-19/metrics-summary-20240519.json` | @nora.zhu | Stage SDK 缺失导致 2024-05-21 重跑失败；待修复后重新生成 JSON 并同步至 Grafana 截图。 |
+| `Stage5SmokeTests -- ready` / `stage-ready.json` | 2024-05-19 22:10 UTC | `artifacts/logs/2024-05-19/stage-ready.json` | @matt.hu | SDK 安装后需重跑 `-- ready` 并与 `StageFiveDiagnostics` 时间戳核对，将比对截图附加到 go/no-go 表。 |
+| Grafana 关键截图 | 2024-05-21 13:10 UTC | <https://contoso.sharepoint.com/sites/stage5/Shared%20Documents/grafana/stage5-telemetry-20240521.png> | @nora.zhu | 待 `-- metrics` 重跑验证 Failure Breakdown 高亮，之后在周报与评审汇报中替换引用。 |
+| Burndown / 进度图表 | 2024-05-21 09:30 UTC | `docs/stage5_task_plan.md` Mermaid、<https://contoso.sharepoint.com/sites/stage5/burndown> | @matt.hu | 结合 CI 导出的 `artifacts/burndown/stage5-burndown-20240521.csv` 更新；如数据跳变需在周报附解释。 |
+
+> ⚠️ 若 2024-05-21 日志目录在重跑后仍为空，请检查 Stage 节点的 `dotnet` 安装路径，并确认冒烟命令使用 `--appsettings` + `--override` 指向 Stage 配置文件。
+
+### go/no-go 判据及验证方式（与周报模版同步，更新于 2024-05-21 14:30 UTC）
+
+| 判据 ID | 验证步骤 | 证据位置 | 当前状态 | 责任人 |
+| --- | --- | --- | --- | --- |
+| G1 | 重跑 `Stage5SmokeTests -- reply --use-live-graph` ≥3 次成功，并在 Grafana 中确认对应 Trace | `artifacts/logs/2024-05-21/reply-obo-*.log`、Grafana Explore 链接 | ⏳ 阻塞 — 待 STAGE5-SDK-INSTALL 完成后执行 | @liang.chen |
+| G2 | 在 Key Vault 中切换 `openai-api-key-202405` 并验证 Stage/Prod 读取记录 | `artifacts/logs/2024-05-21/secrets-smoke-*.log`、Key Vault 版本截图、变更单 REQ-9937 | ⏳ 待审 — 2024-05-22 安全评审完成后更新状态 | @ariel.wang |
+| G3 | 重跑 `Stage5SmokeTests -- metrics`，导出最新 `metrics-summary-YYYYMMDD.json`，并附 5 分钟内刷新 Grafana 截图 | `artifacts/logs/2024-05-21/metrics-summary-*.json`、Grafana 截图（20240521） | ⏳ 阻塞 — 等待 SDK 安装及指标重跑 | @nora.zhu |
+| G4 | 执行 `Stage5SmokeTests -- ready` 并比对 `StageFiveDiagnostics` 时间戳 / 状态字段 | `artifacts/logs/2024-05-21/stage-ready.json`、`artifacts/logs/2024-05-21/diagnostics.png` | ⏳ 阻塞 — 等待 SDK 安装完成后生成快照 | @matt.hu |
+
+> ✅ 当上述证据链接齐备后，请同步更新 `docs/stage5_weekly_report_template.md` 的 go/no-go 表格，并在 Stakeholder 评审中引用。
 
 ## 1. Key Vault 密钥映射与验证
 
@@ -77,7 +90,7 @@ test -f ./artifacts/stage-publish/appsettings.Stage.json && echo "✔ Stage 覆�
    dotnet run --project scripts/SmokeTests/Stage5SmokeTests -- secrets --appsettings src/TlaPlugin/appsettings.json --override appsettings.Stage.json
    ```
 
-   输出中的 ✔ 表示成功解析；如遇 ✘ 项目，按错误提示检查 Key Vault 引用或环境变量是否配置正确。Stage 模板默认启用 `Plugin.Security.FailOnSeedFallback=true`，因此脚本会在缺失机密时立即报错提醒补齐 Key Vault 映射。脚本会同步打印 `GraphScopes` 列表并标记是否符合资源限定格式，提醒现场工程师确认作用域与 Azure AD 授权一致，避免因无效 scope 造成 OBO 失败。建议将命令输出保存在联调记录中，作为 Stage 凭据映射已完成的佐证。【F:scripts/SmokeTests/Stage5SmokeTests/Program.cs†L82-L147】【F:src/TlaPlugin/appsettings.Stage.json†L1-L23】
+   输出首段新增「模型 Provider 凭据检查」，会按照 `ConfigurableChatModelProvider` 的 `Id :: ApiKeySecretName` 分组打印 Key Vault 解析状态与到期时间；✔ 表示解析成功，⚠ 指示缺少 `ExpiresOn`，✘ 则会给出缺失或过期原因。随后仍会输出其他 Key Vault 机密与租户覆盖结果，并对 `GraphScopes` 列表给出格式校验，提醒现场工程师确认作用域与 Azure AD 授权一致，避免因无效 scope 造成 OBO 失败。Stage 模板默认启用 `Plugin.Security.FailOnSeedFallback=true`，因此脚本会在缺失机密时立即报错。建议将命令输出保存在联调记录中，作为 Stage 凭据映射已完成的佐证。【F:scripts/SmokeTests/Stage5SmokeTests/Program.cs†L82-L210】【F:src/TlaPlugin/appsettings.Stage.json†L1-L23】
 
 ## 2. Graph 权限与 ReplyService 冒烟
 
@@ -132,7 +145,7 @@ test -f ./artifacts/stage-publish/appsettings.Stage.json && echo "✔ Stage 覆�
      --assertion "$USER_ASSERTION"
    ```
 
-   **真实模型 Provider** – 在成本预算可接受的场景下，可追加 `--use-live-model` 以跳过 Stub 模型并复用配置中的真实 Provider 列表。该模式会使用 `ModelProviderFactory.CreateProviders()` 解析 Key Vault API Key、按顺序触发多模型回退，并保留预算、审计与失败统计逻辑，用于验证密钥接入与容灾链路：
+   **真实模型 Provider** – 在成本预算可接受的场景下，可追加 `--use-live-model` 以跳过 Stub 模型并复用配置中的真实 Provider 列表。该模式会使用 `ModelProviderFactory.CreateProviders()` 解析 Key Vault API Key、按顺序触发多模型回退，并保留预算、审计与失败统计逻辑，用于验证密钥接入与容灾链路；新增的 `LiveModelCommandTests` 会模拟真实模型成功 + 回退输出并断言控制台包含相关日志，可作为发布前验证脚本的基线样例：
 
    ```bash
    dotnet run --project scripts/SmokeTests/Stage5SmokeTests -- reply \
@@ -211,14 +224,14 @@ test -f ./artifacts/stage-publish/appsettings.Stage.json && echo "✔ Stage 覆�
   ]
   ```
 
-## 附录 B：Stage 5 go/no-go 判据（更新于 2024-05-20）
+## 附录 B：Stage 5 go/no-go 判据（更新于 2024-05-21）
 
 | 序号 | 判据 | 验收方式 | 最新状态 |
 | --- | --- | --- | --- |
-| G1 | Graph OBO 回帖在 Stage 环境成功执行 3 次，错误率 <5% | 查看 `reply-obo-*.log` 并在 Grafana `Failure Breakdown` 面板确认 | 阻塞：ISSUE-4821 未完成管理员同意，最近一次（2024-05-19）仍为 403。 |
-| G2 | `openai-api-key` 新密钥在 Stage 与生产 Key Vault 中生效，成本监控与配额告警正常 | 对比 `secrets-smoke-*.log` 中的密钥有效期，与 Azure Monitor 告警仪表 | Stage Vault 已验证，通过生产审批后复测。 |
-| G3 | Metrics API 与仪表盘刷新延迟 <5 分钟，并留存截图 | 运行 `Stage5SmokeTests -- metrics`，比对 Grafana 截图与 `metrics-summary` | 2024-05-19 截图确认达标，持续跟踪下一次冒烟。 |
-| G4 | `stage-ready.json` 时间戳与 `StageFiveDiagnostics` 显示一致，Runbook/周报留存证据 | 在 `Stage5SmokeTests -- ready` 后比对 `artifacts/logs` 与诊断页面 | 初版流程已就绪，等待 CI 校验任务完成。 |
+| G1 | Graph OBO 回帖在 Stage 环境成功执行 3 次，错误率 <5% | 查看 `reply-obo-*.log` 并在 Grafana `Failure Breakdown` 面板确认 | ⏳ 阻塞：管理员同意已完成，待 STAGE5-SDK-INSTALL 完成后由 @liang.chen 重跑并上传 3 次成功日志。 |
+| G2 | `openai-api-key` 新密钥在 Stage 与生产 Key Vault 中生效，成本监控与配额告警正常 | 对比 `secrets-smoke-*.log` 中的密钥有效期，与 Azure Monitor 告警仪表 | ⏳ 待审：Stage Vault 读取成功，等待 2024-05-22 安全评审通过后替换生产值。 |
+| G3 | Metrics API 与仪表盘刷新延迟 <5 分钟，并留存截图 | 运行 `Stage5SmokeTests -- metrics`，比对 Grafana 截图与 `metrics-summary` | ⏳ 阻塞：2024-05-21 重跑受限于 SDK 缺失，需补齐日志并附 5 分钟内刷新截图。 |
+| G4 | `stage-ready.json` 时间戳与 `StageFiveDiagnostics` 显示一致，Runbook/周报留存证据 | 在 `Stage5SmokeTests -- ready` 后比对 `artifacts/logs` 与诊断页面 | ⏳ 阻塞：等待 SDK 安装后执行 `-- ready` 并由 @matt.hu 提供比对截图。 |
 
    成功运行后，控制台会打印一次 Graph 请求与指标快照，可用于变更记录留痕：
 
@@ -295,12 +308,12 @@ test -f ./artifacts/stage-publish/appsettings.Stage.json && echo "✔ Stage 覆�
 
 ## 4. CI 密钥校验与告警
 
-1. **CI 密钥有效期守护** – 流水线新增 `npm run ci:validate-secrets` 步骤，会执行 `scripts/ci/validate-secrets.sh` 调用 `Stage5SmokeTests -- secrets`。脚本会读取 `deploy/stage.appsettings.override.json`，逐一解析 `ConfigurableChatModelProvider.ApiKeySecretName` 对应的 Key Vault 机密：
+1. **CI 密钥有效期守护** – GitHub Actions 工作流新增 `validate-secrets` 任务，会在 `stage-playwright.yml` 中先于 UI 测试执行 `npm run ci:validate-secrets`（内部调用 `scripts/ci/validate-secrets.sh` 与 `Stage5SmokeTests -- secrets`）。任务需注入 `AZURE_CLIENT_ID/AZURE_TENANT_ID/AZURE_CLIENT_SECRET` 等凭据，以便 `DefaultAzureCredential` 访问 Stage Key Vault。脚本会读取 `deploy/stage.appsettings.override.json`，逐一解析 `ConfigurableChatModelProvider.ApiKeySecretName` 对应的 Key Vault 机密：
    - 未解析到值或值为空直接失败；
    - Key Vault 返回的 `ExpiresOn` 在 7 天内（含已过期）同样判定失败；
    - 未配置到期时间将返回 ⚠️，提示后续在 Key Vault 中补齐。任何失败都会导致脚本以 `41` 退出码中止流水线，需轮换密钥后再触发部署。【F:scripts/SmokeTests/Stage5SmokeTests/Program.cs†L266-L343】【F:scripts/ci/validate-secrets.sh†L1-L15】【F:package.json†L11-L17】
 
-   **响应策略**：CI 失败后，请在 Key Vault 中续期或新建密钥，更新 `ApiKeySecretName` 映射并记录到变更工单，随后重新执行 `npm run ci:validate-secrets` 直至返回 0，最后补充 Runbook 与 Stage 凭据台账中的过期时间。为降低误差，可提前 7 天安排轮换计划并在成功后更新 Grafana/AI 告警的到期阈值。
+   **响应策略**：CI 失败后，请在 Key Vault 中续期或新建密钥，更新 `ApiKeySecretName` 映射并记录到变更工单，随后重新执行 `npm run ci:validate-secrets` 直至返回 0，最后补充 Runbook 与 Stage 凭据台账中的过期时间。为降低误差，可提前 7 天安排轮换计划并在成功后更新 Grafana/AI 告警的到期阈值。若 `validate-secrets` 任务失败，后续 Playwright 作业会被 `needs` 依赖阻断，确保发布流程在密钥问题解决前暂停。【F:.github/workflows/stage-playwright.yml†L1-L82】
 
 2. **应用日志告警模板** – `ConfigurableChatModelProvider` 统一输出 `Provider {ProviderId}`、`Operation`、`Duration`、`HasHttpClient` 等字段，可在 Application Insights 中使用以下 Kusto 查询建立告警规则：
 
