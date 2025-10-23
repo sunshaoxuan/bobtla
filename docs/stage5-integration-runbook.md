@@ -240,6 +240,8 @@ test -f ./artifacts/stage-publish/appsettings.Stage.json && echo "✔ Stage 覆�
 
    > 提示：启用真实模型时会按配置调用外部推理 API，请先确认 Key Vault 中的 `ApiKeySecretName` 已填充真实密钥，并评估当次调用可能产生的费用；如需同时验证 Graph，可同时追加 `--use-live-graph`，确保回帖链路、模型回退与审计记录均覆盖真实依赖。
 
+   加上 `--use-live-model` 后，冒烟命令会通过 `LiveModelSmokeHarness` 逐个触发真实 Provider：缺失 Endpoint 或 API Key 时会打印 `⚠ 已触发回退 Provider`，成功调用的 Provider 会输出耗时、模型 ID 及裁剪后的译文预览，方便在不进入遥测平台的前提下确认成功与回退日志均已生成。【F:scripts/SmokeTests/Stage5SmokeTests/Program.cs†L318-L367】【F:scripts/SmokeTests/Stage5SmokeTests/LiveModelSmokeHarness.cs†L1-L167】
+
    模式无论真假都会打印 Graph 请求路径、Authorization 头与负载；在真实模式下还会追加 `StatusCode` 与响应 JSON，便于现场工程师对照 Graph 诊断信息定位权限或配额问题。若命令返回非零退出码，请根据控制台中输出的 Graph 错误消息与错误代码排查 Token、权限或配置缺失。【F:scripts/SmokeTests/Stage5SmokeTests/Program.cs†L261-L330】【F:scripts/SmokeTests/Stage5SmokeTests/Program.cs†L543-L565】
 
 3. **网络与凭据准备** – 对接真实 Graph 前需确保 Stage 服务的反向代理或网络安全组允许访问 Graph 端点，并将 `SeedSecrets` 替换为 Key Vault 引用。若当前环境仍使用模拟 Token，可在 Stage 实现中扩展 `TokenBroker` 以获取 AAD 访问令牌，再复用上述命令验证 `ReplyService` 行为。
@@ -270,7 +272,30 @@ test -f ./artifacts/stage-publish/appsettings.Stage.json && echo "✔ Stage 覆�
 
 通过上述步骤，可在 Stage 环境保证 Key Vault、Graph OBO 与观测指标三项能力全部打通，为后续正式上线提供可重复的联调手册。
 
-## 4. Stage 就绪文件持久化
+## 4. CI 密钥校验与告警
+
+1. **CI 密钥有效期守护** – 流水线新增 `npm run ci:validate-secrets` 步骤，会执行 `scripts/ci/validate-secrets.sh` 调用 `Stage5SmokeTests -- secrets`。脚本会读取 `deploy/stage.appsettings.override.json`，逐一解析 `ConfigurableChatModelProvider.ApiKeySecretName` 对应的 Key Vault 机密：
+   - 未解析到值或值为空直接失败；
+   - Key Vault 返回的 `ExpiresOn` 在 7 天内（含已过期）同样判定失败；
+   - 未配置到期时间将返回 ⚠️，提示后续在 Key Vault 中补齐。任何失败都会导致脚本以 `41` 退出码中止流水线，需轮换密钥后再触发部署。【F:scripts/SmokeTests/Stage5SmokeTests/Program.cs†L266-L343】【F:scripts/ci/validate-secrets.sh†L1-L15】【F:package.json†L11-L17】
+
+   **响应策略**：CI 失败后，请在 Key Vault 中续期或新建密钥，更新 `ApiKeySecretName` 映射并记录到变更工单，随后重新执行 `npm run ci:validate-secrets` 直至返回 0，最后补充 Runbook 与 Stage 凭据台账中的过期时间。为降低误差，可提前 7 天安排轮换计划并在成功后更新 Grafana/AI 告警的到期阈值。
+
+2. **应用日志告警模板** – `ConfigurableChatModelProvider` 统一输出 `Provider {ProviderId}`、`Operation`、`Duration`、`HasHttpClient` 等字段，可在 Application Insights 中使用以下 Kusto 查询建立告警规则：
+
+   ```kusto
+   traces
+   | where timestamp > ago(5m)
+   | where customDimensions["Category"] == "TlaPlugin.Providers.ConfigurableChatModelProvider"
+   | extend provider = tostring(customDimensions["ProviderId"]), operation = tostring(customDimensions["Operation"])
+   | summarize errors = countif(severityLevel >= 3), fallbacks = countif(message has "回退模型"), slowCalls = countif(todouble(customDimensions["Duration"]) > 15000)
+       by provider
+   | where errors > 0 or fallbacks > 3 or slowCalls > 0
+   ```
+
+   Grafana 可通过 Azure Monitor Data Source 复用同一查询，分别设置「错误次数 > 0」、「回退次数 > 3」、「耗时 > 15s」阈值，并将告警指向运行手册。若告警触发，应立即核对上一步的 CI 脚本与密钥到期时间，必要时临时切换到备用模型并在 Runbook 中记录处理过程。【F:src/TlaPlugin/Providers/ConfigurableChatModelProvider.cs†L71-L156】
+
+## 5. Stage 就绪文件持久化
 
 1. **替换配置占位符** – 在 `src/TlaPlugin/appsettings.Stage.json` 中，`Plugin.StageReadinessFilePath` 默认使用 `<shared-path>/stage-readiness.txt` 占位符。将 `<shared-path>` 更新为实际挂载到容器或 App Service 的共享卷路径，例如 Azure Files：
 

@@ -33,15 +33,24 @@ public class KeyVaultSecretResolver
 
     public async Task<string> GetSecretAsync(string secretName, string? tenantId, CancellationToken cancellationToken)
     {
+        var snapshot = await GetSecretSnapshotAsync(secretName, tenantId, cancellationToken).ConfigureAwait(false);
+        return snapshot.Value;
+    }
+
+    public async Task<SecretValueSnapshot> GetSecretSnapshotAsync(
+        string secretName,
+        string? tenantId,
+        CancellationToken cancellationToken)
+    {
         if (string.IsNullOrEmpty(secretName))
         {
-            return string.Empty;
+            return new SecretValueSnapshot(secretName, tenantId, string.Empty, null, SecretSource.Unknown);
         }
 
         var cacheKey = BuildCacheKey(secretName, tenantId);
-        if (_cache.TryGetValue(cacheKey, out var cached) && cached.Expiry > DateTimeOffset.UtcNow)
+        if (_cache.TryGetValue(cacheKey, out var cached) && cached.CacheExpiry > DateTimeOffset.UtcNow)
         {
-            return cached.Value;
+            return new SecretValueSnapshot(secretName, tenantId, cached.Value, cached.SecretExpiryUtc, cached.Source);
         }
 
         var security = _options.Security;
@@ -49,6 +58,8 @@ public class KeyVaultSecretResolver
         var requireVaultSecrets = security.FailOnSeedFallback || security.RequireVaultSecrets;
         var failOnSeedFallback = shouldQueryVault && (!security.UseHmacFallback || requireVaultSecrets);
         string? resolved = null;
+        DateTimeOffset? secretExpiry = null;
+        var source = SecretSource.Seed;
         Exception? vaultError = null;
 
         if (shouldQueryVault)
@@ -58,6 +69,8 @@ public class KeyVaultSecretResolver
                 var client = GetSecretClient(vaultUri!);
                 var response = await client.GetSecretAsync(secretName, cancellationToken: cancellationToken).ConfigureAwait(false);
                 resolved = response.Value.Value;
+                secretExpiry = response.Value.Properties.ExpiresOn;
+                source = SecretSource.KeyVault;
             }
             catch (RequestFailedException ex) when (ex.Status == 404)
             {
@@ -94,14 +107,17 @@ public class KeyVaultSecretResolver
 
                 throw new InvalidOperationException($"KeyVault 中不存在名为 {secretName} 的机密。");
             }
+
+            secretExpiry = null;
+            source = SecretSource.Seed;
         }
 
         var ttl = security.SecretCacheTtl <= TimeSpan.Zero
             ? TimeSpan.FromMinutes(1)
             : security.SecretCacheTtl;
-        var expiry = DateTimeOffset.UtcNow.Add(ttl);
-        _cache[cacheKey] = new CachedSecret(resolved, expiry);
-        return resolved;
+        var cacheExpiry = DateTimeOffset.UtcNow.Add(ttl);
+        _cache[cacheKey] = new CachedSecret(resolved, cacheExpiry, secretExpiry, source);
+        return new SecretValueSnapshot(secretName, tenantId, resolved, secretExpiry, source);
     }
 
     public void Invalidate(string secretName)
@@ -131,7 +147,7 @@ public class KeyVaultSecretResolver
         _cache.TryRemove(cacheKey, out _);
     }
 
-    private readonly record struct CachedSecret(string Value, DateTimeOffset Expiry);
+    private readonly record struct CachedSecret(string Value, DateTimeOffset CacheExpiry, DateTimeOffset? SecretExpiryUtc, SecretSource Source);
 
     private static string BuildCacheKey(string secretName, string? tenantId)
         => $"{tenantId ?? "__default__"}::{secretName}";
@@ -210,3 +226,17 @@ public class SecretRetrievalException : Exception
         return $"无法从 {target} 获取名为 {secretName} 的机密: {reason}";
     }
 }
+
+public enum SecretSource
+{
+    Unknown,
+    Seed,
+    KeyVault
+}
+
+public readonly record struct SecretValueSnapshot(
+    string Name,
+    string? TenantId,
+    string Value,
+    DateTimeOffset? ExpiresOnUtc,
+    SecretSource Source);
