@@ -471,6 +471,12 @@ body {
   font-weight: 500;
 }
 
+.compose__hint {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
 .dialog__editor,
 .compose__editor {
   display: grid;
