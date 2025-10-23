@@ -8,19 +8,33 @@
   - 面板涵盖翻译量、平均延迟、错误率、成本使用，已设置 5 分钟自动刷新。
   - 「Failure Breakdown」面板会在 `Stage5SmokeTests -- metrics` 输出含失败条目时触发红色高亮。
 - **Azure Monitor 告警规则**：`Stage5-Metrics-Ingestion-Gap`（>10 分钟无数据），`Stage5-Reply-ErrorRate`（错误率 >5% 持续 15 分钟）。
-- **最新冒烟尝试（2024-05-21 14:20 UTC）**：`Stage5SmokeTests -- secrets --verify-readiness`、`-- reply --use-live-graph`、`-- metrics` 与 `-- ready` 均因容器缺少 .NET SDK 返回 `command not found`，未产生新的日志或 Stage 就绪文件更新。请在具备 SDK 的 Stage 节点重跑并归档输出。【8249d2†L1-L4】【355bc8†L1-L2】【8bfaf5†L1-L2】【da0b66†L1-L3】
+- **最新冒烟尝试（2024-05-21 14:20 UTC）**：`Stage5SmokeTests -- secrets --verify-readiness`、`-- reply --use-live-graph`、`-- metrics` 与 `-- ready` 均因 Stage 容器缺少 .NET SDK 返回 `command not found`，未产生新的日志或 Stage 就绪文件更新。Ops 已登记任务 **STAGE5-SDK-INSTALL**，预计 2024-05-21 22:00 UTC 前在 stage 节点补齐 .NET 8 SDK，届时需在服务器上重跑上述命令并上传日志至 `artifacts/logs/2024-05-21/`。【8249d2†L1-L4】【355bc8†L1-L2】【8bfaf5†L1-L2】【da0b66†L1-L3】
+- **下一次重跑计划（2024-05-21 18:00 UTC）**：由 @liang.chen 在 SDK 安装后执行 `--use-live-graph` 与 `-- metrics`，@matt.hu 负责触发 `-- ready` 并比对 `StageFiveDiagnostics`，所有输出需附加到 go/no-go 证据表。
 - **当前告警状态（2024-05-21 14:20 UTC）**：Stage 容器暂缺 .NET SDK，`Stage5SmokeTests` 无法在本地复跑，导致 `Stage5-Reply-ErrorRate` 告警仍保持待恢复状态且未生成新的 `/api/metrics` 采集记录。待 Stage 节点补齐 SDK 后重跑 `--use-live-graph` 与 `-- metrics`，并在 Grafana Dashboard 校验恢复情况。【8249d2†L1-L4】【355bc8†L1-L2】【8bfaf5†L1-L2】
 
-### 冒烟日志与可视化归档
+### 冒烟日志与可视化归档（更新于 2024-05-21 14:30 UTC，协调人：@matt.hu）
 
-- **日志汇总目录**：`artifacts/logs/2024-05-19/`（由 CI 任务 `stage5-smoke` 自动上传）。
-  - `secrets-smoke-20240519.log` — 对应 `Stage5SmokeTests -- secrets` 输出，包含密钥解析详情与 Graph scope 校验结果。
-  - `reply-obo-20240519.log` — 真实 OBO 冒烟日志，记录 403 失败栈以供权限排查。
-  - `metrics-summary-20240519.json` — 指标摘要快照，可用于周报与 go/no-go 判据核查。
-- **Grafana 关键截图**：<https://contoso.sharepoint.com/sites/stage5/Shared%20Documents/grafana/stage5-telemetry-20240519.png>
-  - 截图更新时间：2024-05-19 18:45 UTC，由 @nora.zhu 提供。
-  - 包含延迟、错误率双坐标及告警条幅，需在周报模板中引用。
-- **Burndown/指标附件**：参照 `artifacts/burndown/stage5-burndown-20240520.csv` 与 `docs/stage5_task_plan.md` 中的 Mermaid 图表。
+| 项目 | 最新记录 | 路径 / 链接 | 责任人 | 阻塞 / 下一步 |
+| --- | --- | --- | --- | --- |
+| `Stage5SmokeTests -- secrets` | 2024-05-19 21:40 UTC | `artifacts/logs/2024-05-19/secrets-smoke-20240519.log` | @matt.hu | 等待 STAGE5-SDK-INSTALL 完成后重跑，并在 2024-05-21 目录追加成功日志与 Key Vault 验证截图。 |
+| `Stage5SmokeTests -- reply --use-live-graph` | 2024-05-19 21:50 UTC（403 样例） | `artifacts/logs/2024-05-19/reply-obo-20240519.log` | @liang.chen | 需在管理员同意刷新后于 2024-05-21 18:00 UTC 前提供 3 次成功调用日志并补充 Graph Trace 链接。 |
+| `Stage5SmokeTests -- metrics` | 2024-05-19 22:05 UTC | `artifacts/logs/2024-05-19/metrics-summary-20240519.json` | @nora.zhu | Stage SDK 缺失导致 2024-05-21 重跑失败；待修复后重新生成 JSON 并同步至 Grafana 截图。 |
+| `Stage5SmokeTests -- ready` / `stage-ready.json` | 2024-05-19 22:10 UTC | `artifacts/logs/2024-05-19/stage-ready.json` | @matt.hu | SDK 安装后需重跑 `-- ready` 并与 `StageFiveDiagnostics` 时间戳核对，将比对截图附加到 go/no-go 表。 |
+| Grafana 关键截图 | 2024-05-21 13:10 UTC | <https://contoso.sharepoint.com/sites/stage5/Shared%20Documents/grafana/stage5-telemetry-20240521.png> | @nora.zhu | 待 `-- metrics` 重跑验证 Failure Breakdown 高亮，之后在周报与评审汇报中替换引用。 |
+| Burndown / 进度图表 | 2024-05-21 09:30 UTC | `docs/stage5_task_plan.md` Mermaid、<https://contoso.sharepoint.com/sites/stage5/burndown> | @matt.hu | 结合 CI 导出的 `artifacts/burndown/stage5-burndown-20240521.csv` 更新；如数据跳变需在周报附解释。 |
+
+> ⚠️ 若 2024-05-21 日志目录在重跑后仍为空，请检查 Stage 节点的 `dotnet` 安装路径，并确认冒烟命令使用 `--appsettings` + `--override` 指向 Stage 配置文件。
+
+### go/no-go 判据及验证方式（与周报模版同步，更新于 2024-05-21 14:30 UTC）
+
+| 判据 ID | 验证步骤 | 证据位置 | 当前状态 | 责任人 |
+| --- | --- | --- | --- | --- |
+| G1 | 重跑 `Stage5SmokeTests -- reply --use-live-graph` ≥3 次成功，并在 Grafana 中确认对应 Trace | `artifacts/logs/2024-05-21/reply-obo-*.log`、Grafana Explore 链接 | ⏳ 阻塞 — 待 STAGE5-SDK-INSTALL 完成后执行 | @liang.chen |
+| G2 | 在 Key Vault 中切换 `openai-api-key-202405` 并验证 Stage/Prod 读取记录 | `artifacts/logs/2024-05-21/secrets-smoke-*.log`、Key Vault 版本截图、变更单 REQ-9937 | ⏳ 待审 — 2024-05-22 安全评审完成后更新状态 | @ariel.wang |
+| G3 | 重跑 `Stage5SmokeTests -- metrics`，导出最新 `metrics-summary-YYYYMMDD.json`，并附 5 分钟内刷新 Grafana 截图 | `artifacts/logs/2024-05-21/metrics-summary-*.json`、Grafana 截图（20240521） | ⏳ 阻塞 — 等待 SDK 安装及指标重跑 | @nora.zhu |
+| G4 | 执行 `Stage5SmokeTests -- ready` 并比对 `StageFiveDiagnostics` 时间戳 / 状态字段 | `artifacts/logs/2024-05-21/stage-ready.json`、`artifacts/logs/2024-05-21/diagnostics.png` | ⏳ 阻塞 — 等待 SDK 安装完成后生成快照 | @matt.hu |
+
+> ✅ 当上述证据链接齐备后，请同步更新 `docs/stage5_weekly_report_template.md` 的 go/no-go 表格，并在 Stakeholder 评审中引用。
 
 ## 1. Key Vault 密钥映射与验证
 
@@ -211,14 +225,14 @@ test -f ./artifacts/stage-publish/appsettings.Stage.json && echo "✔ Stage 覆�
   ]
   ```
 
-## 附录 B：Stage 5 go/no-go 判据（更新于 2024-05-20）
+## 附录 B：Stage 5 go/no-go 判据（更新于 2024-05-21）
 
 | 序号 | 判据 | 验收方式 | 最新状态 |
 | --- | --- | --- | --- |
-| G1 | Graph OBO 回帖在 Stage 环境成功执行 3 次，错误率 <5% | 查看 `reply-obo-*.log` 并在 Grafana `Failure Breakdown` 面板确认 | 阻塞：ISSUE-4821 未完成管理员同意，最近一次（2024-05-19）仍为 403。 |
-| G2 | `openai-api-key` 新密钥在 Stage 与生产 Key Vault 中生效，成本监控与配额告警正常 | 对比 `secrets-smoke-*.log` 中的密钥有效期，与 Azure Monitor 告警仪表 | Stage Vault 已验证，通过生产审批后复测。 |
-| G3 | Metrics API 与仪表盘刷新延迟 <5 分钟，并留存截图 | 运行 `Stage5SmokeTests -- metrics`，比对 Grafana 截图与 `metrics-summary` | 2024-05-19 截图确认达标，持续跟踪下一次冒烟。 |
-| G4 | `stage-ready.json` 时间戳与 `StageFiveDiagnostics` 显示一致，Runbook/周报留存证据 | 在 `Stage5SmokeTests -- ready` 后比对 `artifacts/logs` 与诊断页面 | 初版流程已就绪，等待 CI 校验任务完成。 |
+| G1 | Graph OBO 回帖在 Stage 环境成功执行 3 次，错误率 <5% | 查看 `reply-obo-*.log` 并在 Grafana `Failure Breakdown` 面板确认 | ⏳ 阻塞：管理员同意已完成，待 STAGE5-SDK-INSTALL 完成后由 @liang.chen 重跑并上传 3 次成功日志。 |
+| G2 | `openai-api-key` 新密钥在 Stage 与生产 Key Vault 中生效，成本监控与配额告警正常 | 对比 `secrets-smoke-*.log` 中的密钥有效期，与 Azure Monitor 告警仪表 | ⏳ 待审：Stage Vault 读取成功，等待 2024-05-22 安全评审通过后替换生产值。 |
+| G3 | Metrics API 与仪表盘刷新延迟 <5 分钟，并留存截图 | 运行 `Stage5SmokeTests -- metrics`，比对 Grafana 截图与 `metrics-summary` | ⏳ 阻塞：2024-05-21 重跑受限于 SDK 缺失，需补齐日志并附 5 分钟内刷新截图。 |
+| G4 | `stage-ready.json` 时间戳与 `StageFiveDiagnostics` 显示一致，Runbook/周报留存证据 | 在 `Stage5SmokeTests -- ready` 后比对 `artifacts/logs` 与诊断页面 | ⏳ 阻塞：等待 SDK 安装后执行 `-- ready` 并由 @matt.hu 提供比对截图。 |
 
    成功运行后，控制台会打印一次 Graph 请求与指标快照，可用于变更记录留痕：
 
